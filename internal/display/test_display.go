@@ -205,10 +205,10 @@ func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
 	var avgInfo string
 	if len(stats.TTFTs) > 0 {
 		ttftStats := td.calculateTimeStats(stats.TTFTs)
-		avgInfo = fmt.Sprintf("⚡ TTFT: %s", FormatDuration(ttftStats.avg))
+		avgInfo = fmt.Sprintf("⚡TTFT: %s", FormatDuration(ttftStats.avg))
 	} else if len(stats.TotalTimes) > 0 {
 		totalStats := td.calculateTimeStats(stats.TotalTimes)
-		avgInfo = fmt.Sprintf("⏱️  总耗时: %s", FormatDuration(totalStats.avg))
+		avgInfo = fmt.Sprintf("⏱️ 总耗时: %s", FormatDuration(totalStats.avg))
 	}
 
 	// Token统计
@@ -389,13 +389,11 @@ func (r *Result) PrintResult() {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.Header("指标", "最小值", "平均值", "最大值", "单位")
 
-	table.Append([]string{"📊 总请求数", "-", fmt.Sprintf("%d", r.TotalRequests), "-", "个"})
-	table.Append([]string{"⚡ 并发数", "-", fmt.Sprintf("%d", r.Concurrency), "-", "个"})
-	table.Append([]string{"⏱️ 总耗时", "-", FormatDuration(r.TotalTime), "-", ""})
 	table.Append([]string{"🎯 目标服务器 IP", "-", r.NetworkMetrics.TargetIP, "-", ""})
+	table.Append([]string{"📊 总请求数", "-", fmt.Sprintf("%d", r.TotalRequests), "-", "个"})
 
 	// 添加总耗时指标
-	table.Append([]string{"⌛ 耗时",
+	table.Append([]string{"⌛ 请求耗时",
 		FormatDuration(r.TimeMetrics.MinTotalTime),
 		FormatDuration(r.TimeMetrics.AvgTotalTime),
 		FormatDuration(r.TimeMetrics.MaxTotalTime), ""})
@@ -444,23 +442,47 @@ func (r *Result) printModeInfo() {
 	infoColor := color.New(color.FgBlue)
 
 	if r.IsStream {
-		infoColor.Println("💡 流式模式：可以准确测量 TTFT（首字节时间）")
+		infoColor.Println("💡 流式模式：可以准确测量 TTFT（首个令牌时间）和流式响应特性")
 	} else {
-		infoColor.Println("ℹ️  非流式模式：测量总响应时间")
+		infoColor.Println("ℹ️  非流式模式：测量完整响应时间和批量处理性能")
 	}
 
-	// 显示一些有用的指标说明
+	// 显示详细的指标说明
 	fmt.Println("\n📖 指标说明：")
+	
+	// 基础测试信息
+	infoColor.Println("【基础信息】")
+	infoColor.Println("  • 目标服务器 IP: 实际连接的服务器IP地址")
+	infoColor.Println("  • 总请求数: 测试执行的请求总数量")
+	infoColor.Println("  • 并发数: 同时进行的并发请求数量")
+	
+	// 时间性能指标
+	infoColor.Println("\n【时间性能指标】")
+	infoColor.Println("  • 请求耗时: 从发起请求到接收完整响应的总时间")
 	if r.IsStream {
 		infoColor.Println("  • TTFT: Time To First Token，首个令牌返回时间")
-		infoColor.Println("  • 该指标反映模型开始生成响应的速度")
+		infoColor.Println("    - 反映模型开始生成响应的速度，流式模式下的关键指标")
 	} else {
 		infoColor.Println("  • 响应时间: 完整请求-响应周期的时间")
-		infoColor.Println("  • 该指标反映完整响应的总时间")
+		infoColor.Println("    - 非流式模式下测量完整响应的总时间")
 	}
-	infoColor.Println("  • 完整耗时: 从请求开始到完全结束的总时间")
+	
+	// 网络性能指标
+	infoColor.Println("\n【网络性能指标】")
+	infoColor.Println("  • DNS 解析时间: 域名解析为IP地址所需时间")
+	infoColor.Println("  • TCP 连接时间: 建立TCP连接所需时间")
+	infoColor.Println("  • TLS 握手时间: 完成TLS/SSL握手所需时间")
+	infoColor.Println("    - 这些指标帮助分析网络层面的性能瓶颈")
+	
+	// 服务性能指标
+	infoColor.Println("\n【服务性能指标】")
 	infoColor.Println("  • Token 数量: API 返回的 token 总数（输入+输出）")
-	infoColor.Println("  • 消息长度: 返回内容的字符数")
 	infoColor.Println("  • TPS: Tokens Per Second，每秒处理的令牌数")
-	infoColor.Println("  • 并发数: 同时进行的请求数量")
+	infoColor.Println("    - 衡量AI模型实际处理能力的核心指标")
+	
+	// 可靠性指标
+	infoColor.Println("\n【可靠性指标】")
+	infoColor.Println("  • 成功率: 成功完成的请求占总请求的百分比")
+	infoColor.Println("  • 错误率: 失败请求占总请求的百分比")
+	infoColor.Println("    - 评估服务稳定性和可靠性的重要指标")
 }
