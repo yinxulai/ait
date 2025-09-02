@@ -9,6 +9,32 @@ import (
 	"github.com/yinxulai/ait/internal/runner"
 )
 
+// detectProviderFromEnv 根据环境变量自动检测 provider
+func detectProviderFromEnv() string {
+	// 优先检查 OpenAI 环境变量
+	if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("OPENAI_BASE_URL") != "" {
+		return "openai"
+	}
+	// 其次检查 Anthropic 环境变量
+	if os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_BASE_URL") != "" {
+		return "anthropic"
+	}
+	// 默认返回 openai
+	return "openai"
+}
+
+// loadEnvForProvider 根据 provider 加载对应的环境变量
+func loadEnvForProvider(provider string) (baseUrl, apiKey string) {
+	switch provider {
+	case "openai":
+		return os.Getenv("OPENAI_BASE_URL"), os.Getenv("OPENAI_API_KEY")
+	case "anthropic":
+		return os.Getenv("ANTHROPIC_BASE_URL"), os.Getenv("ANTHROPIC_API_KEY")
+	default:
+		return "", ""
+	}
+}
+
 func main() {
 	baseUrl := flag.String("baseUrl", "", "服务地址")
 	apikey := flag.String("apikey", "", "API 密钥")
@@ -20,48 +46,24 @@ func main() {
 	concurrency := flag.Int("concurrency", 1, "并发数")
 	flag.Parse()
 
-	// 自动推断 provider
+	// 自动推断 provider 和加载环境变量
 	finalProvider := *provider
-	if finalProvider == "" {
-		// 检查 OpenAI 环境变量
-		if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("OPENAI_BASE_URL") != "" {
-			finalProvider = "openai"
-		} else if os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_BASE_URL") != "" {
-			finalProvider = "anthropic"
-		} else {
-			// 都没有设置时，默认使用 openai
-			finalProvider = "openai"
-		}
-	}
-
-	// 如果未指定参数，尝试从环境变量加载
 	finalBaseUrl := *baseUrl
 	finalApiKey := *apikey
 
+	// 如果未指定 provider，根据环境变量自动推断
+	if finalProvider == "" {
+		finalProvider = detectProviderFromEnv()
+	}
+
+	// 根据 provider 加载对应的环境变量
 	if finalBaseUrl == "" || finalApiKey == "" {
-		switch finalProvider {
-		case "openai":
-			if finalBaseUrl == "" {
-				if envBaseUrl := os.Getenv("OPENAI_BASE_URL"); envBaseUrl != "" {
-					finalBaseUrl = envBaseUrl
-				}
-			}
-			if finalApiKey == "" {
-				if envApiKey := os.Getenv("OPENAI_API_KEY"); envApiKey != "" {
-					finalApiKey = envApiKey
-				}
-			}
-		case "anthropic":
-			if finalBaseUrl == "" {
-				if envBaseUrl := os.Getenv("ANTHROPIC_BASE_URL"); envBaseUrl != "" {
-					finalBaseUrl = envBaseUrl
-				}
-			}
-			if finalApiKey == "" {
-				if envApiKey := os.Getenv("ANTHROPIC_API_KEY"); envApiKey != "" {
-					finalApiKey = envApiKey
-				}
-			}
+		envBaseUrl, envApiKey := loadEnvForProvider(finalProvider)
+		if finalBaseUrl == "" {
+			finalBaseUrl = envBaseUrl
+		}
+		if finalApiKey == "" {
+			finalApiKey = envApiKey
 		}
 	}
 
