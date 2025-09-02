@@ -2,10 +2,12 @@ package display
 
 import (
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
 	"github.com/fatih/color"
+	"github.com/olekukonko/tablewriter"
 	"github.com/schollz/progressbar/v3"
 )
 
@@ -126,17 +128,22 @@ func (td *TestDisplayer) printConfigTable() {
 		streamMode = "✅ 开启"
 	}
 	
-	// 使用简单的表格格式
+	// 使用 tablewriter 创建配置表格
 	fmt.Println("📋 测试配置：")
-	fmt.Println("┌─────────────┬────────────────────────────────────────┐")
-	fmt.Printf("│ %-11s │ %-38s │\n", "Provider", td.config.Provider)
-	fmt.Printf("│ %-11s │ %-38s │\n", "BaseURL", td.truncateString(td.config.BaseUrl, 38))
-	fmt.Printf("│ %-11s │ %-38s │\n", "ApiKey", apiKeyDisplay)
-	fmt.Printf("│ %-11s │ %-38s │\n", "Model", td.config.Model)
-	fmt.Printf("│ %-11s │ %-38d │\n", "并发数", td.config.Concurrency)
-	fmt.Printf("│ %-11s │ %-38d │\n", "总请求数", td.config.Count)
-	fmt.Printf("│ %-11s │ %-38s │\n", "流模式", streamMode)
-	fmt.Println("└─────────────┴────────────────────────────────────────┘")
+	
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("配置项", "值")
+	
+	// 添加数据行
+	table.Append([]string{"Provider", td.config.Provider})
+	table.Append([]string{"BaseURL", td.truncateString(td.config.BaseUrl, 40)})
+	table.Append([]string{"ApiKey", apiKeyDisplay})
+	table.Append([]string{"Model", td.config.Model})
+	table.Append([]string{"并发数", fmt.Sprintf("%d", td.config.Concurrency)})
+	table.Append([]string{"总请求数", fmt.Sprintf("%d", td.config.Count)})
+	table.Append([]string{"流模式", streamMode})
+	
+	table.Render()
 }
 
 // truncateString 截断字符串以适应表格宽度
@@ -171,25 +178,25 @@ func (td *TestDisplayer) ShowTestComplete() {
 // ShowTestSummary 显示测试摘要（在最终结果之前）
 func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 	titleColor := color.New(color.FgCyan, color.Bold)
-	infoColor := color.New(color.FgBlue)
-	
 	titleColor.Println("📋 测试摘要")
-	fmt.Println("┌─────────────────────┬─────────────────────────────────────┐")
 	
 	elapsed := stats.ElapsedTime
 	successRate := float64(stats.CompletedCount) / float64(td.config.Count) * 100
 	
-	fmt.Printf("│ %-19s │ %s%-35s%s │\n", "测试时长", infoColor.Sprint(), FormatDuration(elapsed), color.New().Sprint())
-	fmt.Printf("│ %-19s │ %-37d │\n", "成功请求", stats.CompletedCount)
-	fmt.Printf("│ %-19s │ %-37d │\n", "失败请求", stats.FailedCount)
-	fmt.Printf("│ %-19s │ %-36.1f%% │\n", "成功率", successRate)
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("指标", "值")
+	
+	table.Append([]string{"测试时长", FormatDuration(elapsed)})
+	table.Append([]string{"成功请求", fmt.Sprintf("%d", stats.CompletedCount)})
+	table.Append([]string{"失败请求", fmt.Sprintf("%d", stats.FailedCount)})
+	table.Append([]string{"成功率", fmt.Sprintf("%.1f%%", successRate)})
 	
 	if len(stats.ResponseTimes) > 0 {
 		currentTPS := float64(stats.CompletedCount) / elapsed.Seconds()
-		fmt.Printf("│ %-19s │ %s%-34.2f%s │\n", "平均TPS", infoColor.Sprint(), currentTPS, color.New().Sprint())
+		table.Append([]string{"平均TPS", fmt.Sprintf("%.2f", currentTPS)})
 	}
 	
-	fmt.Println("└─────────────────────┴─────────────────────────────────────┘")
+	table.Render()
 	fmt.Println()
 }
 
@@ -264,31 +271,29 @@ type Result struct {
 // PrintResult 输出结果
 func (r *Result) PrintResult() {
 	titleColor := color.New(color.FgCyan, color.Bold)
-	headerColor := color.New(color.FgBlue, color.Bold)
-	
 	titleColor.Println("\n📊 测试结果")
-	fmt.Println("┌─────────────────────┬──────────────┬──────────────┬──────────────┬────────┐")
-	headerColor.Printf("│ %-19s │ %-12s │ %-12s │ %-12s │ %-6s │\n", "指标", "最小值", "平均值", "最大值", "单位")
-	fmt.Println("├─────────────────────┼──────────────┼──────────────┼──────────────┼────────┤")
 	
-	fmt.Printf("│ %-19s │ %-12s │ %-12d │ %-12s │ %-6s │\n", "总请求数", "-", r.TotalRequests, "-", "个")
-	fmt.Printf("│ %-19s │ %-12s │ %-12d │ %-12s │ %-6s │\n", "并发数", "-", r.Concurrency, "-", "个")
-	fmt.Printf("│ %-19s │ %-12s │ %-12s │ %-12s │ %-6s │\n", "总耗时", "-", FormatDuration(r.TotalTime), "-", "")
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("指标", "最小值", "平均值", "最大值", "单位")
+	
+	table.Append([]string{"总请求数", "-", fmt.Sprintf("%d", r.TotalRequests), "-", "个"})
+	table.Append([]string{"并发数", "-", fmt.Sprintf("%d", r.Concurrency), "-", "个"})
+	table.Append([]string{"总耗时", "-", FormatDuration(r.TotalTime), "-", ""})
 
 	if r.IsStream {
-		fmt.Printf("│ %-19s │ %-12s │ %-12s │ %-12s │ %-6s │\n", "TTFT (首字节时间)",
+		table.Append([]string{"TTFT (首字节时间)",
 			FormatDuration(r.MinTTFT),
 			FormatDuration(r.AvgTTFT),
-			FormatDuration(r.MaxTTFT), "")
+			FormatDuration(r.MaxTTFT), ""})
 	} else {
-		fmt.Printf("│ %-19s │ %-12s │ %-12s │ %-12s │ %-6s │\n", "响应时间",
+		table.Append([]string{"响应时间",
 			FormatDuration(r.MinResponseTime),
 			FormatDuration(r.AvgResponseTime),
-			FormatDuration(r.MaxResponseTime), "")
+			FormatDuration(r.MaxResponseTime), ""})
 	}
 
-	fmt.Printf("│ %-19s │ %-12s │ %-12s │ %-12s │ %-6s │\n", "TPS", "-", FormatFloat(r.TPS, 2), "-", "req/s")
-	fmt.Println("└─────────────────────┴──────────────┴──────────────┴──────────────┴────────┘")
+	table.Append([]string{"TPS", "-", FormatFloat(r.TPS, 2), "-", "req/s"})
+	table.Render()
 
 	// 显示模式提示
 	fmt.Println()
