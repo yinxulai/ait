@@ -109,13 +109,20 @@ func main() {
 	// 执行测试，使用回调函数来更新显示
 	result, err := runnerInstance.RunWithProgress(func(stats runner.TestStats) {
 		displayStats := display.TestStats{
-			CompletedCount: stats.CompletedCount,
-			FailedCount:    stats.FailedCount,
-			TTFTs:          stats.TTFTs,
-			TotalTimes:     stats.TotalTimes,
-			TokenCounts:    stats.TokenCounts,
-			StartTime:      stats.StartTime,
-			ElapsedTime:    stats.ElapsedTime,
+			CompletedCount:      stats.CompletedCount,
+			FailedCount:         stats.FailedCount,
+			TTFTs:               stats.TTFTs,
+			TotalTimes:          stats.TotalTimes,
+			TokenCounts:         stats.TokenCounts,
+			StartTime:           stats.StartTime,
+			ElapsedTime:         stats.ElapsedTime,
+			// 网络性能指标
+			DNSTimes:            stats.DNSTimes,
+			ConnectTimes:        stats.ConnectTimes,
+			TLSHandshakeTimes:   stats.TLSHandshakeTimes,
+			// 可靠性指标
+			TimeoutCount:        stats.TimeoutCount,
+			RetryCount:          stats.RetryCount,
 		}
 		finalStats = displayStats // 保存最后的统计信息
 		testDisplayer.UpdateProgress(displayStats)
@@ -138,17 +145,39 @@ func main() {
 		Concurrency:   result.Concurrency,
 		IsStream:      result.IsStream,
 		TotalTime:     result.TotalTime,
-		AvgTTFT:       result.AvgTTFT,
-		MinTTFT:       result.MinTTFT,
-		MaxTTFT:       result.MaxTTFT,
-		AvgTotalTime:  result.AvgTotalTime,
-		MinTotalTime:  result.MinTotalTime,
-		MaxTotalTime:  result.MaxTotalTime,
-		AvgTokenCount: result.AvgTokenCount,
-		MinTokenCount: result.MinTokenCount,
-		MaxTokenCount: result.MaxTokenCount,
-		TotalTokens:   result.TotalTokens,
 		TPS:           result.TPS,
 	}
+
+	// 时间性能指标
+	displayResult.TimeMetrics.AvgTTFT = result.TimeMetrics.AvgTTFT
+	displayResult.TimeMetrics.MinTTFT = result.TimeMetrics.MinTTFT
+	displayResult.TimeMetrics.MaxTTFT = result.TimeMetrics.MaxTTFT
+	displayResult.TimeMetrics.AvgTotalTime = result.TimeMetrics.AvgTotalTime
+	displayResult.TimeMetrics.MinTotalTime = result.TimeMetrics.MinTotalTime
+	displayResult.TimeMetrics.MaxTotalTime = result.TimeMetrics.MaxTotalTime
+
+	// 网络性能指标
+	displayResult.NetworkMetrics.AvgDNSTime = result.NetworkMetrics.AvgDNSTime
+	displayResult.NetworkMetrics.MinDNSTime = result.NetworkMetrics.MinDNSTime
+	displayResult.NetworkMetrics.MaxDNSTime = result.NetworkMetrics.MaxDNSTime
+	displayResult.NetworkMetrics.AvgConnectTime = result.NetworkMetrics.AvgConnectTime
+	displayResult.NetworkMetrics.MinConnectTime = result.NetworkMetrics.MinConnectTime
+	displayResult.NetworkMetrics.MaxConnectTime = result.NetworkMetrics.MaxConnectTime
+	displayResult.NetworkMetrics.AvgTLSHandshakeTime = result.NetworkMetrics.AvgTLSHandshakeTime
+	displayResult.NetworkMetrics.MinTLSHandshakeTime = result.NetworkMetrics.MinTLSHandshakeTime
+	displayResult.NetworkMetrics.MaxTLSHandshakeTime = result.NetworkMetrics.MaxTLSHandshakeTime
+
+	// 内容指标
+	displayResult.ContentMetrics.AvgTokenCount = result.ContentMetrics.AvgTokenCount
+	displayResult.ContentMetrics.MinTokenCount = result.ContentMetrics.MinTokenCount
+	displayResult.ContentMetrics.MaxTokenCount = result.ContentMetrics.MaxTokenCount
+	displayResult.ContentMetrics.TotalTokens = result.ContentMetrics.TotalTokens
+
+	// 可靠性指标
+	displayResult.ReliabilityMetrics.ErrorRate = result.ReliabilityMetrics.ErrorRate
+	displayResult.ReliabilityMetrics.TimeoutCount = result.ReliabilityMetrics.TimeoutCount
+	displayResult.ReliabilityMetrics.RetryCount = result.ReliabilityMetrics.RetryCount
+	displayResult.ReliabilityMetrics.SuccessRate = result.ReliabilityMetrics.SuccessRate
+
 	displayResult.PrintResult()
 }

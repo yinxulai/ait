@@ -7,9 +7,22 @@ import (
 
 // ResponseMetrics 响应指标数据
 type ResponseMetrics struct {
+	// 时间相关指标
 	TimeToFirstToken time.Duration // 首个 token 的响应时间 (TTFT)
 	TotalTime        time.Duration // 总耗时 (从请求开始到完全结束)
+	
+	// 网络连接指标
+	DNSTime          time.Duration // DNS解析时间
+	ConnectTime      time.Duration // TCP连接建立时间
+	TLSHandshakeTime time.Duration // TLS握手时间
+	
+	// 内容指标
 	TokenCount       int           // 返回的 token 总数
+	
+	// 错误和可靠性指标
+	IsTimeout        bool          // 是否超时
+	IsRetry          bool          // 是否为重试请求
+	ErrorMessage     string        // 错误信息（如果有）
 }
 
 // ModelClient 定义统一的模型客户端接口

@@ -39,11 +39,27 @@ type TestConfig struct {
 
 // TestStats 实时测试统计数据
 type TestStats struct {
+	// 基础统计
 	CompletedCount int             // 已完成请求数
 	FailedCount    int             // 失败请求数
+	
+	// 时间指标
 	TTFTs          []time.Duration // 所有首个token响应时间 (Time to First Token)
 	TotalTimes     []time.Duration // 所有总耗时
+	
+	// 网络指标
+	DNSTimes       []time.Duration // 所有DNS解析时间
+	ConnectTimes   []time.Duration // 所有TCP连接时间
+	TLSHandshakeTimes []time.Duration // 所有TLS握手时间
+	
+	// 内容指标
 	TokenCounts    []int           // 所有 token 数量
+	
+	// 错误和可靠性指标
+	TimeoutCount   int             // 超时次数
+	RetryCount     int             // 重试次数
+	
+	// 测试控制
 	StartTime      time.Time       // 测试开始时间
 	ElapsedTime    time.Duration   // 已经过时间
 }
@@ -259,28 +275,54 @@ func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
 
 // Result 性能测试结果
 type Result struct {
+	// 基础测试信息
 	TotalRequests int
 	Concurrency   int
 	IsStream      bool
 	TotalTime     time.Duration
+	TPS           float64
 
-	// TTFT (Time to First Token) 指标
-	AvgTTFT time.Duration
-	MinTTFT time.Duration
-	MaxTTFT time.Duration
+	// 时间性能指标
+	TimeMetrics struct {
+		AvgTTFT time.Duration // TTFT (Time to First Token) 指标
+		MinTTFT time.Duration
+		MaxTTFT time.Duration
+		
+		AvgTotalTime time.Duration // 总耗时指标
+		MinTotalTime time.Duration
+		MaxTotalTime time.Duration
+	}
 
-	// 总耗时指标
-	AvgTotalTime time.Duration
-	MinTotalTime time.Duration
-	MaxTotalTime time.Duration
+	// 网络性能指标
+	NetworkMetrics struct {
+		AvgDNSTime time.Duration // DNS解析时间指标
+		MinDNSTime time.Duration
+		MaxDNSTime time.Duration
+		
+		AvgConnectTime time.Duration // TCP连接时间指标
+		MinConnectTime time.Duration
+		MaxConnectTime time.Duration
+		
+		AvgTLSHandshakeTime time.Duration // TLS握手时间指标
+		MinTLSHandshakeTime time.Duration
+		MaxTLSHandshakeTime time.Duration
+	}
 
-	// Token 统计指标
-	AvgTokenCount int
-	MinTokenCount int
-	MaxTokenCount int
-	TotalTokens   int
+	// 内容指标
+	ContentMetrics struct {
+		AvgTokenCount int // Token 统计指标
+		MinTokenCount int
+		MaxTokenCount int
+		TotalTokens   int
+	}
 
-	TPS float64
+	// 可靠性指标
+	ReliabilityMetrics struct {
+		ErrorRate    float64 // 错误率百分比
+		TimeoutCount int     // 超时次数
+		RetryCount   int     // 重试次数
+		SuccessRate  float64 // 成功率百分比
+	}
 }
 
 // PrintResult 输出结果
@@ -296,23 +338,45 @@ func (r *Result) PrintResult() {
 	table.Append([]string{"总耗时", "-", FormatDuration(r.TotalTime), "-", ""})
 
 	table.Append([]string{"TTFT (首个Token)",
-		FormatDuration(r.MinTTFT),
-		FormatDuration(r.AvgTTFT),
-		FormatDuration(r.MaxTTFT), ""})
+		FormatDuration(r.TimeMetrics.MinTTFT),
+		FormatDuration(r.TimeMetrics.AvgTTFT),
+		FormatDuration(r.TimeMetrics.MaxTTFT), ""})
 
 	// 添加总耗时指标
 	table.Append([]string{"完整耗时",
-		FormatDuration(r.MinTotalTime),
-		FormatDuration(r.AvgTotalTime),
-		FormatDuration(r.MaxTotalTime), ""})
+		FormatDuration(r.TimeMetrics.MinTotalTime),
+		FormatDuration(r.TimeMetrics.AvgTotalTime),
+		FormatDuration(r.TimeMetrics.MaxTotalTime), ""})
+
+	// 添加网络性能指标分组
+	table.Append([]string{"DNS解析时间",
+		FormatDuration(r.NetworkMetrics.MinDNSTime),
+		FormatDuration(r.NetworkMetrics.AvgDNSTime),
+		FormatDuration(r.NetworkMetrics.MaxDNSTime), ""})
+
+	table.Append([]string{"TCP连接时间",
+		FormatDuration(r.NetworkMetrics.MinConnectTime),
+		FormatDuration(r.NetworkMetrics.AvgConnectTime),
+		FormatDuration(r.NetworkMetrics.MaxConnectTime), ""})
+
+	table.Append([]string{"TLS握手时间",
+		FormatDuration(r.NetworkMetrics.MinTLSHandshakeTime),
+		FormatDuration(r.NetworkMetrics.AvgTLSHandshakeTime),
+		FormatDuration(r.NetworkMetrics.MaxTLSHandshakeTime), ""})
 
 	// 添加 Token 统计指标
 	table.Append([]string{"Token 数量",
-		fmt.Sprintf("%d", r.MinTokenCount),
-		fmt.Sprintf("%d", r.AvgTokenCount),
-		fmt.Sprintf("%d", r.MaxTokenCount), "个"})
+		fmt.Sprintf("%d", r.ContentMetrics.MinTokenCount),
+		fmt.Sprintf("%d", r.ContentMetrics.AvgTokenCount),
+		fmt.Sprintf("%d", r.ContentMetrics.MaxTokenCount), "个"})
 	
-	table.Append([]string{"总 Token 数", "-", fmt.Sprintf("%d", r.TotalTokens), "-", "个"})
+	table.Append([]string{"总 Token 数", "-", fmt.Sprintf("%d", r.ContentMetrics.TotalTokens), "-", "个"})
+
+	// 添加可靠性指标
+	table.Append([]string{"成功率", "-", FormatFloat(r.ReliabilityMetrics.SuccessRate, 2), "-", "%"})
+	table.Append([]string{"错误率", "-", FormatFloat(r.ReliabilityMetrics.ErrorRate, 2), "-", "%"})
+	table.Append([]string{"超时次数", "-", fmt.Sprintf("%d", r.ReliabilityMetrics.TimeoutCount), "-", "次"})
+	table.Append([]string{"重试次数", "-", fmt.Sprintf("%d", r.ReliabilityMetrics.RetryCount), "-", "次"})
 
 	table.Append([]string{"TPS", "-", FormatFloat(r.TPS, 2), "-", "req/s"})
 	table.Render()

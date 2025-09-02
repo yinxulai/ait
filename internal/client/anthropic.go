@@ -3,10 +3,12 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"crypto/tls"
 	"encoding/json"
 	"fmt"
 	"io"
 	"net/http"
+	"net/http/httptrace"
 	"strings"
 	"time"
 )
@@ -84,6 +86,33 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
 
+	// 网络指标收集
+	var dnsStart, connectStart, tlsStart time.Time
+	var dnsTime, connectTime, tlsTime time.Duration
+	
+	trace := &httptrace.ClientTrace{
+		DNSStart: func(info httptrace.DNSStartInfo) {
+			dnsStart = time.Now()
+		},
+		DNSDone: func(info httptrace.DNSDoneInfo) {
+			dnsTime = time.Since(dnsStart)
+		},
+		ConnectStart: func(network, addr string) {
+			connectStart = time.Now()
+		},
+		ConnectDone: func(network, addr string, err error) {
+			connectTime = time.Since(connectStart)
+		},
+		TLSHandshakeStart: func() {
+			tlsStart = time.Now()
+		},
+		TLSHandshakeDone: func(state tls.ConnectionState, err error) {
+			tlsTime = time.Since(tlsStart)
+		},
+	}
+	
+	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
+
 	t0 := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
@@ -138,7 +167,13 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		return &ResponseMetrics{
 			TimeToFirstToken: firstTokenTime,
 			TotalTime:        totalTime,
+			DNSTime:          dnsTime,
+			ConnectTime:      connectTime,
+			TLSHandshakeTime: tlsTime,
 			TokenCount:       totalTokens,
+			IsTimeout:        false, // TODO: 实现超时检测
+			IsRetry:          false, // TODO: 实现重试逻辑
+			ErrorMessage:     "",
 		}, nil
 	} else {
 		// 非流式响应处理
@@ -159,7 +194,13 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		return &ResponseMetrics{
 			TimeToFirstToken: totalTime, // 非流式模式下，首个token时间就是总时间
 			TotalTime:        totalTime,
+			DNSTime:          dnsTime,
+			ConnectTime:      connectTime,
+			TLSHandshakeTime: tlsTime,
 			TokenCount:       totalTokens,
+			IsTimeout:        false, // TODO: 实现超时检测
+			IsRetry:          false, // TODO: 实现重试逻辑
+			ErrorMessage:     "",
 		}, nil
 	}
 }
