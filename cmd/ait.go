@@ -103,6 +103,9 @@ func main() {
 	// 显示测试开始信息
 	testDisplayer.ShowTestStart()
 
+	// 用于保存最后的统计信息
+	var finalStats display.TestStats
+
 	// 执行测试，使用回调函数来更新显示
 	result, err := runnerInstance.RunWithProgress(func(stats runner.TestStats) {
 		displayStats := display.TestStats{
@@ -112,6 +115,7 @@ func main() {
 			StartTime:      stats.StartTime,
 			ElapsedTime:    stats.ElapsedTime,
 		}
+		finalStats = displayStats // 保存最后的统计信息
 		testDisplayer.UpdateProgress(displayStats)
 	})
 
@@ -122,6 +126,9 @@ func main() {
 
 	// 显示测试完成
 	testDisplayer.ShowTestComplete()
+
+	// 显示测试摘要
+	testDisplayer.ShowTestSummary(finalStats)
 
 	// 转换结果并显示
 	displayResult := &display.Result{
