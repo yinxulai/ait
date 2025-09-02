@@ -77,10 +77,12 @@ func main() {
 	if finalBaseUrl == "" || finalApiKey == "" {
 		fmt.Println("baseUrl 和 apikey 参数必填")
 		fmt.Printf("对于 %s 协议，你也可以设置以下环境变量：\n", finalProvider)
-		if finalProvider == "openai" {
+
+		switch finalProvider {
+		case "openai":
 			fmt.Println("  OPENAI_BASE_URL - OpenAI API 基础 URL")
 			fmt.Println("  OPENAI_API_KEY - OpenAI API 密钥")
-		} else if finalProvider == "anthropic" {
+		case "anthropic":
 			fmt.Println("  ANTHROPIC_BASE_URL - Anthropic API 基础 URL")
 			fmt.Println("  ANTHROPIC_API_KEY - Anthropic API 密钥")
 		}
@@ -125,20 +127,20 @@ func main() {
 	// 执行测试，使用回调函数来更新显示
 	result, err := runnerInstance.RunWithProgress(func(stats runner.TestStats) {
 		displayStats := display.TestStats{
-			CompletedCount:      stats.CompletedCount,
-			FailedCount:         stats.FailedCount,
-			TTFTs:               stats.TTFTs,
-			TotalTimes:          stats.TotalTimes,
-			TokenCounts:         stats.TokenCounts,
-			StartTime:           stats.StartTime,
-			ElapsedTime:         stats.ElapsedTime,
+			CompletedCount: stats.CompletedCount,
+			FailedCount:    stats.FailedCount,
+			TTFTs:          stats.TTFTs,
+			TotalTimes:     stats.TotalTimes,
+			TokenCounts:    stats.TokenCounts,
+			StartTime:      stats.StartTime,
+			ElapsedTime:    stats.ElapsedTime,
 			// 网络性能指标
-			DNSTimes:            stats.DNSTimes,
-			ConnectTimes:        stats.ConnectTimes,
-			TLSHandshakeTimes:   stats.TLSHandshakeTimes,
+			DNSTimes:          stats.DNSTimes,
+			ConnectTimes:      stats.ConnectTimes,
+			TLSHandshakeTimes: stats.TLSHandshakeTimes,
 			// 可靠性指标
-			TimeoutCount:        stats.TimeoutCount,
-			RetryCount:          stats.RetryCount,
+			TimeoutCount: stats.TimeoutCount,
+			RetryCount:   stats.RetryCount,
 		}
 		finalStats = displayStats // 保存最后的统计信息
 		testDisplayer.UpdateProgress(displayStats)

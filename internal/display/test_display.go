@@ -174,17 +174,78 @@ func (td *TestDisplayer) truncateString(s string, maxLen int) string {
 
 // UpdateProgress 更新测试进度
 func (td *TestDisplayer) UpdateProgress(stats TestStats) {
+	// 显示实时统计信息（覆盖之前的行）
+	td.printRealTimeStats(stats)
+	
 	// 更新进度条
 	if td.progressBar != nil {
 		td.progressBar.Set(stats.CompletedCount)
 	}
+}
+
+// printRealTimeStats 打印实时统计信息
+func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
+	if stats.CompletedCount == 0 {
+		return
+	}
 	
-	// 更新实时统计
-	td.printRealTimeStats(stats)
+	// 基础统计
+	progress := fmt.Sprintf("%d/%d", stats.CompletedCount, td.config.Count)
+	successRate := float64(stats.CompletedCount) / float64(td.config.Count) * 100
+	currentTPS := float64(stats.CompletedCount) / stats.ElapsedTime.Seconds()
+	
+	// 时间统计
+	var avgInfo string
+	if len(stats.TTFTs) > 0 {
+		ttftStats := td.calculateTimeStats(stats.TTFTs)
+		avgInfo = fmt.Sprintf("TTFT: %s", FormatDuration(ttftStats.avg))
+	} else if len(stats.TotalTimes) > 0 {
+		totalStats := td.calculateTimeStats(stats.TotalTimes)
+		avgInfo = fmt.Sprintf("总耗时: %s", FormatDuration(totalStats.avg))
+	}
+	
+	// Token统计
+	var tokenInfo string
+	if len(stats.TokenCounts) > 0 {
+		var totalTokens int
+		for _, count := range stats.TokenCounts {
+			totalTokens += count
+		}
+		avgTokens := float64(totalTokens) / float64(len(stats.TokenCounts))
+		tokenInfo = fmt.Sprintf("Token: %.0f", avgTokens)
+	}
+	
+	// 组合实时统计信息
+	var parts []string
+	parts = append(parts, fmt.Sprintf("进度: %s", progress))
+	parts = append(parts, fmt.Sprintf("成功率: %.1f%%", successRate))
+	
+	if stats.FailedCount > 0 {
+		parts = append(parts, fmt.Sprintf("失败: %d", stats.FailedCount))
+	}
+	
+	parts = append(parts, fmt.Sprintf("TPS: %.2f", currentTPS))
+	
+	if avgInfo != "" {
+		parts = append(parts, avgInfo)
+	}
+	
+	if tokenInfo != "" {
+		parts = append(parts, tokenInfo)
+	}
+	
+	// 显示实时统计 (覆盖进度条上方的行)
+	statsLine := fmt.Sprintf("📊 %s | %s", 
+		td.statsColor.Sprint("实时统计"),
+		strings.Join(parts, " | "))
+	
+	// 移动到进度条上方显示实时统计，然后回到原位置
+	fmt.Printf("\033[A\033[2K%s\n\033[B", statsLine)
 }
 
 // ShowTestComplete 显示测试完成
 func (td *TestDisplayer) ShowTestComplete() {
+	// 完成进度条
 	if td.progressBar != nil {
 		td.progressBar.Finish()
 	}
@@ -223,54 +284,33 @@ func (td *TestDisplayer) ShowError(message string) {
 	td.errorColor.Printf("❌ %s\n", message)
 }
 
-// printRealTimeStats 打印实时统计信息
-func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
-	if len(stats.TTFTs) == 0 {
-		return
+// timeStats 时间统计结果
+type timeStats struct {
+	min, max, avg time.Duration
+}
+
+// calculateTimeStats 计算时间统计数据
+func (td *TestDisplayer) calculateTimeStats(times []time.Duration) timeStats {
+	if len(times) == 0 {
+		return timeStats{}
 	}
 	
-	// 计算TTFT统计数据
-	var sumTTFT time.Duration
-	minTTFT := stats.TTFTs[0]
-	maxTTFT := stats.TTFTs[0]
+	min := times[0]
+	max := times[0]
+	var total time.Duration
 	
-	for _, d := range stats.TTFTs {
-		sumTTFT += d
-		if d < minTTFT {
-			minTTFT = d
+	for _, t := range times {
+		total += t
+		if t < min {
+			min = t
 		}
-		if d > maxTTFT {
-			maxTTFT = d
+		if t > max {
+			max = t
 		}
 	}
 	
-	avgTTFT := sumTTFT / time.Duration(len(stats.TTFTs))
-	currentTPS := float64(stats.CompletedCount) / stats.ElapsedTime.Seconds()
-	
-	// 计算 Token 统计（如果有数据）
-	var avgTokens float64
-	var totalTokens int
-	if len(stats.TokenCounts) > 0 {
-		for _, count := range stats.TokenCounts {
-			totalTokens += count
-		}
-		avgTokens = float64(totalTokens) / float64(len(stats.TokenCounts))
-	}
-	
-	// 显示实时统计
-	metricName := "TTFT"
-	
-	// 创建实时统计显示，包含新的指标
-	statsLine := fmt.Sprintf("📊 %s | 完成: %d/%d | 失败: %d | %s: 平均 %s, 最小 %s, 最大 %s | TPS: %.2f | 平均Token: %.0f",
-		td.statsColor.Sprint("实时统计"),
-		stats.CompletedCount, td.config.Count,
-		stats.FailedCount,
-		metricName,
-		FormatDuration(avgTTFT), FormatDuration(minTTFT), FormatDuration(maxTTFT),
-		currentTPS, avgTokens)
-	
-	// 移动到进度条上方显示实时统计，然后回到原位置
-	fmt.Printf("\033[A\033[2K%s\n\033[B", statsLine)
+	avg := total / time.Duration(len(times))
+	return timeStats{min: min, max: max, avg: avg}
 }
 
 // Result 性能测试结果
