@@ -1,40 +1,48 @@
-BINARY_NAME=main
+# 项目配置
+BINARY_NAME=ait
+BIN_DIR=bin
 
-## help: print this help message
+# Go 相关变量
+GOCMD=go
+GOBUILD=$(GOCMD) build
+GOCLEAN=$(GOCMD) clean
+GOTEST=$(GOCMD) test
+GOMOD=$(GOCMD) mod
+
+# 构建标志
+LDFLAGS=-ldflags "-w -s"
+BUILD_FLAGS=-trimpath $(LDFLAGS)
+
+## help: 显示此帮助信息
 .PHONY: help
 help:
 	@echo 'Usage:'
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
 
-## dev: dev the application
-.PHONY: dev
-dev:
-	air \
-		--build.exclude_dir "" \
-		--build.include_ext "go" \
-		--misc.clean_on_exit "true" \
-		--build.cmd "make build" --build.bin "./${BINARY_NAME}" --build.delay "100"
-
-## build: build the application
+## build: 构建二进制文件
 .PHONY: build
 build:
-	go build -o ${BINARY_NAME} main.go
+	@echo "正在构建 $(BINARY_NAME)..."
+	@mkdir -p $(BIN_DIR)
+	$(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/
 
-## test: test the application
+## test: 运行所有测试
 .PHONY: test
 test:
-	mkdir -p .coverage
-	go test -v -race -cover -p 1 -coverprofile=.coverage/coverage.out ./...
-	go tool cover -html=.coverage/coverage.out -o .coverage/coverage.html
+	@echo "正在运行测试..."
+	$(GOTEST) -v ./...
 
-## tidy: format code and tidy modfile
-.PHONY: tidy
-tidy:
-	go fmt ./...
-	go mod tidy -v
-
-## clean: format code and tidy modfile
+## clean: 清理构建文件
 .PHONY: clean
 clean:
-	go clean
-	rm -f ${BINARY_NAME}
+	@echo "正在清理构建文件..."
+	$(GOCLEAN)
+	rm -rf $(BIN_DIR)/
+
+## tidy: 格式化代码并整理模块依赖
+.PHONY: tidy
+tidy:
+	@echo "正在格式化代码..."
+	$(GOCMD) fmt ./...
+	@echo "正在整理模块依赖..."
+	$(GOMOD) tidy -v
