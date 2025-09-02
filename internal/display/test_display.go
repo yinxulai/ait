@@ -198,10 +198,10 @@ func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
 	var avgInfo string
 	if len(stats.TTFTs) > 0 {
 		ttftStats := td.calculateTimeStats(stats.TTFTs)
-		avgInfo = fmt.Sprintf("TTFT: %s", FormatDuration(ttftStats.avg))
+		avgInfo = fmt.Sprintf("⚡ TTFT: %s", FormatDuration(ttftStats.avg))
 	} else if len(stats.TotalTimes) > 0 {
 		totalStats := td.calculateTimeStats(stats.TotalTimes)
-		avgInfo = fmt.Sprintf("总耗时: %s", FormatDuration(totalStats.avg))
+		avgInfo = fmt.Sprintf("⏱️  总耗时: %s", FormatDuration(totalStats.avg))
 	}
 	
 	// Token统计
@@ -212,19 +212,19 @@ func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
 			totalTokens += count
 		}
 		avgTokens := float64(totalTokens) / float64(len(stats.TokenCounts))
-		tokenInfo = fmt.Sprintf("Token: %.0f", avgTokens)
+		tokenInfo = fmt.Sprintf("🔤 Token: %.0f", avgTokens)
 	}
 	
 	// 组合实时统计信息
 	var parts []string
-	parts = append(parts, fmt.Sprintf("进度: %s", progress))
-	parts = append(parts, fmt.Sprintf("成功率: %.1f%%", successRate))
+	parts = append(parts, fmt.Sprintf("📈 进度: %s", progress))
+	parts = append(parts, fmt.Sprintf("✅ 成功率: %.1f%%", successRate))
 	
 	if stats.FailedCount > 0 {
-		parts = append(parts, fmt.Sprintf("失败: %d", stats.FailedCount))
+		parts = append(parts, fmt.Sprintf("❌ 失败: %d", stats.FailedCount))
 	}
 	
-	parts = append(parts, fmt.Sprintf("TPS: %.2f", currentTPS))
+	parts = append(parts, fmt.Sprintf("🚀 TPS: %.2f", currentTPS))
 	
 	if avgInfo != "" {
 		parts = append(parts, avgInfo)
@@ -265,14 +265,14 @@ func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.Header("指标", "值")
 	
-	table.Append([]string{"测试时长", FormatDuration(elapsed)})
-	table.Append([]string{"成功请求", fmt.Sprintf("%d", stats.CompletedCount)})
-	table.Append([]string{"失败请求", fmt.Sprintf("%d", stats.FailedCount)})
-	table.Append([]string{"成功率", fmt.Sprintf("%.1f%%", successRate)})
+	table.Append([]string{"⏱️  测试时长", FormatDuration(elapsed)})
+	table.Append([]string{"✅ 成功请求", fmt.Sprintf("%d", stats.CompletedCount)})
+	table.Append([]string{"❌ 失败请求", fmt.Sprintf("%d", stats.FailedCount)})
+	table.Append([]string{"📊 成功率", fmt.Sprintf("%.1f%%", successRate)})
 	
 	if len(stats.TTFTs) > 0 {
 		currentTPS := float64(stats.CompletedCount) / elapsed.Seconds()
-		table.Append([]string{"平均TPS", fmt.Sprintf("%.2f", currentTPS)})
+		table.Append([]string{"🚀 平均TPS", fmt.Sprintf("%.2f", currentTPS)})
 	}
 	
 	table.Render()
@@ -373,52 +373,52 @@ func (r *Result) PrintResult() {
 	table := tablewriter.NewWriter(os.Stdout)
 	table.Header("指标", "最小值", "平均值", "最大值", "单位")
 	
-	table.Append([]string{"总请求数", "-", fmt.Sprintf("%d", r.TotalRequests), "-", "个"})
-	table.Append([]string{"并发数", "-", fmt.Sprintf("%d", r.Concurrency), "-", "个"})
-	table.Append([]string{"总耗时", "-", FormatDuration(r.TotalTime), "-", ""})
+	table.Append([]string{"📊 总请求数", "-", fmt.Sprintf("%d", r.TotalRequests), "-", "个"})
+	table.Append([]string{"⚡ 并发数", "-", fmt.Sprintf("%d", r.Concurrency), "-", "个"})
+	table.Append([]string{"⏱️  总耗时", "-", FormatDuration(r.TotalTime), "-", ""})
 
-	table.Append([]string{"TTFT (首个Token)",
+	table.Append([]string{"🚀 TTFT (首个Token)",
 		FormatDuration(r.TimeMetrics.MinTTFT),
 		FormatDuration(r.TimeMetrics.AvgTTFT),
 		FormatDuration(r.TimeMetrics.MaxTTFT), ""})
 
 	// 添加总耗时指标
-	table.Append([]string{"完整耗时",
+	table.Append([]string{"⌛ 完整耗时",
 		FormatDuration(r.TimeMetrics.MinTotalTime),
 		FormatDuration(r.TimeMetrics.AvgTotalTime),
 		FormatDuration(r.TimeMetrics.MaxTotalTime), ""})
 
 	// 添加网络性能指标分组
-	table.Append([]string{"DNS解析时间",
+	table.Append([]string{"🌐 DNS解析时间",
 		FormatDuration(r.NetworkMetrics.MinDNSTime),
 		FormatDuration(r.NetworkMetrics.AvgDNSTime),
 		FormatDuration(r.NetworkMetrics.MaxDNSTime), ""})
 
-	table.Append([]string{"TCP连接时间",
+	table.Append([]string{"🔗 TCP连接时间",
 		FormatDuration(r.NetworkMetrics.MinConnectTime),
 		FormatDuration(r.NetworkMetrics.AvgConnectTime),
 		FormatDuration(r.NetworkMetrics.MaxConnectTime), ""})
 
-	table.Append([]string{"TLS握手时间",
+	table.Append([]string{"🔒 TLS握手时间",
 		FormatDuration(r.NetworkMetrics.MinTLSHandshakeTime),
 		FormatDuration(r.NetworkMetrics.AvgTLSHandshakeTime),
 		FormatDuration(r.NetworkMetrics.MaxTLSHandshakeTime), ""})
 
 	// 添加 Token 统计指标
-	table.Append([]string{"Token 数量",
+	table.Append([]string{"🔤 Token 数量",
 		fmt.Sprintf("%d", r.ContentMetrics.MinTokenCount),
 		fmt.Sprintf("%d", r.ContentMetrics.AvgTokenCount),
 		fmt.Sprintf("%d", r.ContentMetrics.MaxTokenCount), "个"})
 	
-	table.Append([]string{"总 Token 数", "-", fmt.Sprintf("%d", r.ContentMetrics.TotalTokens), "-", "个"})
+	table.Append([]string{"📝 总 Token 数", "-", fmt.Sprintf("%d", r.ContentMetrics.TotalTokens), "-", "个"})
 
 	// 添加可靠性指标
-	table.Append([]string{"成功率", "-", FormatFloat(r.ReliabilityMetrics.SuccessRate, 2), "-", "%"})
-	table.Append([]string{"错误率", "-", FormatFloat(r.ReliabilityMetrics.ErrorRate, 2), "-", "%"})
-	table.Append([]string{"超时次数", "-", fmt.Sprintf("%d", r.ReliabilityMetrics.TimeoutCount), "-", "次"})
-	table.Append([]string{"重试次数", "-", fmt.Sprintf("%d", r.ReliabilityMetrics.RetryCount), "-", "次"})
+	table.Append([]string{"✅ 成功率", "-", FormatFloat(r.ReliabilityMetrics.SuccessRate, 2), "-", "%"})
+	table.Append([]string{"❌ 错误率", "-", FormatFloat(r.ReliabilityMetrics.ErrorRate, 2), "-", "%"})
+	table.Append([]string{"⏰ 超时次数", "-", fmt.Sprintf("%d", r.ReliabilityMetrics.TimeoutCount), "-", "次"})
+	table.Append([]string{"🔄 重试次数", "-", fmt.Sprintf("%d", r.ReliabilityMetrics.RetryCount), "-", "次"})
 
-	table.Append([]string{"TPS", "-", FormatFloat(r.TPS, 2), "-", "req/s"})
+	table.Append([]string{"🚀 TPS", "-", FormatFloat(r.TPS, 2), "-", "req/s"})
 	table.Render()
 
 	// 显示模式提示
