@@ -6,6 +6,19 @@ import (
 	"time"
 )
 
+// 计算字符串的显示宽度（考虑中文字符）
+func displayWidth(s string) int {
+	width := 0
+	for _, r := range s {
+		if r >= 0x4e00 && r <= 0x9fff { // 中文字符范围
+			width += 2
+		} else {
+			width += 1
+		}
+	}
+	return width
+}
+
 // Colors 定义终端颜色
 const (
 	ColorReset  = "\033[0m"
@@ -101,7 +114,7 @@ type Table struct {
 func NewTable(headers []string) *Table {
 	widths := make([]int, len(headers))
 	for i, header := range headers {
-		widths[i] = len(header)
+		widths[i] = displayWidth(header)
 	}
 
 	return &Table{
@@ -113,8 +126,11 @@ func NewTable(headers []string) *Table {
 // AddRow 添加行
 func (t *Table) AddRow(row []string) {
 	for i, cell := range row {
-		if i < len(t.widths) && len(cell) > t.widths[i] {
-			t.widths[i] = len(cell)
+		if i < len(t.widths) {
+			cellWidth := displayWidth(cell)
+			if cellWidth > t.widths[i] {
+				t.widths[i] = cellWidth
+			}
 		}
 	}
 	t.rows = append(t.rows, row)
@@ -123,7 +139,7 @@ func (t *Table) AddRow(row []string) {
 // Render 渲染表格
 func (t *Table) Render() {
 	// 打印顶部边框
-	t.printBorder()
+	t.printTopBorder()
 
 	// 打印表头
 	t.printRow(t.headers, ColorBold+ColorCyan)
@@ -137,11 +153,11 @@ func (t *Table) Render() {
 	}
 
 	// 打印底部边框
-	t.printBorder()
+	t.printBottomBorder()
 }
 
-// printBorder 打印边框
-func (t *Table) printBorder() {
+// printTopBorder 打印顶部边框
+func (t *Table) printTopBorder() {
 	fmt.Print("┌")
 	for i, width := range t.widths {
 		fmt.Print(strings.Repeat("─", width+2))
@@ -150,6 +166,18 @@ func (t *Table) printBorder() {
 		}
 	}
 	fmt.Println("┐")
+}
+
+// printBottomBorder 打印底部边框
+func (t *Table) printBottomBorder() {
+	fmt.Print("└")
+	for i, width := range t.widths {
+		fmt.Print(strings.Repeat("─", width+2))
+		if i < len(t.widths)-1 {
+			fmt.Print("┴")
+		}
+	}
+	fmt.Println("┘")
 }
 
 // printSeparator 打印分隔线
@@ -169,7 +197,9 @@ func (t *Table) printRow(row []string, color string) {
 	fmt.Print("│")
 	for i, cell := range row {
 		if i < len(t.widths) {
-			fmt.Printf(" %s%-*s%s │", color, t.widths[i], cell, ColorReset)
+			cellWidth := displayWidth(cell)
+			padding := t.widths[i] - cellWidth
+			fmt.Printf(" %s%s%s%s │", color, cell, strings.Repeat(" ", padding), ColorReset)
 		}
 	}
 	fmt.Println()

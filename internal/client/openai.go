@@ -87,7 +87,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (time.Duration, error
 		return 0, err
 	}
 
-	url := fmt.Sprintf("%s/v1/chat/completions", c.baseURL)
+	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
 		return 0, err

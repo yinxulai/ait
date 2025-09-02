@@ -43,7 +43,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (time.Duration, er
 
 	reqBody := []byte(fmt.Sprintf(reqBodyTemplate, c.Model, prompt, stream))
 
-	req, err := http.NewRequest("POST", c.BaseUrl+"/v1/messages", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest("POST", c.BaseUrl+"/messages", bytes.NewBuffer(reqBody))
 	if err != nil {
 		return 0, err
 	}
