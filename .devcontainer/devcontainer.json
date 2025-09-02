@@ -1,0 +1,16 @@
+// For format details, see https://aka.ms/devcontainer.json. For config options, see the
+{
+	"name": "DevContainer",
+	"service": "workspace",
+	"dockerComposeFile": "docker-compose.yml",
+	"workspaceFolder": "/workspace",
+	"customizations": {
+		"vscode": {
+			"extensions": [
+				"golang.Go",
+				"ms-vscode.makefile-tools",
+				"ms-azuretools.vscode-docker"
+			]
+		}
+	}
+}
