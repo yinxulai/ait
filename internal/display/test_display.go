@@ -39,11 +39,13 @@ type TestConfig struct {
 
 // TestStats 实时测试统计数据
 type TestStats struct {
-	CompletedCount int
-	FailedCount    int
-	ResponseTimes  []time.Duration
-	StartTime      time.Time
-	ElapsedTime    time.Duration
+	CompletedCount int             // 已完成请求数
+	FailedCount    int             // 失败请求数
+	TTFTs          []time.Duration // 所有首个token响应时间 (Time to First Token)
+	TotalTimes     []time.Duration // 所有总耗时
+	TokenCounts    []int           // 所有 token 数量
+	StartTime      time.Time       // 测试开始时间
+	ElapsedTime    time.Duration   // 已经过时间
 }
 
 // NewTestDisplayer 创建新的测试显示控制器
@@ -191,7 +193,7 @@ func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 	table.Append([]string{"失败请求", fmt.Sprintf("%d", stats.FailedCount)})
 	table.Append([]string{"成功率", fmt.Sprintf("%.1f%%", successRate)})
 	
-	if len(stats.ResponseTimes) > 0 {
+	if len(stats.TTFTs) > 0 {
 		currentTPS := float64(stats.CompletedCount) / elapsed.Seconds()
 		table.Append([]string{"平均TPS", fmt.Sprintf("%.2f", currentTPS)})
 	}
@@ -207,42 +209,49 @@ func (td *TestDisplayer) ShowError(message string) {
 
 // printRealTimeStats 打印实时统计信息
 func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
-	if len(stats.ResponseTimes) == 0 {
+	if len(stats.TTFTs) == 0 {
 		return
 	}
 	
-	// 计算统计数据
-	var sum time.Duration
-	min := stats.ResponseTimes[0]
-	max := stats.ResponseTimes[0]
+	// 计算TTFT统计数据
+	var sumTTFT time.Duration
+	minTTFT := stats.TTFTs[0]
+	maxTTFT := stats.TTFTs[0]
 	
-	for _, d := range stats.ResponseTimes {
-		sum += d
-		if d < min {
-			min = d
+	for _, d := range stats.TTFTs {
+		sumTTFT += d
+		if d < minTTFT {
+			minTTFT = d
 		}
-		if d > max {
-			max = d
+		if d > maxTTFT {
+			maxTTFT = d
 		}
 	}
 	
-	avg := sum / time.Duration(len(stats.ResponseTimes))
+	avgTTFT := sumTTFT / time.Duration(len(stats.TTFTs))
 	currentTPS := float64(stats.CompletedCount) / stats.ElapsedTime.Seconds()
+	
+	// 计算 Token 统计（如果有数据）
+	var avgTokens float64
+	var totalTokens int
+	if len(stats.TokenCounts) > 0 {
+		for _, count := range stats.TokenCounts {
+			totalTokens += count
+		}
+		avgTokens = float64(totalTokens) / float64(len(stats.TokenCounts))
+	}
 	
 	// 显示实时统计
 	metricName := "TTFT"
-	if !td.config.Stream {
-		metricName = "响应时间"
-	}
 	
-	// 创建实时统计显示，使用中性的颜色
-	statsLine := fmt.Sprintf("📊 %s | 完成: %d/%d | 失败: %d | %s: 平均 %s, 最小 %s, 最大 %s | TPS: %.2f",
+	// 创建实时统计显示，包含新的指标
+	statsLine := fmt.Sprintf("📊 %s | 完成: %d/%d | 失败: %d | %s: 平均 %s, 最小 %s, 最大 %s | TPS: %.2f | 平均Token: %.0f",
 		td.statsColor.Sprint("实时统计"),
 		stats.CompletedCount, td.config.Count,
 		stats.FailedCount,
 		metricName,
-		FormatDuration(avg), FormatDuration(min), FormatDuration(max),
-		currentTPS)
+		FormatDuration(avgTTFT), FormatDuration(minTTFT), FormatDuration(maxTTFT),
+		currentTPS, avgTokens)
 	
 	// 移动到进度条上方显示实时统计，然后回到原位置
 	fmt.Printf("\033[A\033[2K%s\n\033[B", statsLine)
@@ -255,15 +264,21 @@ type Result struct {
 	IsStream      bool
 	TotalTime     time.Duration
 
-	// 流式模式指标
+	// TTFT (Time to First Token) 指标
 	AvgTTFT time.Duration
 	MinTTFT time.Duration
 	MaxTTFT time.Duration
 
-	// 非流式模式指标
-	AvgResponseTime time.Duration
-	MinResponseTime time.Duration
-	MaxResponseTime time.Duration
+	// 总耗时指标
+	AvgTotalTime time.Duration
+	MinTotalTime time.Duration
+	MaxTotalTime time.Duration
+
+	// Token 统计指标
+	AvgTokenCount int
+	MinTokenCount int
+	MaxTokenCount int
+	TotalTokens   int
 
 	TPS float64
 }
@@ -280,17 +295,24 @@ func (r *Result) PrintResult() {
 	table.Append([]string{"并发数", "-", fmt.Sprintf("%d", r.Concurrency), "-", "个"})
 	table.Append([]string{"总耗时", "-", FormatDuration(r.TotalTime), "-", ""})
 
-	if r.IsStream {
-		table.Append([]string{"TTFT (首字节时间)",
-			FormatDuration(r.MinTTFT),
-			FormatDuration(r.AvgTTFT),
-			FormatDuration(r.MaxTTFT), ""})
-	} else {
-		table.Append([]string{"响应时间",
-			FormatDuration(r.MinResponseTime),
-			FormatDuration(r.AvgResponseTime),
-			FormatDuration(r.MaxResponseTime), ""})
-	}
+	table.Append([]string{"TTFT (首个Token)",
+		FormatDuration(r.MinTTFT),
+		FormatDuration(r.AvgTTFT),
+		FormatDuration(r.MaxTTFT), ""})
+
+	// 添加总耗时指标
+	table.Append([]string{"完整耗时",
+		FormatDuration(r.MinTotalTime),
+		FormatDuration(r.AvgTotalTime),
+		FormatDuration(r.MaxTotalTime), ""})
+
+	// 添加 Token 统计指标
+	table.Append([]string{"Token 数量",
+		fmt.Sprintf("%d", r.MinTokenCount),
+		fmt.Sprintf("%d", r.AvgTokenCount),
+		fmt.Sprintf("%d", r.MaxTokenCount), "个"})
+	
+	table.Append([]string{"总 Token 数", "-", fmt.Sprintf("%d", r.TotalTokens), "-", "个"})
 
 	table.Append([]string{"TPS", "-", FormatFloat(r.TPS, 2), "-", "req/s"})
 	table.Render()
@@ -319,6 +341,9 @@ func (r *Result) printModeInfo() {
 		infoColor.Println("  • 响应时间: 完整请求-响应周期的时间")
 		infoColor.Println("  • 该指标反映完整响应的总时间")
 	}
+	infoColor.Println("  • 完整耗时: 从请求开始到完全结束的总时间")
+	infoColor.Println("  • Token 数量: API 返回的 token 总数（输入+输出）")
+	infoColor.Println("  • 消息长度: 返回内容的字符数")
 	infoColor.Println("  • TPS: Transactions Per Second，每秒处理请求数")
 	infoColor.Println("  • 并发数: 同时进行的请求数量")
 }

@@ -46,6 +46,26 @@ type ChatCompletionResponse struct {
 	} `json:"usage"`
 }
 
+// StreamResponseChunk 流式响应数据块
+type StreamResponseChunk struct {
+	ID      string `json:"id"`
+	Object  string `json:"object"`
+	Created int64  `json:"created"`
+	Model   string `json:"model"`
+	Choices []struct {
+		Index int `json:"index"`
+		Delta struct {
+			Content string `json:"content"`
+		} `json:"delta"`
+		FinishReason *string `json:"finish_reason"`
+	} `json:"choices"`
+	Usage *struct {
+		PromptTokens     int `json:"prompt_tokens"`
+		CompletionTokens int `json:"completion_tokens"`
+		TotalTokens      int `json:"total_tokens"`
+	} `json:"usage,omitempty"`
+}
+
 // OpenAIClient OpenAI 协议客户端
 type OpenAIClient struct {
 	httpClient *http.Client
@@ -70,7 +90,7 @@ func NewOpenAIClient(baseUrl, apiKey, model string) *OpenAIClient {
 }
 
 // Request 发送 OpenAI 协议请求（支持流式和非流式）
-func (c *OpenAIClient) Request(prompt string, stream bool) (time.Duration, error) {
+func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
 	reqBody := ChatCompletionRequest{
 		Model: c.Model,
 		Messages: []ChatCompletionMessage{
@@ -84,13 +104,13 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (time.Duration, error
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return 0, err
+		return nil, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -102,18 +122,20 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (time.Duration, error
 		// 流式请求
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return 0, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+			return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
 		firstTokenTime := time.Duration(0)
 		gotFirst := false
-
+		var fullContent strings.Builder
+		var totalTokens int
+		
 		for scanner.Scan() {
 			line := scanner.Text()
 			if strings.HasPrefix(line, "data: ") {
@@ -121,38 +143,69 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (time.Duration, error
 				if data == "[DONE]" {
 					break
 				}
-				if !gotFirst {
+				
+				var chunk StreamResponseChunk
+				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
+					continue // 跳过无法解析的行
+				}
+				
+				if !gotFirst && len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
 					firstTokenTime = time.Since(t0)
 					gotFirst = true
 				}
-				// 继续读取但不处理内容
+				
+				// 累积内容
+				if len(chunk.Choices) > 0 {
+					fullContent.WriteString(chunk.Choices[0].Delta.Content)
+				}
+				
+				// 获取 token 统计信息（通常在最后一个chunk中）
+				if chunk.Usage != nil {
+					totalTokens = chunk.Usage.TotalTokens
+				}
 			}
 		}
 
 		if err := scanner.Err(); err != nil {
-			return 0, err
+			return nil, err
 		}
 
-		return firstTokenTime, nil
+		totalTime := time.Since(t0)
+		
+		return &ResponseMetrics{
+			TimeToFirstToken: firstTokenTime,
+			TotalTime:        totalTime,
+			TokenCount:       totalTokens,
+		}, nil
 	} else {
 		// 非流式请求
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return 0, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+			return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
 		}
 
-		// 读取响应但不解析
-		_, err = io.ReadAll(resp.Body)
+		responseData, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return 0, err
+			return nil, err
 		}
 
-		return time.Since(t0), nil
+		totalTime := time.Since(t0)
+		
+		var chatResp ChatCompletionResponse
+		if err := json.Unmarshal(responseData, &chatResp); err != nil {
+			return nil, err
+		}
+
+		return &ResponseMetrics{
+			TimeToFirstToken: totalTime, // 非流式模式下，首个token时间就是总时间
+			TotalTime:        totalTime,
+			TokenCount:       chatResp.Usage.TotalTokens,
+		}, nil
 	}
 }
 

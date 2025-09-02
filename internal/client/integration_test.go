@@ -65,15 +65,15 @@ func TestOpenAIClient_Request_NonStream(t *testing.T) {
 	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
 
 	start := time.Now()
-	duration, err := client.Request("test prompt", false)
+	metrics, err := client.Request("test prompt", false)
 	elapsed := time.Since(start)
 
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
 
-	if duration <= 0 {
-		t.Errorf("Request() duration should be > 0, got %v", duration)
+	if metrics.TimeToFirstToken <= 0 {
+		t.Errorf("Request() TimeToFirstToken should be > 0, got %v", metrics.TimeToFirstToken)
 	}
 
 	// 检查实际耗时是否合理（应该至少包含模拟的延迟）
@@ -89,20 +89,20 @@ func TestOpenAIClient_Request_Stream(t *testing.T) {
 	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
 
 	start := time.Now()
-	ttft, err := client.Request("test prompt", true)
+	metrics, err := client.Request("test prompt", true)
 	elapsed := time.Since(start)
 
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
 
-	if ttft <= 0 {
-		t.Errorf("Request() TTFT should be > 0, got %v", ttft)
+	if metrics.TimeToFirstToken <= 0 {
+		t.Errorf("Request() TTFT should be > 0, got %v", metrics.TimeToFirstToken)
 	}
 
 	// TTFT 应该小于总耗时（因为我们在流中有多个块）
-	if ttft > elapsed {
-		t.Errorf("TTFT %v should be <= total elapsed time %v", ttft, elapsed)
+	if metrics.TimeToFirstToken > elapsed {
+		t.Errorf("TTFT %v should be <= total elapsed time %v", metrics.TimeToFirstToken, elapsed)
 	}
 }
 

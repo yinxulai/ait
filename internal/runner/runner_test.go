@@ -112,14 +112,14 @@ func TestResult_PrintResult(t *testing.T) {
 		{
 			name: "non-stream mode result",
 			result: Result{
-				TotalRequests:   20,
-				Concurrency:     4,
-				IsStream:        false,
-				TotalTime:       10 * time.Second,
-				AvgResponseTime: 500 * time.Millisecond,
-				MinResponseTime: 300 * time.Millisecond,
-				MaxResponseTime: 800 * time.Millisecond,
-				TPS:             2.0,
+				TotalRequests: 20,
+				Concurrency:   4,
+				IsStream:      false,
+				TotalTime:     10 * time.Second,
+				AvgTTFT:       500 * time.Millisecond,
+				MinTTFT:       300 * time.Millisecond,
+				MaxTTFT:       800 * time.Millisecond,
+				TPS:           2.0,
 			},
 		},
 	}

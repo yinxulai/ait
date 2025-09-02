@@ -111,7 +111,9 @@ func main() {
 		displayStats := display.TestStats{
 			CompletedCount: stats.CompletedCount,
 			FailedCount:    stats.FailedCount,
-			ResponseTimes:  stats.ResponseTimes,
+			TTFTs:          stats.TTFTs,
+			TotalTimes:     stats.TotalTimes,
+			TokenCounts:    stats.TokenCounts,
 			StartTime:      stats.StartTime,
 			ElapsedTime:    stats.ElapsedTime,
 		}
@@ -132,17 +134,21 @@ func main() {
 
 	// 转换结果并显示
 	displayResult := &display.Result{
-		TotalRequests:   result.TotalRequests,
-		Concurrency:     result.Concurrency,
-		IsStream:        result.IsStream,
-		TotalTime:       result.TotalTime,
-		AvgTTFT:         result.AvgTTFT,
-		MinTTFT:         result.MinTTFT,
-		MaxTTFT:         result.MaxTTFT,
-		AvgResponseTime: result.AvgResponseTime,
-		MinResponseTime: result.MinResponseTime,
-		MaxResponseTime: result.MaxResponseTime,
-		TPS:             result.TPS,
+		TotalRequests: result.TotalRequests,
+		Concurrency:   result.Concurrency,
+		IsStream:      result.IsStream,
+		TotalTime:     result.TotalTime,
+		AvgTTFT:       result.AvgTTFT,
+		MinTTFT:       result.MinTTFT,
+		MaxTTFT:       result.MaxTTFT,
+		AvgTotalTime:  result.AvgTotalTime,
+		MinTotalTime:  result.MinTotalTime,
+		MaxTotalTime:  result.MaxTotalTime,
+		AvgTokenCount: result.AvgTokenCount,
+		MinTokenCount: result.MinTokenCount,
+		MaxTokenCount: result.MaxTokenCount,
+		TotalTokens:   result.TotalTokens,
+		TPS:           result.TPS,
 	}
 	displayResult.PrintResult()
 }
