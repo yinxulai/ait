@@ -32,7 +32,7 @@ type ChatCompletionResponse struct {
 	Created int64  `json:"created"`
 	Model   string `json:"model"`
 	Choices []struct {
-		Index int `json:"index"`
+		Index   int `json:"index"`
 		Message struct {
 			Role    string `json:"role"`
 			Content string `json:"content"`

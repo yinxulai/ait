@@ -56,7 +56,7 @@ func main() {
 			fmt.Println("  OPENAI_BASE_URL - OpenAI API 基础 URL")
 			fmt.Println("  OPENAI_API_KEY - OpenAI API 密钥")
 		} else if *provider == "anthropic" {
-			fmt.Println("  ANTHROPIC_BASE_URL - Anthropic API 基础 URL") 
+			fmt.Println("  ANTHROPIC_BASE_URL - Anthropic API 基础 URL")
 			fmt.Println("  ANTHROPIC_API_KEY - Anthropic API 密钥")
 		}
 		os.Exit(1)

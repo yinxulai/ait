@@ -42,28 +42,28 @@ func TestNewClient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client, err := NewClient(tt.provider, tt.baseUrl, tt.apiKey, tt.model)
-			
+
 			if tt.wantError {
 				if err == nil {
 					t.Errorf("NewClient() error = nil, wantError %v", tt.wantError)
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("NewClient() error = %v, wantError %v", err, tt.wantError)
 				return
 			}
-			
+
 			if client == nil {
 				t.Error("NewClient() returned nil client")
 				return
 			}
-			
+
 			if client.GetProvider() != tt.provider {
 				t.Errorf("NewClient().GetProvider() = %v, want %v", client.GetProvider(), tt.provider)
 			}
-			
+
 			if client.GetModel() != tt.model {
 				t.Errorf("NewClient().GetModel() = %v, want %v", client.GetModel(), tt.model)
 			}

@@ -58,32 +58,32 @@ func TestNewRunner(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			runner, err := NewRunner(tt.config)
-			
+
 			if tt.wantError {
 				if err == nil {
 					t.Errorf("NewRunner() error = nil, wantError %v", tt.wantError)
 				}
 				return
 			}
-			
+
 			if err != nil {
 				t.Errorf("NewRunner() error = %v, wantError %v", err, tt.wantError)
 				return
 			}
-			
+
 			if runner == nil {
 				t.Error("NewRunner() returned nil runner")
 				return
 			}
-			
+
 			if runner.client == nil {
 				t.Error("NewRunner().client should not be nil")
 			}
-			
+
 			if runner.config.Provider != tt.config.Provider {
 				t.Errorf("NewRunner().config.Provider = %v, want %v", runner.config.Provider, tt.config.Provider)
 			}
-			
+
 			if runner.config.Stream != tt.config.Stream {
 				t.Errorf("NewRunner().config.Stream = %v, want %v", runner.config.Stream, tt.config.Stream)
 			}
@@ -133,7 +133,7 @@ func TestResult_PrintResult(t *testing.T) {
 					t.Errorf("PrintResult() panicked: %v", r)
 				}
 			}()
-			
+
 			tt.result.PrintResult()
 		})
 	}

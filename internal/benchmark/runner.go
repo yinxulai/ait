@@ -30,16 +30,16 @@ type Result struct {
 	TotalTime     time.Duration
 
 	// 流式模式指标
-	AvgTTFT       time.Duration
-	MinTTFT       time.Duration
-	MaxTTFT       time.Duration
+	AvgTTFT time.Duration
+	MinTTFT time.Duration
+	MaxTTFT time.Duration
 
 	// 非流式模式指标
 	AvgResponseTime time.Duration
 	MinResponseTime time.Duration
 	MaxResponseTime time.Duration
 
-	TPS             float64
+	TPS float64
 }
 
 // Runner 性能测试执行器
@@ -68,12 +68,12 @@ func (r *Runner) Run() (*Result, error) {
 	display.PrintInfo(fmt.Sprintf("并发数: %d", r.config.Concurrency))
 	display.PrintInfo(fmt.Sprintf("总请求数: %d", r.config.Count))
 	display.PrintInfo(fmt.Sprintf("流模式: %t", r.config.Stream))
-	
+
 	var wg sync.WaitGroup
 	results := make([]time.Duration, r.config.Count)
 	start := time.Now()
 	ch := make(chan int, r.config.Concurrency)
-	
+
 	// 创建进度条
 	progressBar := display.NewProgressBar(r.config.Count, "执行测试")
 	completed := int64(0)
@@ -91,7 +91,7 @@ func (r *Runner) Run() (*Result, error) {
 				return
 			}
 			results[idx] = ttft
-			
+
 			// 更新进度条
 			current := atomic.AddInt64(&completed, 1)
 			progressBar.Update(int(current))
@@ -102,7 +102,7 @@ func (r *Runner) Run() (*Result, error) {
 	elapsed := time.Since(start)
 
 	display.PrintSuccess("测试完成！")
-	
+
 	// 统计结果
 	result := r.calculateResult(results, elapsed)
 	result.PrintResult()
@@ -164,29 +164,29 @@ func (r *Runner) calculateResult(results []time.Duration, totalTime time.Duratio
 // PrintResult 输出结果
 func (r *Result) PrintResult() {
 	display.PrintSection("测试结果")
-	
+
 	// 创建结果表格
 	table := display.NewTable([]string{"指标", "最小值", "平均值", "最大值", "单位"})
 	table.AddRow([]string{"总请求数", "-", fmt.Sprintf("%d", r.TotalRequests), "-", "个"})
 	table.AddRow([]string{"并发数", "-", fmt.Sprintf("%d", r.Concurrency), "-", "个"})
 	table.AddRow([]string{"总耗时", "-", display.FormatDuration(r.TotalTime), "-", ""})
-	
+
 	if r.IsStream {
-		table.AddRow([]string{"TTFT (首字节时间)", 
-			display.FormatDuration(r.MinTTFT), 
-			display.FormatDuration(r.AvgTTFT), 
+		table.AddRow([]string{"TTFT (首字节时间)",
+			display.FormatDuration(r.MinTTFT),
+			display.FormatDuration(r.AvgTTFT),
 			display.FormatDuration(r.MaxTTFT), ""})
 	} else {
-		table.AddRow([]string{"响应时间", 
-			display.FormatDuration(r.MinResponseTime), 
-			display.FormatDuration(r.AvgResponseTime), 
+		table.AddRow([]string{"响应时间",
+			display.FormatDuration(r.MinResponseTime),
+			display.FormatDuration(r.AvgResponseTime),
 			display.FormatDuration(r.MaxResponseTime), ""})
 	}
-	
+
 	table.AddRow([]string{"TPS", "-", display.FormatFloat(r.TPS, 2), "-", "req/s"})
-	
+
 	table.Render()
-	
+
 	// 性能评级
 	fmt.Println()
 	r.printPerformanceRating()
@@ -195,10 +195,10 @@ func (r *Result) PrintResult() {
 // printPerformanceRating 打印性能评级
 func (r *Result) printPerformanceRating() {
 	display.PrintSection("性能评级")
-	
+
 	var avgMs float64
 	var metricName string
-	
+
 	if r.IsStream {
 		avgMs = float64(r.AvgTTFT.Nanoseconds()) / 1000000
 		metricName = "TTFT"
@@ -206,10 +206,10 @@ func (r *Result) printPerformanceRating() {
 		avgMs = float64(r.AvgResponseTime.Nanoseconds()) / 1000000
 		metricName = "响应时间"
 	}
-	
+
 	var rating string
 	var color string
-	
+
 	switch {
 	case avgMs < 100:
 		rating = "优秀 (< 100ms)"
@@ -227,9 +227,9 @@ func (r *Result) printPerformanceRating() {
 		rating = "很慢 (> 3s)"
 		color = display.ColorRed
 	}
-	
+
 	fmt.Printf("%s%s: %s%s%s\n", color, metricName, display.ColorBold, rating, display.ColorReset)
-	
+
 	if r.TPS > 10 {
 		display.PrintSuccess(fmt.Sprintf("吞吐量优秀: %.2f req/s", r.TPS))
 	} else if r.TPS > 5 {
@@ -239,7 +239,7 @@ func (r *Result) printPerformanceRating() {
 	} else {
 		display.PrintError(fmt.Sprintf("吞吐量较低: %.2f req/s", r.TPS))
 	}
-	
+
 	if r.IsStream {
 		display.PrintInfo("💡 流式模式可以准确测量 TTFT（首字节时间）")
 	} else {

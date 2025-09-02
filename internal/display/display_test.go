@@ -197,7 +197,7 @@ func TestNewTable(t *testing.T) {
 func TestTable_AddRow(t *testing.T) {
 	table := NewTable([]string{"Col1", "Col2"})
 	row := []string{"Value1", "Value2"}
-	
+
 	table.AddRow(row)
 
 	if len(table.rows) != 1 {

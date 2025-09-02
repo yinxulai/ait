@@ -83,9 +83,9 @@ func (pb *ProgressBar) Finish() {
 func (pb *ProgressBar) render() {
 	percent := float64(pb.current) / float64(pb.total)
 	filled := int(percent * float64(pb.width))
-	
+
 	bar := strings.Repeat("█", filled) + strings.Repeat("░", pb.width-filled)
-	
+
 	fmt.Printf("\r%s%s %s[%s]%s %d/%d (%.1f%%)",
 		ColorCyan, pb.prefix, ColorGreen, bar, ColorReset, pb.current, pb.total, percent*100)
 }
@@ -103,7 +103,7 @@ func NewTable(headers []string) *Table {
 	for i, header := range headers {
 		widths[i] = len(header)
 	}
-	
+
 	return &Table{
 		headers: headers,
 		widths:  widths,
@@ -124,18 +124,18 @@ func (t *Table) AddRow(row []string) {
 func (t *Table) Render() {
 	// 打印顶部边框
 	t.printBorder()
-	
+
 	// 打印表头
 	t.printRow(t.headers, ColorBold+ColorCyan)
-	
+
 	// 打印分隔线
 	t.printSeparator()
-	
+
 	// 打印数据行
 	for _, row := range t.rows {
 		t.printRow(row, "")
 	}
-	
+
 	// 打印底部边框
 	t.printBorder()
 }

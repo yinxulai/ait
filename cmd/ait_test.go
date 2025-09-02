@@ -8,7 +8,7 @@ import (
 func TestFlagDefinitions(t *testing.T) {
 	// 重置 flag 状态，避免冲突
 	flag.CommandLine = flag.NewFlagSet("test", flag.ContinueOnError)
-	
+
 	// 模拟定义 flags（这部分通常在 main 中）
 	baseUrl := flag.String("baseUrl", "", "服务地址")
 	apikey := flag.String("apikey", "", "API 密钥")
@@ -23,19 +23,19 @@ func TestFlagDefinitions(t *testing.T) {
 	if *provider != "openai" {
 		t.Errorf("Expected default provider 'openai', got '%s'", *provider)
 	}
-	
+
 	if *concurrency != 1 {
 		t.Errorf("Expected default concurrency 1, got %d", *concurrency)
 	}
-	
+
 	if *count != 10 {
 		t.Errorf("Expected default count 10, got %d", *count)
 	}
-	
+
 	if *stream != false {
 		t.Errorf("Expected default stream false, got %t", *stream)
 	}
-	
+
 	// 测试 flag 是否正确定义
 	if baseUrl == nil || apikey == nil || model == nil || prompt == nil {
 		t.Error("Required flags should be defined")

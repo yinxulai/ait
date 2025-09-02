@@ -13,9 +13,9 @@ func createMockServer(responseDelay time.Duration, stream bool) *httptest.Server
 	return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 模拟延迟
 		time.Sleep(responseDelay)
-		
+
 		w.Header().Set("Content-Type", "application/json")
-		
+
 		if stream {
 			// 模拟流式响应
 			w.Header().Set("Transfer-Encoding", "chunked")
@@ -24,7 +24,7 @@ func createMockServer(responseDelay time.Duration, stream bool) *httptest.Server
 				http.Error(w, "Streaming unsupported", http.StatusInternalServerError)
 				return
 			}
-			
+
 			// 发送多个数据块
 			for i := 0; i < 3; i++ {
 				fmt.Fprintf(w, "data: {\"choices\":[{\"delta\":{\"content\":\"chunk %d\"}}]}\n\n", i)
@@ -63,19 +63,19 @@ func TestOpenAIClient_Request_NonStream(t *testing.T) {
 	defer server.Close()
 
 	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
-	
+
 	start := time.Now()
 	duration, err := client.Request("test prompt", false)
 	elapsed := time.Since(start)
-	
+
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
-	
+
 	if duration <= 0 {
 		t.Errorf("Request() duration should be > 0, got %v", duration)
 	}
-	
+
 	// 检查实际耗时是否合理（应该至少包含模拟的延迟）
 	if elapsed < 100*time.Millisecond {
 		t.Errorf("Request() actual time %v should be >= 100ms", elapsed)
@@ -87,19 +87,19 @@ func TestOpenAIClient_Request_Stream(t *testing.T) {
 	defer server.Close()
 
 	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
-	
+
 	start := time.Now()
 	ttft, err := client.Request("test prompt", true)
 	elapsed := time.Since(start)
-	
+
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
-	
+
 	if ttft <= 0 {
 		t.Errorf("Request() TTFT should be > 0, got %v", ttft)
 	}
-	
+
 	// TTFT 应该小于总耗时（因为我们在流中有多个块）
 	if ttft > elapsed {
 		t.Errorf("TTFT %v should be <= total elapsed time %v", ttft, elapsed)
@@ -113,9 +113,9 @@ func TestOpenAIClient_Request_ServerError(t *testing.T) {
 	defer server.Close()
 
 	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
-	
+
 	_, err := client.Request("test prompt", false)
-	
+
 	if err == nil {
 		t.Error("Request() should return error for server error")
 	}

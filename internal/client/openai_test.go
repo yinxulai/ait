@@ -42,27 +42,27 @@ func TestNewOpenAIClient(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			got := NewOpenAIClient(tt.baseUrl, tt.apiKey, tt.model)
-			
+
 			if got.baseURL != tt.want.baseURL {
 				t.Errorf("NewOpenAIClient().baseURL = %v, want %v", got.baseURL, tt.want.baseURL)
 			}
-			
+
 			if got.apiKey != tt.want.apiKey {
 				t.Errorf("NewOpenAIClient().apiKey = %v, want %v", got.apiKey, tt.want.apiKey)
 			}
-			
+
 			if got.Model != tt.want.Model {
 				t.Errorf("NewOpenAIClient().Model = %v, want %v", got.Model, tt.want.Model)
 			}
-			
+
 			if got.Provider != tt.want.Provider {
 				t.Errorf("NewOpenAIClient().Provider = %v, want %v", got.Provider, tt.want.Provider)
 			}
-			
+
 			if got.httpClient == nil {
 				t.Error("NewOpenAIClient().httpClient should not be nil")
 			}
-			
+
 			if got.httpClient.Timeout != 30*time.Second {
 				t.Errorf("NewOpenAIClient().httpClient.Timeout = %v, want %v", got.httpClient.Timeout, 30*time.Second)
 			}
@@ -72,7 +72,7 @@ func TestNewOpenAIClient(t *testing.T) {
 
 func TestOpenAIClient_GetProvider(t *testing.T) {
 	client := NewOpenAIClient("https://api.openai.com", "test-key", "gpt-3.5-turbo")
-	
+
 	if got := client.GetProvider(); got != "openai" {
 		t.Errorf("OpenAIClient.GetProvider() = %v, want %v", got, "openai")
 	}
@@ -81,7 +81,7 @@ func TestOpenAIClient_GetProvider(t *testing.T) {
 func TestOpenAIClient_GetModel(t *testing.T) {
 	model := "gpt-4"
 	client := NewOpenAIClient("https://api.openai.com", "test-key", model)
-	
+
 	if got := client.GetModel(); got != model {
 		t.Errorf("OpenAIClient.GetModel() = %v, want %v", got, model)
 	}
