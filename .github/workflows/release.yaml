@@ -76,7 +76,7 @@ jobs:
       - name: Prepare release files
         run: |
           mkdir -p release-files
-          find dist -type f -executable -o -name "*.exe" | xargs -I {} cp {} release-files/
+          find dist -type f -name "ait-*" | xargs -I {} cp {} release-files/
           ls -la release-files/
 
       - name: Upload to Release
