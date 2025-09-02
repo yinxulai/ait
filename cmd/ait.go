@@ -14,18 +14,32 @@ func main() {
 	apikey := flag.String("apikey", "", "API 密钥")
 	model := flag.String("model", "", "模型名称")
 	count := flag.Int("count", 10, "请求总数")
-	provider := flag.String("provider", "openai", "协议类型: openai 或 anthropic")
+	provider := flag.String("provider", "", "协议类型: openai 或 anthropic")
 	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt")
 	stream := flag.Bool("stream", true, "是否开启流模式")
 	concurrency := flag.Int("concurrency", 1, "并发数")
 	flag.Parse()
+
+	// 自动推断 provider
+	finalProvider := *provider
+	if finalProvider == "" {
+		// 检查 OpenAI 环境变量
+		if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("OPENAI_BASE_URL") != "" {
+			finalProvider = "openai"
+		} else if os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_BASE_URL") != "" {
+			finalProvider = "anthropic"
+		} else {
+			// 都没有设置时，默认使用 openai
+			finalProvider = "openai"
+		}
+	}
 
 	// 如果未指定参数，尝试从环境变量加载
 	finalBaseUrl := *baseUrl
 	finalApiKey := *apikey
 
 	if finalBaseUrl == "" || finalApiKey == "" {
-		switch *provider {
+		switch finalProvider {
 		case "openai":
 			if finalBaseUrl == "" {
 				if envBaseUrl := os.Getenv("OPENAI_BASE_URL"); envBaseUrl != "" {
@@ -60,11 +74,11 @@ func main() {
 	// baseUrl 和 apikey 检查（可以通过环境变量获取）
 	if finalBaseUrl == "" || finalApiKey == "" {
 		fmt.Println("baseUrl 和 apikey 参数必填")
-		fmt.Printf("对于 %s 协议，你也可以设置以下环境变量：\n", *provider)
-		if *provider == "openai" {
+		fmt.Printf("对于 %s 协议，你也可以设置以下环境变量：\n", finalProvider)
+		if finalProvider == "openai" {
 			fmt.Println("  OPENAI_BASE_URL - OpenAI API 基础 URL")
 			fmt.Println("  OPENAI_API_KEY - OpenAI API 密钥")
-		} else if *provider == "anthropic" {
+		} else if finalProvider == "anthropic" {
 			fmt.Println("  ANTHROPIC_BASE_URL - Anthropic API 基础 URL")
 			fmt.Println("  ANTHROPIC_API_KEY - Anthropic API 密钥")
 		}
@@ -72,7 +86,7 @@ func main() {
 	}
 
 	config := runner.Config{
-		Provider:    *provider,
+		Provider:    finalProvider,
 		BaseUrl:     finalBaseUrl,
 		ApiKey:      finalApiKey,
 		Model:       *model,
