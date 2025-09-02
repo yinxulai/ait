@@ -15,13 +15,12 @@ type ResponseMetrics struct {
 	DNSTime          time.Duration // DNS解析时间
 	ConnectTime      time.Duration // TCP连接建立时间
 	TLSHandshakeTime time.Duration // TLS握手时间
+	TargetIP         string        // 目标服务器IP地址
 	
 	// 内容指标
 	TokenCount       int           // 返回的 token 总数
 	
-	// 错误和可靠性指标
-	IsTimeout        bool          // 是否超时
-	IsRetry          bool          // 是否为重试请求
+	// 错误信息
 	ErrorMessage     string        // 错误信息（如果有）
 }
 

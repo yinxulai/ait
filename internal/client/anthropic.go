@@ -7,6 +7,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"io"
+	"net"
 	"net/http"
 	"net/http/httptrace"
 	"strings"
@@ -89,6 +90,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	// 网络指标收集
 	var dnsStart, connectStart, tlsStart time.Time
 	var dnsTime, connectTime, tlsTime time.Duration
+	var targetIP string
 	
 	trace := &httptrace.ClientTrace{
 		DNSStart: func(info httptrace.DNSStartInfo) {
@@ -102,6 +104,14 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		},
 		ConnectDone: func(network, addr string, err error) {
 			connectTime = time.Since(connectStart)
+			if err == nil {
+				// 提取 IP 地址（去除端口号）
+				if host, _, splitErr := net.SplitHostPort(addr); splitErr == nil {
+					targetIP = host
+				} else {
+					targetIP = addr
+				}
+			}
 		},
 		TLSHandshakeStart: func() {
 			tlsStart = time.Now()
@@ -170,9 +180,8 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			DNSTime:          dnsTime,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
+			TargetIP:         targetIP,
 			TokenCount:       totalTokens,
-			IsTimeout:        false, // TODO: 实现超时检测
-			IsRetry:          false, // TODO: 实现重试逻辑
 			ErrorMessage:     "",
 		}, nil
 	} else {
@@ -197,9 +206,8 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			DNSTime:          dnsTime,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
+			TargetIP:         targetIP,
 			TokenCount:       totalTokens,
-			IsTimeout:        false, // TODO: 实现超时检测
-			IsRetry:          false, // TODO: 实现重试逻辑
 			ErrorMessage:     "",
 		}, nil
 	}
