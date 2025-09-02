@@ -103,7 +103,6 @@ func TestResult_PrintResult(t *testing.T) {
 				Concurrency:   2,
 				IsStream:      true,
 				TotalTime:     5 * time.Second,
-				TPS:           2.0,
 			},
 		},
 		{
@@ -113,7 +112,6 @@ func TestResult_PrintResult(t *testing.T) {
 				Concurrency:   4,
 				IsStream:      false,
 				TotalTime:     10 * time.Second,
-				TPS:           2.0,
 			},
 		},
 	}

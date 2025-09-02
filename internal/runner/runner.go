@@ -38,6 +38,9 @@ type TestStats struct {
 	// 内容指标
 	TokenCounts     []int                          // 所有 token 数量
 	
+	// 错误信息
+	ErrorMessages   []string                       // 所有错误信息
+	
 	// 测试控制
 	StartTime       time.Time                      // 测试开始时间
 	ElapsedTime     time.Duration                  // 已经过时间
@@ -50,7 +53,6 @@ type Result struct {
 	Concurrency   int
 	IsStream      bool
 	TotalTime     time.Duration
-	TPS           float64
 
 	// 时间性能指标
 	TimeMetrics struct {
@@ -85,6 +87,10 @@ type Result struct {
 		AvgTokenCount int // Token 统计指标
 		MinTokenCount int
 		MaxTokenCount int
+		
+		AvgTPS float64 // TPS (Tokens Per Second) 指标
+		MinTPS float64
+		MaxTPS float64
 	}
 
 	// 可靠性指标
@@ -160,6 +166,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 	var connectTimes []time.Duration
 	var tlsHandshakeTimes []time.Duration
 	var tokenCounts []int
+	var errorMessages []string
 	var ttftsMutex sync.Mutex
 
 	// 启动进度更新 goroutine
@@ -181,6 +188,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 					ConnectTimes:      make([]time.Duration, len(connectTimes)),
 					TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
 					TokenCounts:       make([]int, len(tokenCounts)),
+					ErrorMessages:     make([]string, len(errorMessages)),
 					StartTime:         start,
 					ElapsedTime:       time.Since(start),
 				}
@@ -190,6 +198,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 				copy(stats.ConnectTimes, connectTimes)
 				copy(stats.TLSHandshakeTimes, tlsHandshakeTimes)
 				copy(stats.TokenCounts, tokenCounts)
+				copy(stats.ErrorMessages, errorMessages)
 				ttftsMutex.Unlock()
 				
 				progressCallback(stats)
@@ -208,6 +217,9 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 
 			metrics, err := r.client.Request(r.config.Prompt, r.config.Stream)
 			if err != nil {
+				ttftsMutex.Lock()
+				errorMessages = append(errorMessages, err.Error())
+				ttftsMutex.Unlock()
 				atomic.AddInt64(&failed, 1)
 				return
 			}
@@ -241,6 +253,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 		ConnectTimes:      make([]time.Duration, len(connectTimes)),
 		TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
 		TokenCounts:       make([]int, len(tokenCounts)),
+		ErrorMessages:     make([]string, len(errorMessages)),
 		StartTime:         start,
 		ElapsedTime:       elapsed,
 	}
@@ -250,6 +263,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 	copy(finalStats.ConnectTimes, connectTimes)
 	copy(finalStats.TLSHandshakeTimes, tlsHandshakeTimes)
 	copy(finalStats.TokenCounts, tokenCounts)
+	copy(finalStats.ErrorMessages, errorMessages)
 	ttftsMutex.Unlock()
 	progressCallback(finalStats)
 
@@ -289,6 +303,11 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	maxConnectTime := firstResult.ConnectTime
 	minTLSTime := firstResult.TLSHandshakeTime
 	maxTLSTime := firstResult.TLSHandshakeTime
+
+	// 计算第一个结果的 TPS
+	firstTPS := float64(firstResult.TokenCount) / firstResult.TotalTime.Seconds()
+	minTPS := firstTPS
+	maxTPS := firstTPS
 
 	// 获取目标IP（使用第一个有效结果的IP）
 	var targetIP string
@@ -356,27 +375,52 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		if result.TokenCount > maxTokens {
 			maxTokens = result.TokenCount
 		}
+
+		// TPS 统计
+		tps := float64(result.TokenCount) / result.TotalTime.Seconds()
+		if tps < minTPS {
+			minTPS = tps
+		}
+		if tps > maxTPS {
+			maxTPS = tps
+		}
 	}
 
 	validCount := len(validResults)
+	
+	// 计算错误率和成功率
+	errorRate := float64(r.config.Count-validCount) / float64(r.config.Count) * 100
+	successRate := float64(validCount) / float64(r.config.Count) * 100
+	
+	// 如果没有有效结果，返回基础结果
+	if validCount == 0 {
+		result := &Result{
+			TotalRequests: r.config.Count,
+			Concurrency:   r.config.Concurrency,
+			TotalTime:     totalTime,
+			IsStream:      r.config.Stream,
+		}
+		
+		// 可靠性指标
+		result.ReliabilityMetrics.ErrorRate = errorRate
+		result.ReliabilityMetrics.SuccessRate = successRate
+		
+		return result
+	}
+	
 	avgTTFT := sumTTFT / time.Duration(validCount)
 	avgTotalTime := sumTotalTime / time.Duration(validCount)
 	avgDNSTime := sumDNSTime / time.Duration(validCount)
 	avgConnectTime := sumConnectTime / time.Duration(validCount)
 	avgTLSTime := sumTLSTime / time.Duration(validCount)
 	avgTokens := sumTokens / validCount
-	tps := float64(sumTokens) / totalTime.Seconds()
-	
-	// 计算错误率和成功率
-	errorRate := float64(r.config.Count-validCount) / float64(r.config.Count) * 100
-	successRate := float64(validCount) / float64(r.config.Count) * 100
+	avgTPS := float64(sumTokens) / sumTotalTime.Seconds()
 
 	result := &Result{
 		TotalRequests: r.config.Count,
 		Concurrency:   r.config.Concurrency,
 		TotalTime:     totalTime,
 		IsStream:      r.config.Stream,
-		TPS:           tps,
 	}
 	
 	// 时间指标
@@ -403,6 +447,9 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	result.ContentMetrics.AvgTokenCount = avgTokens
 	result.ContentMetrics.MinTokenCount = minTokens
 	result.ContentMetrics.MaxTokenCount = maxTokens
+	result.ContentMetrics.AvgTPS = avgTPS
+	result.ContentMetrics.MinTPS = minTPS
+	result.ContentMetrics.MaxTPS = maxTPS
 	
 	// 可靠性指标
 	result.ReliabilityMetrics.ErrorRate = errorRate

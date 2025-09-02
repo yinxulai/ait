@@ -43,7 +43,7 @@ func main() {
 	provider := flag.String("provider", "", "协议类型: openai 或 anthropic")
 	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt")
 	stream := flag.Bool("stream", true, "是否开启流模式")
-	concurrency := flag.Int("concurrency", 1, "并发数")
+	concurrency := flag.Int("concurrency", 3, "并发数")
 	flag.Parse()
 
 	// 自动推断 provider 和加载环境变量
@@ -132,6 +132,7 @@ func main() {
 			TTFTs:          stats.TTFTs,
 			TotalTimes:     stats.TotalTimes,
 			TokenCounts:    stats.TokenCounts,
+			ErrorMessages:  stats.ErrorMessages,
 			StartTime:      stats.StartTime,
 			ElapsedTime:    stats.ElapsedTime,
 			// 网络性能指标
@@ -151,8 +152,8 @@ func main() {
 	// 显示测试完成
 	testDisplayer.ShowTestComplete()
 
-	// 显示测试摘要
-	testDisplayer.ShowTestSummary(finalStats)
+	// 显示错误详情（如果有错误的话）
+	testDisplayer.ShowErrorDetails(finalStats)
 
 	// 转换结果并显示
 	displayResult := &display.Result{
@@ -160,7 +161,6 @@ func main() {
 		Concurrency:   result.Concurrency,
 		IsStream:      result.IsStream,
 		TotalTime:     result.TotalTime,
-		TPS:           result.TPS,
 	}
 
 	// 时间性能指标

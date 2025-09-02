@@ -55,6 +55,9 @@ type TestStats struct {
 	// 服务性能指标
 	TokenCounts []int // 所有 token 数量
 
+	// 错误信息
+	ErrorMessages []string // 所有错误信息
+
 	// 测试控制
 	StartTime   time.Time     // 测试开始时间
 	ElapsedTime time.Duration // 已经过时间
@@ -170,84 +173,10 @@ func (td *TestDisplayer) truncateString(s string, maxLen int) string {
 
 // UpdateProgress 更新测试进度
 func (td *TestDisplayer) UpdateProgress(stats TestStats) {
-	// 显示实时统计信息（覆盖之前的行）
-	td.printRealTimeStats(stats)
-
 	// 更新进度条
 	if td.progressBar != nil {
 		td.progressBar.Set(stats.CompletedCount)
 	}
-}
-
-// printRealTimeStats 打印实时统计信息
-func (td *TestDisplayer) printRealTimeStats(stats TestStats) {
-	if stats.CompletedCount == 0 {
-		return
-	}
-
-	// 基础统计
-	progress := fmt.Sprintf("%d/%d", stats.CompletedCount, td.config.Count)
-	successRate := float64(stats.CompletedCount) / float64(td.config.Count) * 100
-
-	// 计算 Token-based TPS
-	var currentTPS float64
-	if len(stats.TokenCounts) > 0 {
-		totalTokens := 0
-		for _, count := range stats.TokenCounts {
-			totalTokens += count
-		}
-		currentTPS = float64(totalTokens) / stats.ElapsedTime.Seconds()
-	} else {
-		currentTPS = 0
-	}
-
-	// 时间统计
-	var avgInfo string
-	if len(stats.TTFTs) > 0 {
-		ttftStats := td.calculateTimeStats(stats.TTFTs)
-		avgInfo = fmt.Sprintf("⚡TTFT: %s", FormatDuration(ttftStats.avg))
-	} else if len(stats.TotalTimes) > 0 {
-		totalStats := td.calculateTimeStats(stats.TotalTimes)
-		avgInfo = fmt.Sprintf("⏱️ 总耗时: %s", FormatDuration(totalStats.avg))
-	}
-
-	// Token统计
-	var tokenInfo string
-	if len(stats.TokenCounts) > 0 {
-		var totalTokens int
-		for _, count := range stats.TokenCounts {
-			totalTokens += count
-		}
-		avgTokens := float64(totalTokens) / float64(len(stats.TokenCounts))
-		tokenInfo = fmt.Sprintf("🔤 Token: %.0f", avgTokens)
-	}
-
-	// 组合实时统计信息
-	var parts []string
-	parts = append(parts, fmt.Sprintf("📈 进度: %s", progress))
-	parts = append(parts, fmt.Sprintf("✅ 成功率: %.1f%%", successRate))
-
-	if stats.FailedCount > 0 {
-		parts = append(parts, fmt.Sprintf("❌ 失败: %d", stats.FailedCount))
-	}
-
-	parts = append(parts, fmt.Sprintf("🚀 TPS: %.2f", currentTPS))
-
-	if avgInfo != "" {
-		parts = append(parts, avgInfo)
-	}
-
-	if tokenInfo != "" {
-		parts = append(parts, tokenInfo)
-	}
-
-	// 显示实时统计 (覆盖进度条上方的行)
-	statsLine := fmt.Sprintf("📊 %s | %s",
-		td.statsColor.Sprint("实时统计"),
-		strings.Join(parts, " | "))
-
-	// 移动到进度条上方显示实时统计，然后回到原位置
-	fmt.Printf("\033[A\033[2K%s\n\033[B", statsLine)
 }
 
 // ShowTestComplete 显示测试完成
@@ -293,6 +222,34 @@ func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 	}
 
 	table.Render()
+	
+	// 如果有错误，显示错误信息
+	if len(stats.ErrorMessages) > 0 {
+		fmt.Println()
+		td.errorColor.Println("🚨 错误详情：")
+		
+		// 统计错误类型
+		errorCounts := make(map[string]int)
+		for _, errMsg := range stats.ErrorMessages {
+			errorCounts[errMsg]++
+		}
+		
+		// 显示错误统计
+		errorTable := tablewriter.NewWriter(os.Stdout)
+		errorTable.Header("错误信息", "出现次数")
+		
+		for errMsg, count := range errorCounts {
+			// 截断过长的错误信息
+			displayMsg := errMsg
+			if len(displayMsg) > 60 {
+				displayMsg = displayMsg[:57] + "..."
+			}
+			errorTable.Append([]string{displayMsg, fmt.Sprintf("%d", count)})
+		}
+		
+		errorTable.Render()
+	}
+	
 	fmt.Println()
 }
 
@@ -301,33 +258,35 @@ func (td *TestDisplayer) ShowError(message string) {
 	td.errorColor.Printf("❌ %s\n", message)
 }
 
-// timeStats 时间统计结果
-type timeStats struct {
-	min, max, avg time.Duration
-}
-
-// calculateTimeStats 计算时间统计数据
-func (td *TestDisplayer) calculateTimeStats(times []time.Duration) timeStats {
-	if len(times) == 0 {
-		return timeStats{}
-	}
-
-	min := times[0]
-	max := times[0]
-	var total time.Duration
-
-	for _, t := range times {
-		total += t
-		if t < min {
-			min = t
+// ShowErrorDetails 显示错误详情
+func (td *TestDisplayer) ShowErrorDetails(stats TestStats) {
+	// 如果有错误，显示错误信息
+	if len(stats.ErrorMessages) > 0 {
+		fmt.Println()
+		td.errorColor.Println("🚨 错误详情：")
+		
+		// 统计错误类型
+		errorCounts := make(map[string]int)
+		for _, errMsg := range stats.ErrorMessages {
+			errorCounts[errMsg]++
 		}
-		if t > max {
-			max = t
+		
+		// 显示错误统计
+		errorTable := tablewriter.NewWriter(os.Stdout)
+		errorTable.Header("错误信息", "出现次数")
+		
+		for errMsg, count := range errorCounts {
+			// 截断过长的错误信息
+			displayMsg := errMsg
+			if len(displayMsg) > 60 {
+				displayMsg = displayMsg[:57] + "..."
+			}
+			errorTable.Append([]string{displayMsg, fmt.Sprintf("%d", count)})
 		}
+		
+		errorTable.Render()
+		fmt.Println()
 	}
-
-	avg := total / time.Duration(len(times))
-	return timeStats{min: min, max: max, avg: avg}
 }
 
 // Result 性能测试结果
@@ -337,7 +296,6 @@ type Result struct {
 	Concurrency   int
 	IsStream      bool
 	TotalTime     time.Duration
-	TPS           float64
 
 	// 时间性能指标
 	TimeMetrics struct {
@@ -372,6 +330,10 @@ type Result struct {
 		AvgTokenCount int // Token 统计指标
 		MinTokenCount int
 		MaxTokenCount int
+		
+		AvgTPS float64 // TPS (Tokens Per Second) 指标
+		MinTPS float64
+		MaxTPS float64
 	}
 
 	// 可靠性指标
@@ -424,7 +386,10 @@ func (r *Result) PrintResult() {
 		FormatDuration(r.ContentMetrics.MinTTFT),
 		FormatDuration(r.ContentMetrics.AvgTTFT),
 		FormatDuration(r.ContentMetrics.MaxTTFT), ""})
-	table.Append([]string{"🚀 TPS(每秒 Token)", "-", FormatFloat(r.TPS, 2), "-", "tokens/s"})
+	table.Append([]string{"🚀 TPS(每秒 Token)",
+		FormatFloat(r.ContentMetrics.MinTPS, 2),
+		FormatFloat(r.ContentMetrics.AvgTPS, 2),
+		FormatFloat(r.ContentMetrics.MaxTPS, 2), "tokens/s"})
 
 	// 添加可靠性指标
 	table.Append([]string{"✅ 成功率", "-", FormatFloat(r.ReliabilityMetrics.SuccessRate, 2), "-", "%"})
