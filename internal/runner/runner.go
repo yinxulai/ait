@@ -18,6 +18,7 @@ type Config struct {
 	Count       int
 	Prompt      string
 	Stream      bool // 是否使用流式请求
+	Report      bool // 是否生成报告文件
 }
 
 // TestStats 实时测试统计数据

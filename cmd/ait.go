@@ -6,6 +6,7 @@ import (
 	"os"
 
 	"github.com/yinxulai/ait/internal/display"
+	"github.com/yinxulai/ait/internal/report"
 	"github.com/yinxulai/ait/internal/runner"
 )
 
@@ -44,6 +45,7 @@ func main() {
 	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt")
 	stream := flag.Bool("stream", true, "是否开启流模式")
 	concurrency := flag.Int("concurrency", 3, "并发数")
+	reportFlag := flag.Bool("report", false, "是否生成报告文件")
 	flag.Parse()
 
 	// 自动推断 provider 和加载环境变量
@@ -98,6 +100,7 @@ func main() {
 		Count:       *count,
 		Prompt:      *prompt,
 		Stream:      *stream,
+		Report:      *reportFlag,
 	}
 
 	runnerInstance, err := runner.NewRunner(config)
@@ -193,4 +196,65 @@ func main() {
 	displayResult.ReliabilityMetrics.SuccessRate = result.ReliabilityMetrics.SuccessRate
 
 	displayResult.PrintResult()
+
+	// 如果启用了报告生成，则生成报告文件
+	if config.Report {
+		// 构建报告配置
+		reportConfig := report.TestConfig{
+			Provider:    config.Provider,
+			BaseUrl:     config.BaseUrl,
+			ApiKey:      config.ApiKey,
+			Model:       config.Model,
+			Concurrency: config.Concurrency,
+			Count:       config.Count,
+			Stream:      config.Stream,
+			Prompt:      config.Prompt,
+		}
+
+		// 构建报告结果数据
+		reportResult := report.TestResult{
+			TotalRequests: result.TotalRequests,
+			Concurrency:   result.Concurrency,
+			IsStream:      result.IsStream,
+			TotalTime:     result.TotalTime,
+		}
+
+		// 复制时间性能指标
+		reportResult.TimeMetrics.AvgTotalTime = result.TimeMetrics.AvgTotalTime
+		reportResult.TimeMetrics.MinTotalTime = result.TimeMetrics.MinTotalTime
+		reportResult.TimeMetrics.MaxTotalTime = result.TimeMetrics.MaxTotalTime
+
+		// 复制网络性能指标
+		reportResult.NetworkMetrics.AvgDNSTime = result.NetworkMetrics.AvgDNSTime
+		reportResult.NetworkMetrics.MinDNSTime = result.NetworkMetrics.MinDNSTime
+		reportResult.NetworkMetrics.MaxDNSTime = result.NetworkMetrics.MaxDNSTime
+		reportResult.NetworkMetrics.AvgConnectTime = result.NetworkMetrics.AvgConnectTime
+		reportResult.NetworkMetrics.MinConnectTime = result.NetworkMetrics.MinConnectTime
+		reportResult.NetworkMetrics.MaxConnectTime = result.NetworkMetrics.MaxConnectTime
+		reportResult.NetworkMetrics.AvgTLSHandshakeTime = result.NetworkMetrics.AvgTLSHandshakeTime
+		reportResult.NetworkMetrics.MinTLSHandshakeTime = result.NetworkMetrics.MinTLSHandshakeTime
+		reportResult.NetworkMetrics.MaxTLSHandshakeTime = result.NetworkMetrics.MaxTLSHandshakeTime
+		reportResult.NetworkMetrics.TargetIP = result.NetworkMetrics.TargetIP
+
+		// 复制服务性能指标
+		reportResult.ContentMetrics.AvgTTFT = result.ContentMetrics.AvgTTFT
+		reportResult.ContentMetrics.MinTTFT = result.ContentMetrics.MinTTFT
+		reportResult.ContentMetrics.MaxTTFT = result.ContentMetrics.MaxTTFT
+		reportResult.ContentMetrics.AvgTokenCount = result.ContentMetrics.AvgTokenCount
+		reportResult.ContentMetrics.MinTokenCount = result.ContentMetrics.MinTokenCount
+		reportResult.ContentMetrics.MaxTokenCount = result.ContentMetrics.MaxTokenCount
+		reportResult.ContentMetrics.AvgTPS = result.ContentMetrics.AvgTPS
+		reportResult.ContentMetrics.MinTPS = result.ContentMetrics.MinTPS
+		reportResult.ContentMetrics.MaxTPS = result.ContentMetrics.MaxTPS
+
+		// 复制可靠性指标
+		reportResult.ReliabilityMetrics.ErrorRate = result.ReliabilityMetrics.ErrorRate
+		reportResult.ReliabilityMetrics.SuccessRate = result.ReliabilityMetrics.SuccessRate
+
+		// 生成报告
+		reporter := report.NewReporter(reportConfig, reportResult)
+		if err := reporter.Generate(); err != nil {
+			fmt.Printf("生成报告失败: %v\n", err)
+		}
+	}
 }
