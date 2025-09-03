@@ -136,7 +136,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		firstTokenTime := time.Duration(0)
 		gotFirst := false
 		var fullContent strings.Builder
-		var inputTokens, outputTokens int
+		var outputTokens int
 		
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -161,7 +161,6 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 				
 				// 获取 token 统计信息
 				if chunk.Usage != nil {
-					inputTokens = chunk.Usage.InputTokens
 					outputTokens = chunk.Usage.OutputTokens
 				}
 			}
@@ -172,7 +171,6 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		}
 
 		totalTime := time.Since(t0)
-		totalTokens := inputTokens + outputTokens
 		
 		return &ResponseMetrics{
 			TimeToFirstToken: firstTokenTime,
@@ -181,7 +179,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
-			TokenCount:       totalTokens,
+			CompletionTokens: outputTokens,
 			ErrorMessage:     "",
 		}, nil
 	} else {
@@ -197,17 +195,15 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		if err := json.Unmarshal(responseData, &anthropicResp); err != nil {
 			return nil, err
 		}
-		
-		totalTokens := anthropicResp.Usage.InputTokens + anthropicResp.Usage.OutputTokens
 
 		return &ResponseMetrics{
-			TimeToFirstToken: totalTime, // 非流式模式下，首个token时间就是总时间
+			TimeToFirstToken: totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
 			TotalTime:        totalTime,
 			DNSTime:          dnsTime,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
-			TokenCount:       totalTokens,
+			CompletionTokens: anthropicResp.Usage.OutputTokens,
 			ErrorMessage:     "",
 		}, nil
 	}

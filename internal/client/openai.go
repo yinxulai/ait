@@ -172,7 +172,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		firstTokenTime := time.Duration(0)
 		gotFirst := false
 		var fullContent strings.Builder
-		var totalTokens int
+		var completionTokens int
 		
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -199,7 +199,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				
 				// 获取 token 统计信息（通常在最后一个chunk中）
 				if chunk.Usage != nil {
-					totalTokens = chunk.Usage.TotalTokens
+					completionTokens = chunk.Usage.CompletionTokens
 				}
 			}
 		}
@@ -217,7 +217,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
-			TokenCount:       totalTokens,
+			CompletionTokens: completionTokens,
 			ErrorMessage:     "",
 		}, nil
 	} else {
@@ -245,13 +245,13 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		}
 
 		return &ResponseMetrics{
-			TimeToFirstToken: totalTime, // 非流式模式下，首个token时间就是总时间
+			TimeToFirstToken: totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
 			TotalTime:        totalTime,
 			DNSTime:          dnsTime,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
-			TokenCount:       chatResp.Usage.TotalTokens,
+			CompletionTokens: chatResp.Usage.CompletionTokens,
 			ErrorMessage:     "",
 		}, nil
 	}

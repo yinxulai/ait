@@ -54,7 +54,7 @@ type TestStats struct {
 	TLSHandshakeTimes []time.Duration // 所有TLS握手时间
 
 	// 服务性能指标
-	TokenCounts []int // 所有 token 数量
+	TokenCounts []int // 所有 completion token 数量 (用于TPS计算)
 
 	// 错误信息
 	ErrorMessages []string // 所有错误信息
@@ -209,9 +209,11 @@ func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 	table.Append([]string{"📊 成功率", fmt.Sprintf("%.1f%%", successRate)})
 
 	if len(stats.TTFTs) > 0 {
-		// 计算 Token-based TPS
+		// 计算整体TPS (不同于最终结果中的平均TPS)
+		// 这里计算的是从测试开始到现在的整体吞吐量：总tokens/总时间
+		// 适用于实时进度显示，反映当前整体性能表现
 		var currentTPS float64
-		if len(stats.TokenCounts) > 0 {
+		if len(stats.TokenCounts) > 0 && elapsed.Seconds() > 0 {
 			totalTokens := 0
 			for _, count := range stats.TokenCounts {
 				totalTokens += count
@@ -220,7 +222,7 @@ func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 		} else {
 			currentTPS = 0
 		}
-		table.Append([]string{"🚀 平均TPS", fmt.Sprintf("%.2f", currentTPS)})
+		table.Append([]string{"🚀 整体TPS", fmt.Sprintf("%.2f", currentTPS)})
 	}
 
 	table.Render()
@@ -329,7 +331,7 @@ type Result struct {
 		MinTTFT time.Duration
 		MaxTTFT time.Duration
 		
-		AvgTokenCount int // Token 统计指标
+		AvgTokenCount int // Completion Token 统计指标 (输出token)
 		MinTokenCount int
 		MaxTokenCount int
 		
@@ -381,14 +383,22 @@ func (r *Result) PrintResult() {
 
 
 	// 添加服务性能指标
-	table.Append([]string{"🔤 Token 数量",
+	table.Append([]string{"🔤 输出Token数量",
 		fmt.Sprintf("%d", r.ContentMetrics.MinTokenCount),
 		fmt.Sprintf("%d", r.ContentMetrics.AvgTokenCount),
 		fmt.Sprintf("%d", r.ContentMetrics.MaxTokenCount), "个"})
-	table.Append([]string{"🚀 TTFT (首个Token)",
-		FormatDuration(r.ContentMetrics.MinTTFT),
-		FormatDuration(r.ContentMetrics.AvgTTFT),
-		FormatDuration(r.ContentMetrics.MaxTTFT), ""})
+	
+	// 在非流式模式下，TTFT显示为"-"避免歧义
+	if r.IsStream {
+		table.Append([]string{"🚀 TTFT (首个Token)",
+			FormatDuration(r.ContentMetrics.MinTTFT),
+			FormatDuration(r.ContentMetrics.AvgTTFT),
+			FormatDuration(r.ContentMetrics.MaxTTFT), ""})
+	} else {
+		table.Append([]string{"🚀 TTFT (首个Token)",
+			"-", "-", "-", "非流式模式"})
+	}
+	
 	table.Append([]string{"🚀 TPS(每秒 Token)",
 		FormatFloat(r.ContentMetrics.MinTPS, 2),
 		FormatFloat(r.ContentMetrics.AvgTPS, 2),

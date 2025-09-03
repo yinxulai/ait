@@ -37,7 +37,7 @@ type TestStats struct {
 	TLSHandshakeTimes []time.Duration              // 所有TLS握手时间
 	
 	// 内容指标
-	TokenCounts     []int                          // 所有 token 数量
+	TokenCounts     []int                          // 所有 completion token 数量 (用于TPS计算)
 	
 	// 错误信息
 	ErrorMessages   []string                       // 所有错误信息
@@ -85,7 +85,7 @@ type Result struct {
 		MinTTFT time.Duration
 		MaxTTFT time.Duration
 		
-		AvgTokenCount int // Token 统计指标
+		AvgTokenCount int // Completion Token 统计指标 (输出token)
 		MinTokenCount int
 		MaxTokenCount int
 		
@@ -233,7 +233,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 			dnsTimes = append(dnsTimes, metrics.DNSTime)
 			connectTimes = append(connectTimes, metrics.ConnectTime)
 			tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
-			tokenCounts = append(tokenCounts, metrics.TokenCount)
+			tokenCounts = append(tokenCounts, metrics.CompletionTokens)
 			ttftsMutex.Unlock()
 			
 			atomic.AddInt64(&completed, 1)
@@ -280,7 +280,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 
 	validResults := make([]*client.ResponseMetrics, 0)
 	for _, result := range results {
-		if result != nil {
+		if result != nil && result.CompletionTokens > 0 {
 			validResults = append(validResults, result)
 		}
 	}
@@ -295,8 +295,8 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	maxTTFT := firstResult.TimeToFirstToken
 	minTotalTime := firstResult.TotalTime
 	maxTotalTime := firstResult.TotalTime
-	minTokens := firstResult.TokenCount
-	maxTokens := firstResult.TokenCount
+	minTokens := firstResult.CompletionTokens
+	maxTokens := firstResult.CompletionTokens
 	
 	minDNSTime := firstResult.DNSTime
 	maxDNSTime := firstResult.DNSTime
@@ -306,7 +306,10 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	maxTLSTime := firstResult.TLSHandshakeTime
 
 	// 计算第一个结果的 TPS
-	firstTPS := float64(firstResult.TokenCount) / firstResult.TotalTime.Seconds()
+	var firstTPS float64
+	if firstResult.TotalTime.Seconds() > 0 {
+		firstTPS = float64(firstResult.CompletionTokens) / firstResult.TotalTime.Seconds()
+	}
 	minTPS := firstTPS
 	maxTPS := firstTPS
 
@@ -369,16 +372,19 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		}
 
 		// Token 统计
-		sumTokens += result.TokenCount
-		if result.TokenCount < minTokens {
-			minTokens = result.TokenCount
+		sumTokens += result.CompletionTokens
+		if result.CompletionTokens < minTokens {
+			minTokens = result.CompletionTokens
 		}
-		if result.TokenCount > maxTokens {
-			maxTokens = result.TokenCount
+		if result.CompletionTokens > maxTokens {
+			maxTokens = result.CompletionTokens
 		}
 
 		// TPS 统计
-		tps := float64(result.TokenCount) / result.TotalTime.Seconds()
+		var tps float64
+		if result.TotalTime.Seconds() > 0 {
+			tps = float64(result.CompletionTokens) / result.TotalTime.Seconds()
+		}
 		if tps < minTPS {
 			minTPS = tps
 		}
@@ -409,13 +415,29 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		return result
 	}
 	
+	
+	// 计算各项指标的平均值
+	// 注意：时间指标可以直接用总和除以数量来计算平均值，因为时间是可加性的
 	avgTTFT := sumTTFT / time.Duration(validCount)
 	avgTotalTime := sumTotalTime / time.Duration(validCount)
 	avgDNSTime := sumDNSTime / time.Duration(validCount)
 	avgConnectTime := sumConnectTime / time.Duration(validCount)
 	avgTLSTime := sumTLSTime / time.Duration(validCount)
+	
+	// Token数量也可以直接用总和除以数量，因为数量是可加性的
 	avgTokens := sumTokens / validCount
-	avgTPS := float64(sumTokens) / sumTotalTime.Seconds()
+	
+	// TPS是比率指标，需要特殊处理：
+	// 错误方式：float64(sumTokens) / sumTotalTime.Seconds() - 这相当于计算总体批处理的TPS
+	// 正确方式：先计算每个请求的TPS，然后求算术平均值 - 这反映单个请求的平均性能
+	var sumTPS float64
+	for _, result := range validResults {
+		if result.TotalTime.Seconds() > 0 {
+			tps := float64(result.CompletionTokens) / result.TotalTime.Seconds()
+			sumTPS += tps
+		}
+	}
+	avgTPS := sumTPS / float64(validCount)
 
 	result := &Result{
 		TotalRequests: r.config.Count,

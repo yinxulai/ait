@@ -49,9 +49,9 @@ type ReportData struct {
 		AvgTTFT       string  `json:"avg_ttft"`
 		MinTTFT       string  `json:"min_ttft"`
 		MaxTTFT       string  `json:"max_ttft"`
-		AvgTokenCount int     `json:"avg_token_count"`
-		MinTokenCount int     `json:"min_token_count"`
-		MaxTokenCount int     `json:"max_token_count"`
+		AvgTokenCount int     `json:"avg_completion_tokens"`
+		MinTokenCount int     `json:"min_completion_tokens"`
+		MaxTokenCount int     `json:"max_completion_tokens"`
 		AvgTPS        float64 `json:"avg_tps"`
 		MinTPS        float64 `json:"min_tps"`
 		MaxTPS        float64 `json:"max_tps"`
@@ -66,9 +66,9 @@ type ReportData struct {
 
 // GenerateReport 生成报告文件
 func GenerateReport(result *Result, config TestConfig) error {
-	// 生成文件名，格式：ait-report-{yy/mm/dd/hh/mm/ss}
+	// 生成文件名，格式：ait-report-{yymmdd-hhmmss}
 	now := time.Now()
-	filename := fmt.Sprintf("ait-report-%s.json", now.Format("06/01/02/15/04/05"))
+	filename := fmt.Sprintf("ait-report-%s.json", now.Format("20060102-150405"))
 	
 	// 获取当前工作目录
 	pwd, err := os.Getwd()
@@ -109,9 +109,16 @@ func GenerateReport(result *Result, config TestConfig) error {
 	report.NetworkMetrics.MaxTLSHandshakeTime = result.NetworkMetrics.MaxTLSHandshakeTime.String()
 
 	// 填充服务性能指标
-	report.ContentMetrics.AvgTTFT = result.ContentMetrics.AvgTTFT.String()
-	report.ContentMetrics.MinTTFT = result.ContentMetrics.MinTTFT.String()
-	report.ContentMetrics.MaxTTFT = result.ContentMetrics.MaxTTFT.String()
+	// 在非流式模式下，TTFT显示为"-"避免歧义
+	if result.IsStream {
+		report.ContentMetrics.AvgTTFT = result.ContentMetrics.AvgTTFT.String()
+		report.ContentMetrics.MinTTFT = result.ContentMetrics.MinTTFT.String()
+		report.ContentMetrics.MaxTTFT = result.ContentMetrics.MaxTTFT.String()
+	} else {
+		report.ContentMetrics.AvgTTFT = "-"
+		report.ContentMetrics.MinTTFT = "-"
+		report.ContentMetrics.MaxTTFT = "-"
+	}
 	report.ContentMetrics.AvgTokenCount = result.ContentMetrics.AvgTokenCount
 	report.ContentMetrics.MinTokenCount = result.ContentMetrics.MinTokenCount
 	report.ContentMetrics.MaxTokenCount = result.ContentMetrics.MaxTokenCount

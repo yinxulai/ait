@@ -18,7 +18,7 @@ type ResponseMetrics struct {
 	TargetIP         string        // 目标服务器IP地址
 	
 	// 内容指标
-	TokenCount       int           // 返回的 token 总数
+	CompletionTokens int           // 输出 token 数量 (用于TPS计算)
 	
 	// 错误信息
 	ErrorMessage     string        // 错误信息（如果有）
