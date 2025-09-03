@@ -32,6 +32,7 @@ type TestConfig struct {
 	BaseUrl     string
 	ApiKey      string
 	Model       string
+	Prompt      string
 	Concurrency int
 	Count       int
 	Stream      bool
@@ -145,10 +146,10 @@ func (td *TestDisplayer) printConfigTable() {
 		streamMode = "✅ 开启"
 	}
 
-	// 使用 tablewriter 创建配置表格
+	// 使用 tablewriter 创建配置表格，解决 EastAsian 字符宽度问题
 	fmt.Println("📋 测试配置：")
 
-	table := tablewriter.NewWriter(os.Stdout)
+	table := tablewriter.NewTable(os.Stdout, tablewriter.WithEastAsian(false))
 	table.Header("配置项", "值")
 
 	// 添加数据行
@@ -156,6 +157,7 @@ func (td *TestDisplayer) printConfigTable() {
 	table.Append([]string{"BaseURL", td.truncateString(td.config.BaseUrl, 40)})
 	table.Append([]string{"ApiKey", apiKeyDisplay})
 	table.Append([]string{"Model", td.config.Model})
+	table.Append([]string{"Prompt", td.truncateString(td.config.Prompt, 40)})
 	table.Append([]string{"并发数", fmt.Sprintf("%d", td.config.Concurrency)})
 	table.Append([]string{"总请求数", fmt.Sprintf("%d", td.config.Count)})
 	table.Append([]string{"流模式", streamMode})
@@ -348,7 +350,8 @@ func (r *Result) PrintResult() {
 	titleColor := color.New(color.FgCyan, color.Bold)
 	titleColor.Println("\n📊 测试结果")
 
-	table := tablewriter.NewWriter(os.Stdout)
+	// 使用 tablewriter 新版本 API，解决 EastAsian 字符宽度问题
+	table := tablewriter.NewTable(os.Stdout, tablewriter.WithEastAsian(false))
 	table.Header("指标", "最小值", "平均值", "最大值", "单位")
 
 	table.Append([]string{"🎯 目标服务器 IP", "-", r.NetworkMetrics.TargetIP, "-", ""})

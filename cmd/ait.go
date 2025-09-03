@@ -115,6 +115,7 @@ func main() {
 		BaseUrl:     config.BaseUrl,
 		ApiKey:      config.ApiKey,
 		Model:       config.Model,
+		Prompt:      config.Prompt,
 		Concurrency: config.Concurrency,
 		Count:       config.Count,
 		Stream:      config.Stream,
