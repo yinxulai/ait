@@ -11,6 +11,8 @@
 - 🎯 **自动评级**: 基于响应时间的性能评级
 - ⚡ **并发测试**: 支持自定义并发数压力测试
 - 📈 **详细统计**: TTFT、TPS、最小/最大/平均响应时间
+- 📄 **报告生成**: 支持生成 JSON 格式的详细测试报告
+- 🌐 **网络指标**: 包含 DNS、连接、TLS 握手等网络性能指标
 
 ## 🛠️ 安装和使用
 
@@ -74,6 +76,7 @@ go build -o bin/ait ./cmd/
   --model=gpt-3.5-turbo 
   --concurrency=3 
   --count=10
+  --report
 ```
 
 ### Anthropic 协议测试
@@ -86,6 +89,7 @@ go build -o bin/ait ./cmd/
   --model=claude-3-haiku-20240307 
   --concurrency=2 
   --count=5
+  --report
 ```
 
 ### 本地模型测试（如 Ollama）
@@ -100,6 +104,30 @@ go build -o bin/ait ./cmd/
   --count=3
 ```
 
+## 🔧 环境变量支持
+
+为了简化使用，AIT 支持通过环境变量自动配置 API 密钥和服务地址：
+
+### OpenAI 协议
+
+```bash
+export OPENAI_API_KEY="sk-your-api-key"
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+
+# 简化使用，provider 会自动推断为 openai
+./bin/ait --model=gpt-3.5-turbo --count=10 --report
+```
+
+### Anthropic 协议
+
+```bash
+export ANTHROPIC_API_KEY="sk-ant-your-api-key"
+export ANTHROPIC_BASE_URL="https://api.anthropic.com"
+
+# 简化使用，provider 会自动推断为 anthropic
+./bin/ait --model=claude-3-haiku-20240307 --count=5 --report
+```
+
 ## 📋 命令行参数
 
 | 参数 | 描述 | 默认值 | 必填 |
@@ -111,18 +139,32 @@ go build -o bin/ait ./cmd/
 | `--concurrency` | 并发数 | 1 | ❌ |
 | `--count` | 请求总数 | 10 | ❌ |
 | `--prompt` | 测试提示语 | "你好，介绍一下你自己。" | ❌ |
+| `--report` | 是否生成 JSON 报告文件 | false | ❌ |
 
 ## 📊 输出指标说明
+
+### 终端输出指标
 
 - **TTFT (Time To First Token)**: 首字节时间，衡量模型开始响应的速度
 - **TPS (Tokens Per Second)**: 每秒处理的请求数，衡量系统吞吐量
 - **平均/最小/最大响应时间**: 请求的响应时间统计
+- **网络性能指标**: DNS 解析、TCP 连接、TLS 握手时间
 - **性能评级**: 基于平均响应时间的自动评级
   - 优秀: < 100ms
   - 良好: 100-500ms  
   - 一般: 500ms-1s
   - 较慢: 1-3s
   - 很慢: > 3s
+
+### JSON 报告文件
+
+当使用 `--report` 参数时，将在当前目录生成 JSON 格式的详细报告文件，文件名格式为 `ait-report-YY-MM-DD-HH-MM-SS.json`，包含以下数据：
+
+- **metadata**: 测试元数据（时间戳、配置信息等）
+- **time_metrics**: 时间性能指标（平均、最小、最大响应时间）
+- **network_metrics**: 网络性能指标（DNS、连接、TLS 时间，目标 IP）
+- **content_metrics**: 服务性能指标（TTFT、Token 统计、TPS 等）
+- **reliability_metrics**: 可靠性指标（成功率、错误率）
 
 ## 🎯 使用场景
 
@@ -131,6 +173,8 @@ go build -o bin/ait ./cmd/
 - **API 接口验证**: 验证 OpenAI 兼容接口的正确性
 - **性能监控**: 定期监控模型服务的性能表现
 - **容量规划**: 为生产环境部署提供性能数据支持
+- **自动化测试**: 结合 CI/CD 流程进行自动化性能测试
+- **性能报告**: 生成详细的 JSON 报告用于数据分析和存档
 
 ## 🔧 开发和贡献
 
