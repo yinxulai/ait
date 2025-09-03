@@ -191,6 +191,9 @@ func main() {
 	displayResult.ContentMetrics.AvgTokenCount = result.ContentMetrics.AvgTokenCount
 	displayResult.ContentMetrics.MinTokenCount = result.ContentMetrics.MinTokenCount
 	displayResult.ContentMetrics.MaxTokenCount = result.ContentMetrics.MaxTokenCount
+	displayResult.ContentMetrics.AvgTPS = result.ContentMetrics.AvgTPS
+	displayResult.ContentMetrics.MinTPS = result.ContentMetrics.MinTPS
+	displayResult.ContentMetrics.MaxTPS = result.ContentMetrics.MaxTPS
 
 	// 可靠性指标
 	displayResult.ReliabilityMetrics.ErrorRate = result.ReliabilityMetrics.ErrorRate
