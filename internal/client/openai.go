@@ -287,8 +287,8 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 	}
 }
 
-// GetProvider 获取协议类型
-func (c *OpenAIClient) GetProvider() string {
+// GetProtocol 获取协议类型
+func (c *OpenAIClient) GetProtocol() string {
 	return c.Provider
 }
 

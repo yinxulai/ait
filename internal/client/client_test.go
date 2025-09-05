@@ -60,8 +60,8 @@ func TestNewClient(t *testing.T) {
 				return
 			}
 
-			if client.GetProvider() != tt.provider {
-				t.Errorf("NewClient().GetProvider() = %v, want %v", client.GetProvider(), tt.provider)
+			if client.GetProtocol() != tt.provider {
+				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.provider)
 			}
 
 			if client.GetModel() != tt.model {

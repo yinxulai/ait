@@ -244,8 +244,8 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	}
 }
 
-// GetProvider 获取协议类型
-func (c *AnthropicClient) GetProvider() string {
+// GetProtocol 获取协议类型
+func (c *AnthropicClient) GetProtocol() string {
 	return c.Provider
 }
 

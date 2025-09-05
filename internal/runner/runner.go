@@ -6,11 +6,12 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
+	"github.com/yinxulai/ait/internal/report"
 )
 
 // Config 性能测试配置
 type Config struct {
-	Provider    string
+	Protocol    string
 	BaseUrl     string
 	ApiKey      string
 	Model       string
@@ -47,59 +48,8 @@ type TestStats struct {
 	ElapsedTime     time.Duration                  // 已经过时间
 }
 
-// Result 性能测试结果
-type Result struct {
-	// 基础测试信息
-	TotalRequests int
-	Concurrency   int
-	IsStream      bool
-	TotalTime     time.Duration
-
-	// 时间性能指标
-	TimeMetrics struct {
-		AvgTotalTime time.Duration // 总耗时指标
-		MinTotalTime time.Duration
-		MaxTotalTime time.Duration
-	}
-
-	// 网络性能指标
-	NetworkMetrics struct {
-		AvgDNSTime time.Duration // DNS解析时间指标
-		MinDNSTime time.Duration
-		MaxDNSTime time.Duration
-		
-		AvgConnectTime time.Duration // TCP连接时间指标
-		MinConnectTime time.Duration
-		MaxConnectTime time.Duration
-		
-		AvgTLSHandshakeTime time.Duration // TLS握手时间指标
-		MinTLSHandshakeTime time.Duration
-		MaxTLSHandshakeTime time.Duration
-		
-		TargetIP string // 目标服务器IP地址
-	}
-
-	// 服务性能指标
-	ContentMetrics struct {
-		AvgTTFT time.Duration // TTFT (Time to First Token) 指标
-		MinTTFT time.Duration
-		MaxTTFT time.Duration
-		
-		AvgTokenCount int // Completion Token 统计指标 (输出token)
-		MinTokenCount int
-		MaxTokenCount int
-		
-		AvgTPS float64 // TPS (Tokens Per Second) 指标
-		MinTPS float64
-		MaxTPS float64
-	}
-
-	// 可靠性指标
-	ReliabilityMetrics struct {
-		ErrorRate    float64 // 错误率百分比
-		SuccessRate  float64 // 成功率百分比
-	}
-}
+// Result 性能测试结果，使用统一的TestResult结构
+type Result = report.TestResult
 
 // Runner 性能测试执行器
 type Runner struct {
@@ -109,7 +59,7 @@ type Runner struct {
 
 // NewRunner 创建新的性能测试执行器
 func NewRunner(config Config) (*Runner, error) {
-	client, err := client.NewClient(config.Provider, config.BaseUrl, config.ApiKey, config.Model)
+	client, err := client.NewClient(config.Protocol, config.BaseUrl, config.ApiKey, config.Model)
 	if err != nil {
 		return nil, err
 	}

@@ -8,7 +8,7 @@ import (
 func TestReporter_Generate(t *testing.T) {
 	// 创建测试配置
 	config := TestConfig{
-		Provider:    "openai",
+		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com/v1",
 		ApiKey:      "test-api-key",
 		Model:       "gpt-3.5-turbo",

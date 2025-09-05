@@ -1,16 +1,13 @@
 package report
 
 import (
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
 	"time"
 )
 
 // TestConfig 测试配置信息
 type TestConfig struct {
-	Provider    string
+	Protocol    string
 	BaseUrl     string
 	ApiKey      string
 	Model       string
@@ -20,7 +17,8 @@ type TestConfig struct {
 	Prompt      string
 }
 
-// TestResult 测试结果数据
+// TestResult 统一的测试结果数据结构
+// 这个结构将被display和report模块共同使用，避免重复定义
 type TestResult struct {
 	// 基础测试信息
 	TotalRequests int
@@ -69,12 +67,18 @@ type TestResult struct {
 	}
 }
 
-// ReportData JSON 报告数据结构
+// ReportData 报告数据结构，包含配置和结果
 type ReportData struct {
+	Config TestConfig
+	Result TestResult
+}
+
+// StandardReportData 标准报告数据结构（基于 JSON 格式）
+type StandardReportData struct {
 	// 测试元数据
 	Metadata struct {
 		Timestamp    string `json:"timestamp"`
-		Provider     string `json:"provider"`
+		Protocol     string `json:"protocol"`
 		Model        string `json:"model"`
 		BaseUrl      string `json:"base_url"`
 		Concurrency  int    `json:"concurrency"`
@@ -125,13 +129,156 @@ type ReportData struct {
 	} `json:"reliability_metrics"`
 }
 
-// Reporter 报告生成器
+// ReportRenderer 报告渲染器接口
+type ReportRenderer interface {
+	Render(data []StandardReportData) (string, error)
+	GetFormat() string
+}
+
+// ReportManager 统一的报告管理器
+// 支持处理任意数量的模型数据，不再区分单模型和多模型
+type ReportManager struct {
+	renderers map[string]ReportRenderer
+}
+
+// NewReportManager 创建新的报告管理器
+func NewReportManager() *ReportManager {
+	manager := &ReportManager{
+		renderers: make(map[string]ReportRenderer),
+	}
+	
+	// 注册默认的渲染器
+	manager.RegisterRenderer("json", &JSONRenderer{})
+	manager.RegisterRenderer("csv", &CSVRenderer{})
+	
+	return manager
+}
+
+// RegisterRenderer 注册渲染器
+func (rm *ReportManager) RegisterRenderer(format string, renderer ReportRenderer) {
+	rm.renderers[format] = renderer
+}
+
+// GenerateReports 生成报告文件
+// data 参数可以包含一个或多个模型的数据
+func (rm *ReportManager) GenerateReports(data []StandardReportData, formats []string) ([]string, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("no data to generate reports")
+	}
+
+	var filePaths []string
+
+	for _, format := range formats {
+		renderer, exists := rm.renderers[format]
+		if !exists {
+			return nil, fmt.Errorf("unsupported format: %s", format)
+		}
+
+		filePath, err := renderer.Render(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to render %s: %v", format, err)
+		}
+
+		filePaths = append(filePaths, filePath)
+	}
+
+	return filePaths, nil
+}
+
+// convertToStandardData 将 ReportData 转换为 StandardReportData
+func convertToStandardData(data *ReportData) StandardReportData {
+	var standardData StandardReportData
+	
+	// 设置元数据
+	standardData.Metadata.Timestamp = time.Now().Format(time.RFC3339)
+	standardData.Metadata.Protocol = data.Config.Protocol
+	standardData.Metadata.Model = data.Config.Model
+	standardData.Metadata.BaseUrl = data.Config.BaseUrl
+	standardData.Metadata.Concurrency = data.Config.Concurrency
+	standardData.Metadata.TotalRequest = data.Result.TotalRequests
+	standardData.Metadata.IsStream = data.Config.Stream
+	standardData.Metadata.Prompt = data.Config.Prompt
+	standardData.Metadata.TotalTime = data.Result.TotalTime.String()
+
+	// 时间性能指标
+	standardData.TimeMetrics.AvgTotalTime = data.Result.TimeMetrics.AvgTotalTime.String()
+	standardData.TimeMetrics.MinTotalTime = data.Result.TimeMetrics.MinTotalTime.String()
+	standardData.TimeMetrics.MaxTotalTime = data.Result.TimeMetrics.MaxTotalTime.String()
+
+	// 网络性能指标
+	standardData.NetworkMetrics.TargetIP = data.Result.NetworkMetrics.TargetIP
+	standardData.NetworkMetrics.AvgDNSTime = data.Result.NetworkMetrics.AvgDNSTime.String()
+	standardData.NetworkMetrics.MinDNSTime = data.Result.NetworkMetrics.MinDNSTime.String()
+	standardData.NetworkMetrics.MaxDNSTime = data.Result.NetworkMetrics.MaxDNSTime.String()
+	standardData.NetworkMetrics.AvgConnectTime = data.Result.NetworkMetrics.AvgConnectTime.String()
+	standardData.NetworkMetrics.MinConnectTime = data.Result.NetworkMetrics.MinConnectTime.String()
+	standardData.NetworkMetrics.MaxConnectTime = data.Result.NetworkMetrics.MaxConnectTime.String()
+	standardData.NetworkMetrics.AvgTLSHandshakeTime = data.Result.NetworkMetrics.AvgTLSHandshakeTime.String()
+	standardData.NetworkMetrics.MinTLSHandshakeTime = data.Result.NetworkMetrics.MinTLSHandshakeTime.String()
+	standardData.NetworkMetrics.MaxTLSHandshakeTime = data.Result.NetworkMetrics.MaxTLSHandshakeTime.String()
+
+	// 服务性能指标
+	standardData.ContentMetrics.AvgTTFT = data.Result.ContentMetrics.AvgTTFT.String()
+	standardData.ContentMetrics.MinTTFT = data.Result.ContentMetrics.MinTTFT.String()
+	standardData.ContentMetrics.MaxTTFT = data.Result.ContentMetrics.MaxTTFT.String()
+	standardData.ContentMetrics.AvgTokenCount = data.Result.ContentMetrics.AvgTokenCount
+	standardData.ContentMetrics.MinTokenCount = data.Result.ContentMetrics.MinTokenCount
+	standardData.ContentMetrics.MaxTokenCount = data.Result.ContentMetrics.MaxTokenCount
+	standardData.ContentMetrics.AvgTPS = data.Result.ContentMetrics.AvgTPS
+	standardData.ContentMetrics.MinTPS = data.Result.ContentMetrics.MinTPS
+	standardData.ContentMetrics.MaxTPS = data.Result.ContentMetrics.MaxTPS
+
+	// 可靠性指标
+	standardData.ReliabilityMetrics.ErrorRate = data.Result.ReliabilityMetrics.ErrorRate
+	standardData.ReliabilityMetrics.SuccessRate = data.Result.ReliabilityMetrics.SuccessRate
+
+	return standardData
+}
+
+// GenerateReport 生成报告的便捷函数
+// 自动处理单个或多个模型的数据
+func GenerateReport(reportDataList []*ReportData, formats []string) ([]string, error) {
+	if len(reportDataList) == 0 {
+		return nil, fmt.Errorf("no report data provided")
+	}
+
+	// 转换为标准数据格式
+	var standardDataList []StandardReportData
+	for _, data := range reportDataList {
+		standardData := convertToStandardData(data)
+		standardDataList = append(standardDataList, standardData)
+	}
+
+	// 创建报告管理器并生成报告
+	manager := NewReportManager()
+	filePaths, err := manager.GenerateReports(standardDataList, formats)
+	if err != nil {
+		return nil, err
+	}
+
+	// 打印生成的报告信息
+	if len(filePaths) > 0 {
+		if len(reportDataList) == 1 {
+			fmt.Printf("\n📄 报告已生成 (模型: %s):\n", reportDataList[0].Config.Model)
+		} else {
+			fmt.Printf("\n📊 多模型比较报告已生成 (%d个模型):\n", len(reportDataList))
+		}
+		
+		for _, path := range filePaths {
+			fmt.Printf("  %s\n", path)
+		}
+	}
+
+	return filePaths, nil
+}
+
+// Reporter 向后兼容的报告生成器
 type Reporter struct {
 	config TestConfig
 	result TestResult
 }
 
-// NewReporter 创建新的报告生成器
+// NewReporter 创建新的报告生成器（向后兼容）
 func NewReporter(config TestConfig, result TestResult) *Reporter {
 	return &Reporter{
 		config: config,
@@ -139,85 +286,13 @@ func NewReporter(config TestConfig, result TestResult) *Reporter {
 	}
 }
 
-// Generate 生成报告文件
+// Generate 生成报告文件（向后兼容）
 func (r *Reporter) Generate() error {
-	// 生成文件名，格式：ait-report-{yy-mm-dd-hh-mm-ss}
-	now := time.Now()
-	filename := fmt.Sprintf("ait-report-%s.json", now.Format("06-01-02-15-04-05"))
-	
-	// 获取当前工作目录
-	pwd, err := os.Getwd()
-	if err != nil {
-		return fmt.Errorf("获取当前目录失败: %v", err)
+	data := &ReportData{
+		Config: r.config,
+		Result: r.result,
 	}
 	
-	filePath := filepath.Join(pwd, filename)
-
-	// 构建报告数据
-	reportData := r.buildReportData(now)
-
-	// 序列化为 JSON
-	jsonData, err := json.MarshalIndent(reportData, "", "  ")
-	if err != nil {
-		return fmt.Errorf("JSON 序列化失败: %v", err)
-	}
-
-	// 写入文件
-	err = os.WriteFile(filePath, jsonData, 0644)
-	if err != nil {
-		return fmt.Errorf("写入报告文件失败: %v", err)
-	}
-
-	fmt.Printf("\n📄 报告已生成: %s\n", filePath)
-	return nil
-}
-
-// buildReportData 构建报告数据
-func (r *Reporter) buildReportData(timestamp time.Time) ReportData {
-	report := ReportData{}
-	
-	// 填充元数据
-	report.Metadata.Timestamp = timestamp.Format("2006-01-02 15:04:05")
-	report.Metadata.Provider = r.config.Provider
-	report.Metadata.Model = r.config.Model
-	report.Metadata.BaseUrl = r.config.BaseUrl
-	report.Metadata.Concurrency = r.result.Concurrency
-	report.Metadata.TotalRequest = r.result.TotalRequests
-	report.Metadata.IsStream = r.result.IsStream
-	report.Metadata.Prompt = r.config.Prompt
-	report.Metadata.TotalTime = r.result.TotalTime.String()
-
-	// 填充时间性能指标
-	report.TimeMetrics.AvgTotalTime = r.result.TimeMetrics.AvgTotalTime.String()
-	report.TimeMetrics.MinTotalTime = r.result.TimeMetrics.MinTotalTime.String()
-	report.TimeMetrics.MaxTotalTime = r.result.TimeMetrics.MaxTotalTime.String()
-
-	// 填充网络性能指标
-	report.NetworkMetrics.TargetIP = r.result.NetworkMetrics.TargetIP
-	report.NetworkMetrics.AvgDNSTime = r.result.NetworkMetrics.AvgDNSTime.String()
-	report.NetworkMetrics.MinDNSTime = r.result.NetworkMetrics.MinDNSTime.String()
-	report.NetworkMetrics.MaxDNSTime = r.result.NetworkMetrics.MaxDNSTime.String()
-	report.NetworkMetrics.AvgConnectTime = r.result.NetworkMetrics.AvgConnectTime.String()
-	report.NetworkMetrics.MinConnectTime = r.result.NetworkMetrics.MinConnectTime.String()
-	report.NetworkMetrics.MaxConnectTime = r.result.NetworkMetrics.MaxConnectTime.String()
-	report.NetworkMetrics.AvgTLSHandshakeTime = r.result.NetworkMetrics.AvgTLSHandshakeTime.String()
-	report.NetworkMetrics.MinTLSHandshakeTime = r.result.NetworkMetrics.MinTLSHandshakeTime.String()
-	report.NetworkMetrics.MaxTLSHandshakeTime = r.result.NetworkMetrics.MaxTLSHandshakeTime.String()
-
-	// 填充服务性能指标
-	report.ContentMetrics.AvgTTFT = r.result.ContentMetrics.AvgTTFT.String()
-	report.ContentMetrics.MinTTFT = r.result.ContentMetrics.MinTTFT.String()
-	report.ContentMetrics.MaxTTFT = r.result.ContentMetrics.MaxTTFT.String()
-	report.ContentMetrics.AvgTokenCount = r.result.ContentMetrics.AvgTokenCount
-	report.ContentMetrics.MinTokenCount = r.result.ContentMetrics.MinTokenCount
-	report.ContentMetrics.MaxTokenCount = r.result.ContentMetrics.MaxTokenCount
-	report.ContentMetrics.AvgTPS = r.result.ContentMetrics.AvgTPS
-	report.ContentMetrics.MinTPS = r.result.ContentMetrics.MinTPS
-	report.ContentMetrics.MaxTPS = r.result.ContentMetrics.MaxTPS
-
-	// 填充可靠性指标
-	report.ReliabilityMetrics.ErrorRate = r.result.ReliabilityMetrics.ErrorRate
-	report.ReliabilityMetrics.SuccessRate = r.result.ReliabilityMetrics.SuccessRate
-
-	return report
+	_, err := GenerateReport([]*ReportData{data}, []string{"json", "csv"})
+	return err
 }

@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-func TestDetectProviderFromEnv(t *testing.T) {
+func TestDetectProtocolFromEnv(t *testing.T) {
 	// 保存原始环境变量
 	originalOpenAIKey := os.Getenv("OPENAI_API_KEY")
 	originalOpenAIURL := os.Getenv("OPENAI_BASE_URL")
@@ -27,7 +27,7 @@ func TestDetectProviderFromEnv(t *testing.T) {
 		openaiURL          string
 		anthropicKey       string
 		anthropicURL       string
-		expectedProvider   string
+		expectedProtocol   string
 	}{
 		{
 			name:             "OpenAI API key set",
@@ -35,7 +35,7 @@ func TestDetectProviderFromEnv(t *testing.T) {
 			openaiURL:        "",
 			anthropicKey:     "",
 			anthropicURL:     "",
-			expectedProvider: "openai",
+			expectedProtocol: "openai",
 		},
 		{
 			name:             "OpenAI base URL set",
@@ -43,7 +43,7 @@ func TestDetectProviderFromEnv(t *testing.T) {
 			openaiURL:        "https://api.openai.com",
 			anthropicKey:     "",
 			anthropicURL:     "",
-			expectedProvider: "openai",
+			expectedProtocol: "openai",
 		},
 		{
 			name:             "Anthropic API key set",
@@ -51,7 +51,7 @@ func TestDetectProviderFromEnv(t *testing.T) {
 			openaiURL:        "",
 			anthropicKey:     "test-anthropic-key",
 			anthropicURL:     "",
-			expectedProvider: "anthropic",
+			expectedProtocol: "anthropic",
 		},
 		{
 			name:             "Anthropic base URL set",
@@ -59,7 +59,7 @@ func TestDetectProviderFromEnv(t *testing.T) {
 			openaiURL:        "",
 			anthropicKey:     "",
 			anthropicURL:     "https://api.anthropic.com",
-			expectedProvider: "anthropic",
+			expectedProtocol: "anthropic",
 		},
 		{
 			name:             "Both providers set - OpenAI takes priority",
@@ -67,7 +67,7 @@ func TestDetectProviderFromEnv(t *testing.T) {
 			openaiURL:        "",
 			anthropicKey:     "test-anthropic-key",
 			anthropicURL:     "",
-			expectedProvider: "openai",
+			expectedProtocol: "openai",
 		},
 		{
 			name:             "No environment variables set - defaults to openai",
@@ -75,13 +75,13 @@ func TestDetectProviderFromEnv(t *testing.T) {
 			openaiURL:        "",
 			anthropicKey:     "",
 			anthropicURL:     "",
-			expectedProvider: "openai",
+			expectedProtocol: "openai",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// 清除所有相关环境变量
+			// 清理所有相关环境变量
 			os.Unsetenv("OPENAI_API_KEY")
 			os.Unsetenv("OPENAI_BASE_URL")
 			os.Unsetenv("ANTHROPIC_API_KEY")
@@ -101,15 +101,15 @@ func TestDetectProviderFromEnv(t *testing.T) {
 				os.Setenv("ANTHROPIC_BASE_URL", tt.anthropicURL)
 			}
 
-			result := detectProviderFromEnv()
-			if result != tt.expectedProvider {
-				t.Errorf("detectProviderFromEnv() = %v, want %v", result, tt.expectedProvider)
+			got := detectProviderFromEnv()
+			if got != tt.expectedProtocol {
+				t.Errorf("detectProviderFromEnv() = %v, want %v", got, tt.expectedProtocol)
 			}
 		})
 	}
 }
 
-func TestLoadEnvForProvider(t *testing.T) {
+func TestLoadEnvForProtocol(t *testing.T) {
 	// 保存原始环境变量
 	originalOpenAIKey := os.Getenv("OPENAI_API_KEY")
 	originalOpenAIURL := os.Getenv("OPENAI_BASE_URL")
@@ -126,14 +126,14 @@ func TestLoadEnvForProvider(t *testing.T) {
 
 	tests := []struct {
 		name         string
-		provider     string
+		protocol     string
 		envVars      map[string]string
 		expectedURL  string
 		expectedKey  string
 	}{
 		{
-			name:     "OpenAI provider with environment variables",
-			provider: "openai",
+			name:     "OpenAI protocol with environment variables",
+			protocol: "openai",
 			envVars: map[string]string{
 				"OPENAI_BASE_URL": "https://api.openai.com",
 				"OPENAI_API_KEY":  "test-openai-key",
@@ -142,8 +142,8 @@ func TestLoadEnvForProvider(t *testing.T) {
 			expectedKey: "test-openai-key",
 		},
 		{
-			name:     "Anthropic provider with environment variables",
-			provider: "anthropic",
+			name:     "Anthropic protocol with environment variables",
+			protocol: "anthropic",
 			envVars: map[string]string{
 				"ANTHROPIC_BASE_URL": "https://api.anthropic.com",
 				"ANTHROPIC_API_KEY":  "test-anthropic-key",
@@ -152,29 +152,29 @@ func TestLoadEnvForProvider(t *testing.T) {
 			expectedKey: "test-anthropic-key",
 		},
 		{
-			name:        "OpenAI provider without environment variables",
-			provider:    "openai",
+			name:        "OpenAI protocol without environment variables",
+			protocol:    "openai",
 			envVars:     map[string]string{},
 			expectedURL: "",
 			expectedKey: "",
 		},
 		{
-			name:        "Anthropic provider without environment variables",
-			provider:    "anthropic",
+			name:        "Anthropic protocol without environment variables",
+			protocol:    "anthropic",
 			envVars:     map[string]string{},
 			expectedURL: "",
 			expectedKey: "",
 		},
 		{
-			name:        "Unknown provider",
-			provider:    "unknown",
+			name:        "Unknown protocol",
+			protocol:    "unknown",
 			envVars:     map[string]string{},
 			expectedURL: "",
 			expectedKey: "",
 		},
 		{
 			name:     "Only OpenAI URL set",
-			provider: "openai",
+			protocol: "openai",
 			envVars: map[string]string{
 				"OPENAI_BASE_URL": "https://custom.openai.com",
 			},
@@ -183,7 +183,7 @@ func TestLoadEnvForProvider(t *testing.T) {
 		},
 		{
 			name:     "Only Anthropic key set",
-			provider: "anthropic",
+			protocol: "anthropic",
 			envVars: map[string]string{
 				"ANTHROPIC_API_KEY": "test-key-only",
 			},
@@ -205,12 +205,12 @@ func TestLoadEnvForProvider(t *testing.T) {
 				os.Setenv(key, value)
 			}
 
-			baseUrl, apiKey := loadEnvForProvider(tt.provider)
+			baseUrl, apiKey := loadEnvForProvider(tt.protocol)
 			if baseUrl != tt.expectedURL {
-				t.Errorf("loadEnvForProvider(%v) baseUrl = %v, want %v", tt.provider, baseUrl, tt.expectedURL)
+				t.Errorf("loadEnvForProtocol(%v) baseUrl = %v, want %v", tt.protocol, baseUrl, tt.expectedURL)
 			}
 			if apiKey != tt.expectedKey {
-				t.Errorf("loadEnvForProvider(%v) apiKey = %v, want %v", tt.provider, apiKey, tt.expectedKey)
+				t.Errorf("loadEnvForProtocol(%v) apiKey = %v, want %v", tt.protocol, apiKey, tt.expectedKey)
 			}
 		})
 	}
@@ -224,7 +224,7 @@ func TestFlagDefinitions(t *testing.T) {
 	baseUrl := flag.String("baseUrl", "", "服务地址")
 	apikey := flag.String("apikey", "", "API 密钥")
 	model := flag.String("model", "", "模型名称")
-	provider := flag.String("provider", "", "协议类型: openai 或 anthropic")
+	provider := flag.String("protocol", "", "协议类型: openai 或 anthropic")
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	count := flag.Int("count", 10, "请求总数")
 	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt")
@@ -233,7 +233,7 @@ func TestFlagDefinitions(t *testing.T) {
 
 	// 测试默认值
 	if *provider != "" {
-		t.Errorf("Expected default provider '', got '%s'", *provider)
+		t.Errorf("Expected default protocol '', got '%s'", *provider)
 	}
 
 	if *concurrency != 3 {

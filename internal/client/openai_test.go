@@ -70,11 +70,11 @@ func TestNewOpenAIClient(t *testing.T) {
 	}
 }
 
-func TestOpenAIClient_GetProvider(t *testing.T) {
+func TestOpenAIClient_GetProtocol(t *testing.T) {
 	client := NewOpenAIClient("https://api.openai.com", "test-key", "gpt-3.5-turbo")
 
-	if got := client.GetProvider(); got != "openai" {
-		t.Errorf("OpenAIClient.GetProvider() = %v, want %v", got, "openai")
+	if got := client.GetProtocol(); got != "openai" {
+		t.Errorf("OpenAIClient.GetProtocol() = %v, want %v", got, "openai")
 	}
 }
 

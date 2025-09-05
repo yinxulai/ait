@@ -13,7 +13,7 @@ type ReportData struct {
 	// 测试元数据
 	Metadata struct {
 		Timestamp    string `json:"timestamp"`
-		Provider     string `json:"provider"`
+		Protocol     string `json:"protocol"`
 		Model        string `json:"model"`
 		BaseUrl      string `json:"base_url"`
 		Concurrency  int    `json:"concurrency"`
@@ -83,7 +83,7 @@ func GenerateReport(result *Result, config TestConfig) error {
 	
 	// 填充元数据
 	report.Metadata.Timestamp = now.Format("2006-01-02 15:04:05")
-	report.Metadata.Provider = config.Provider
+	report.Metadata.Protocol = config.Protocol
 	report.Metadata.Model = config.Model
 	report.Metadata.BaseUrl = config.BaseUrl
 	report.Metadata.Concurrency = result.Concurrency

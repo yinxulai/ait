@@ -14,7 +14,7 @@ func TestNewRunner(t *testing.T) {
 		{
 			name: "valid openai config",
 			config: Config{
-				Provider:    "openai",
+				Protocol:    "openai",
 				BaseUrl:     "https://api.openai.com",
 				ApiKey:      "test-key",
 				Model:       "gpt-3.5-turbo",
@@ -28,7 +28,7 @@ func TestNewRunner(t *testing.T) {
 		{
 			name: "valid anthropic config",
 			config: Config{
-				Provider:    "anthropic",
+				Protocol:    "anthropic",
 				BaseUrl:     "https://api.anthropic.com",
 				ApiKey:      "test-key",
 				Model:       "claude-3-sonnet-20240229",
@@ -42,7 +42,7 @@ func TestNewRunner(t *testing.T) {
 		{
 			name: "invalid provider",
 			config: Config{
-				Provider:    "invalid",
+				Protocol:    "invalid",
 				BaseUrl:     "https://api.test.com",
 				ApiKey:      "test-key",
 				Model:       "test-model",
@@ -80,8 +80,8 @@ func TestNewRunner(t *testing.T) {
 				t.Error("NewRunner().client should not be nil")
 			}
 
-			if runner.config.Provider != tt.config.Provider {
-				t.Errorf("NewRunner().config.Provider = %v, want %v", runner.config.Provider, tt.config.Provider)
+			if runner.config.Protocol != tt.config.Protocol {
+				t.Errorf("NewRunner().config.Protocol = %v, want %v", runner.config.Protocol, tt.config.Protocol)
 			}
 
 			if runner.config.Stream != tt.config.Stream {

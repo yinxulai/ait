@@ -9,6 +9,7 @@ import (
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 	"github.com/schollz/progressbar/v3"
+	"github.com/yinxulai/ait/internal/report"
 )
 
 // TestDisplayer 测试显示控制器
@@ -28,7 +29,7 @@ type TestDisplayer struct {
 
 // TestConfig 测试显示配置
 type TestConfig struct {
-	Provider    string
+	Protocol    string
 	BaseUrl     string
 	ApiKey      string
 	Model       string
@@ -153,7 +154,7 @@ func (td *TestDisplayer) printConfigTable() {
 	table.Header("配置项", "值")
 
 	// 添加数据行
-	table.Append([]string{"Provider", td.config.Provider})
+	table.Append([]string{"Protocol", td.config.Protocol})
 	table.Append([]string{"BaseURL", td.truncateString(td.config.BaseUrl, 40)})
 	table.Append([]string{"ApiKey", apiKeyDisplay})
 	table.Append([]string{"Model", td.config.Model})
@@ -293,62 +294,11 @@ func (td *TestDisplayer) ShowErrorDetails(stats TestStats) {
 	}
 }
 
-// Result 性能测试结果
-type Result struct {
-	// 基础测试信息
-	TotalRequests int
-	Concurrency   int
-	IsStream      bool
-	TotalTime     time.Duration
-
-	// 时间性能指标
-	TimeMetrics struct {
-		AvgTotalTime time.Duration // 总耗时指标
-		MinTotalTime time.Duration
-		MaxTotalTime time.Duration
-	}
-
-	// 网络性能指标
-	NetworkMetrics struct {
-		AvgDNSTime time.Duration // DNS解析时间指标
-		MinDNSTime time.Duration
-		MaxDNSTime time.Duration
-
-		AvgConnectTime time.Duration // TCP连接时间指标
-		MinConnectTime time.Duration
-		MaxConnectTime time.Duration
-
-		AvgTLSHandshakeTime time.Duration // TLS握手时间指标
-		MinTLSHandshakeTime time.Duration
-		MaxTLSHandshakeTime time.Duration
-		
-		TargetIP string // 目标服务器IP地址
-	}
-
-	// 服务性能指标
-	ContentMetrics struct {
-		AvgTTFT time.Duration // TTFT (Time to First Token) 指标
-		MinTTFT time.Duration
-		MaxTTFT time.Duration
-		
-		AvgTokenCount int // Completion Token 统计指标 (输出token)
-		MinTokenCount int
-		MaxTokenCount int
-		
-		AvgTPS float64 // TPS (Tokens Per Second) 指标
-		MinTPS float64
-		MaxTPS float64
-	}
-
-	// 可靠性指标
-	ReliabilityMetrics struct {
-		ErrorRate    float64 // 错误率百分比
-		SuccessRate  float64 // 成功率百分比
-	}
-}
+// Result 使用统一的测试结果结构
+type Result = report.TestResult
 
 // PrintResult 输出结果
-func (r *Result) PrintResult() {
+func PrintResult(r *Result) {
 	titleColor := color.New(color.FgCyan, color.Bold)
 	titleColor.Println("\n📊 测试结果")
 
@@ -412,11 +362,11 @@ func (r *Result) PrintResult() {
 
 	// 显示模式提示
 	fmt.Println()
-	r.printModeInfo()
+	printModeInfo(r)
 }
 
 // printModeInfo 打印测试模式信息
-func (r *Result) printModeInfo() {
+func printModeInfo(r *Result) {
 	infoColor := color.New(color.FgBlue)
 
 	if r.IsStream {

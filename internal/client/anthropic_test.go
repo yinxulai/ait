@@ -136,11 +136,11 @@ func TestNewAnthropicClient(t *testing.T) {
 	}
 }
 
-func TestAnthropicClient_GetProvider(t *testing.T) {
+func TestAnthropicClient_GetProtocol(t *testing.T) {
 	client := NewAnthropicClient("https://api.anthropic.com", "test-key", "claude-3-sonnet-20240229")
 
-	if got := client.GetProvider(); got != "anthropic" {
-		t.Errorf("AnthropicClient.GetProvider() = %v, want %v", got, "anthropic")
+	if got := client.GetProtocol(); got != "anthropic" {
+		t.Errorf("AnthropicClient.GetProtocol() = %v, want %v", got, "anthropic")
 	}
 }
 
