@@ -9,23 +9,14 @@ import (
 	"github.com/yinxulai/ait/internal/types"
 )
 
-// Config 性能测试配置 - 使用统一的types.Config
-type Config = types.Input
-
-// TestStats 实时测试统计数据 - 使用统一的types.Stats
-type TestStats = types.StatsData
-
-// Result 性能测试结果 - 使用统一的types.TestResult
-type Result = types.ReportData
-
 // Runner 性能测试执行器
 type Runner struct {
+	config types.Input
 	client client.ModelClient
-	config Config
 }
 
 // NewRunner 创建新的性能测试执行器
-func NewRunner(config Config) (*Runner, error) {
+func NewRunner(config types.Input) (*Runner, error) {
 	client, err := client.NewClient(config.Protocol, config.BaseUrl, config.ApiKey, config.Model)
 	if err != nil {
 		return nil, err
@@ -37,7 +28,7 @@ func NewRunner(config Config) (*Runner, error) {
 }
 
 // Run 执行性能测试，返回结果数据
-func (r *Runner) Run() (*Result, error) {
+func (r *Runner) Run() (*types.ReportData, error) {
 	var wg sync.WaitGroup
 	results := make([]*client.ResponseMetrics, r.config.Count)
 	start := time.Now()
@@ -69,8 +60,8 @@ func (r *Runner) Run() (*Result, error) {
 	return r.calculateResult(results, elapsed), nil
 }
 
-// RunWithProgress 执行性能测试，通过回调函数提供进度更新
-func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, error) {
+// RunWithProgress 运行性能测试并实时显示进度
+func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types.ReportData, error) {
 	var wg sync.WaitGroup
 	results := make([]*client.ResponseMetrics, r.config.Count)
 	start := time.Now()
@@ -92,12 +83,12 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 	go func() {
 		ticker := time.NewTicker(500 * time.Millisecond)
 		defer ticker.Stop()
-		
+
 		for {
 			select {
 			case <-ticker.C:
 				ttftsMutex.Lock()
-				stats := TestStats{
+				stats := types.StatsData{
 					CompletedCount:    int(atomic.LoadInt64(&completed)),
 					FailedCount:       int(atomic.LoadInt64(&failed)),
 					TTFTs:             make([]time.Duration, len(ttfts)),
@@ -118,7 +109,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 				copy(stats.TokenCounts, tokenCounts)
 				copy(stats.ErrorMessages, errorMessages)
 				ttftsMutex.Unlock()
-				
+
 				progressCallback(stats)
 			case <-stopProgress:
 				return
@@ -141,9 +132,9 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 				atomic.AddInt64(&failed, 1)
 				return
 			}
-			
+
 			results[idx] = metrics
-			
+
 			ttftsMutex.Lock()
 			ttfts = append(ttfts, metrics.TimeToFirstToken)
 			totalTimes = append(totalTimes, metrics.TotalTime)
@@ -152,7 +143,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 			tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
 			tokenCounts = append(tokenCounts, metrics.CompletionTokens)
 			ttftsMutex.Unlock()
-			
+
 			atomic.AddInt64(&completed, 1)
 		}(i)
 	}
@@ -162,7 +153,7 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 
 	// 最后一次进度更新
 	ttftsMutex.Lock()
-	finalStats := TestStats{
+	finalStats := types.StatsData{
 		CompletedCount:    int(atomic.LoadInt64(&completed)),
 		FailedCount:       int(atomic.LoadInt64(&failed)),
 		TTFTs:             make([]time.Duration, len(ttfts)),
@@ -190,9 +181,9 @@ func (r *Runner) RunWithProgress(progressCallback func(TestStats)) (*Result, err
 }
 
 // calculateResult 计算性能统计结果
-func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime time.Duration) *Result {
+func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime time.Duration) *types.ReportData {
 	if len(results) == 0 {
-		return &Result{}
+		return &types.ReportData{}
 	}
 
 	validResults := make([]*client.ResponseMetrics, 0)
@@ -203,7 +194,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	}
 
 	if len(validResults) == 0 {
-		return &Result{}
+		return &types.ReportData{}
 	}
 
 	// 初始化最小值和最大值
@@ -214,7 +205,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	maxTotalTime := firstResult.TotalTime
 	minTokens := firstResult.CompletionTokens
 	maxTokens := firstResult.CompletionTokens
-	
+
 	minDNSTime := firstResult.DNSTime
 	maxDNSTime := firstResult.DNSTime
 	minConnectTime := firstResult.ConnectTime
@@ -271,7 +262,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		if result.DNSTime > maxDNSTime {
 			maxDNSTime = result.DNSTime
 		}
-		
+
 		sumConnectTime += result.ConnectTime
 		if result.ConnectTime < minConnectTime {
 			minConnectTime = result.ConnectTime
@@ -279,7 +270,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		if result.ConnectTime > maxConnectTime {
 			maxConnectTime = result.ConnectTime
 		}
-		
+
 		sumTLSTime += result.TLSHandshakeTime
 		if result.TLSHandshakeTime < minTLSTime {
 			minTLSTime = result.TLSHandshakeTime
@@ -311,28 +302,27 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	}
 
 	validCount := len(validResults)
-	
+
 	// 计算错误率和成功率
 	errorRate := float64(r.config.Count-validCount) / float64(r.config.Count) * 100
 	successRate := float64(validCount) / float64(r.config.Count) * 100
-	
+
 	// 如果没有有效结果，返回基础结果
 	if validCount == 0 {
-		result := &Result{
+		result := &types.ReportData{
 			TotalRequests: r.config.Count,
 			Concurrency:   r.config.Concurrency,
 			TotalTime:     totalTime,
 			IsStream:      r.config.Stream,
 		}
-		
+
 		// 可靠性指标
 		result.ReliabilityMetrics.ErrorRate = errorRate
 		result.ReliabilityMetrics.SuccessRate = successRate
-		
+
 		return result
 	}
-	
-	
+
 	// 计算各项指标的平均值
 	// 注意：时间指标可以直接用总和除以数量来计算平均值，因为时间是可加性的
 	avgTTFT := sumTTFT / time.Duration(validCount)
@@ -340,10 +330,10 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	avgDNSTime := sumDNSTime / time.Duration(validCount)
 	avgConnectTime := sumConnectTime / time.Duration(validCount)
 	avgTLSTime := sumTLSTime / time.Duration(validCount)
-	
+
 	// Token数量也可以直接用总和除以数量，因为数量是可加性的
 	avgTokens := sumTokens / validCount
-	
+
 	// TPS是比率指标，需要特殊处理：
 	// 错误方式：float64(sumTokens) / sumTotalTime.Seconds() - 这相当于计算总体批处理的TPS
 	// 正确方式：先计算每个请求的TPS，然后求算术平均值 - 这反映单个请求的平均性能
@@ -356,18 +346,18 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	}
 	avgTPS := sumTPS / float64(validCount)
 
-	result := &Result{
+	result := &types.ReportData{
 		TotalRequests: r.config.Count,
 		Concurrency:   r.config.Concurrency,
 		TotalTime:     totalTime,
 		IsStream:      r.config.Stream,
 	}
-	
+
 	// 时间指标
 	result.TimeMetrics.AvgTotalTime = avgTotalTime
 	result.TimeMetrics.MinTotalTime = minTotalTime
 	result.TimeMetrics.MaxTotalTime = maxTotalTime
-	
+
 	// 网络指标
 	result.NetworkMetrics.AvgDNSTime = avgDNSTime
 	result.NetworkMetrics.MinDNSTime = minDNSTime
@@ -379,7 +369,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	result.NetworkMetrics.MinTLSHandshakeTime = minTLSTime
 	result.NetworkMetrics.MaxTLSHandshakeTime = maxTLSTime
 	result.NetworkMetrics.TargetIP = targetIP
-	
+
 	// 服务性能指标
 	result.ContentMetrics.AvgTTFT = avgTTFT
 	result.ContentMetrics.MinTTFT = minTTFT
@@ -390,7 +380,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	result.ContentMetrics.AvgTPS = avgTPS
 	result.ContentMetrics.MinTPS = minTPS
 	result.ContentMetrics.MaxTPS = maxTPS
-	
+
 	// 可靠性指标
 	result.ReliabilityMetrics.ErrorRate = errorRate
 	result.ReliabilityMetrics.SuccessRate = successRate

@@ -3,17 +3,19 @@ package runner
 import (
 	"testing"
 	"time"
+
+	"github.com/yinxulai/ait/internal/types"
 )
 
 func TestNewRunner(t *testing.T) {
 	tests := []struct {
 		name      string
-		config    Config
+		input     types.Input
 		wantError bool
 	}{
 		{
 			name: "valid openai config",
-			config: Config{
+			input: types.Input{
 				Protocol:    "openai",
 				BaseUrl:     "https://api.openai.com",
 				ApiKey:      "test-key",
@@ -27,7 +29,7 @@ func TestNewRunner(t *testing.T) {
 		},
 		{
 			name: "valid anthropic config",
-			config: Config{
+			input: types.Input{
 				Protocol:    "anthropic",
 				BaseUrl:     "https://api.anthropic.com",
 				ApiKey:      "test-key",
@@ -41,7 +43,7 @@ func TestNewRunner(t *testing.T) {
 		},
 		{
 			name: "invalid provider",
-			config: Config{
+			input: types.Input{
 				Protocol:    "invalid",
 				BaseUrl:     "https://api.test.com",
 				ApiKey:      "test-key",
@@ -57,7 +59,7 @@ func TestNewRunner(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runner, err := NewRunner(tt.config)
+			runner, err := NewRunner(tt.input)
 
 			if tt.wantError {
 				if err == nil {
@@ -80,12 +82,12 @@ func TestNewRunner(t *testing.T) {
 				t.Error("NewRunner().client should not be nil")
 			}
 
-			if runner.config.Protocol != tt.config.Protocol {
-				t.Errorf("NewRunner().config.Protocol = %v, want %v", runner.config.Protocol, tt.config.Protocol)
+			if runner.config.Protocol != tt.input.Protocol {
+				t.Errorf("NewRunner().config.Protocol = %v, want %v", runner.config.Protocol, tt.input.Protocol)
 			}
 
-			if runner.config.Stream != tt.config.Stream {
-				t.Errorf("NewRunner().config.Stream = %v, want %v", runner.config.Stream, tt.config.Stream)
+			if runner.config.Stream != tt.input.Stream {
+				t.Errorf("NewRunner().config.Stream = %v, want %v", runner.config.Stream, tt.input.Stream)
 			}
 		})
 	}
@@ -94,11 +96,11 @@ func TestNewRunner(t *testing.T) {
 func TestResult_PrintResult(t *testing.T) {
 	tests := []struct {
 		name   string
-		result Result
+		result types.ReportData
 	}{
 		{
 			name: "stream mode result",
-			result: Result{
+			result: types.ReportData{
 				TotalRequests: 10,
 				Concurrency:   2,
 				IsStream:      true,
@@ -107,7 +109,7 @@ func TestResult_PrintResult(t *testing.T) {
 		},
 		{
 			name: "non-stream mode result",
-			result: Result{
+			result: types.ReportData{
 				TotalRequests: 20,
 				Concurrency:   4,
 				IsStream:      false,

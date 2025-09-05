@@ -27,12 +27,6 @@ type TestDisplayer struct {
 	statsColor   *color.Color
 }
 
-// TestConfig 测试显示配置 - 使用统一的types.Config
-type TestConfig = types.Input
-
-// TestStats 实时测试统计数据 - 使用统一的types.Stats
-type TestStats = types.StatsData
-
 // NewTestDisplayer 创建新的测试显示控制器
 func NewTestDisplayer(config types.Input) *TestDisplayer {
 	return &TestDisplayer{
@@ -162,7 +156,7 @@ func (td *TestDisplayer) ShowTestComplete() {
 }
 
 // ShowTestSummary 显示测试摘要（在最终结果之前）
-func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
+func (td *TestDisplayer) ShowTestSummary(stats types.StatsData) {
 	titleColor := color.New(color.FgCyan, color.Bold)
 	titleColor.Println("📋 测试摘要")
 
@@ -266,7 +260,7 @@ func (td *TestDisplayer) ShowErrorDetails(stats types.StatsData) {
 type Result = types.ReportData
 
 // PrintResult 输出结果
-func PrintResult(r *Result) {
+func PrintResult(r *types.ReportData) {
 	titleColor := color.New(color.FgCyan, color.Bold)
 	titleColor.Println("\n📊 测试结果")
 
@@ -333,7 +327,7 @@ func PrintResult(r *Result) {
 }
 
 // printModeInfo 打印测试模式信息
-func printModeInfo(r *Result) {
+func printModeInfo(r *types.ReportData) {
 	infoColor := color.New(color.FgBlue)
 
 	if r.IsStream {
