@@ -1,18 +1,20 @@
 # AIT - AI 模型性能测试工具
 
-一个强大的 CLI 工具，用于批量测试符合 OpenAI 协议的模型的性能指标，支持 TTFT（首字节时间）和 TPS（吞吐量）等关键性能指标的测量。
+一个强大的 CLI 工具，用于批量测试符合 OpenAI 协议和 Anthropic 协议的 AI 模型性能指标。支持 TTFT（首字节时间）、TPS（吞吐量）、网络延迟等关键性能指标的测量，提供多模型对比测试和详细的性能报告生成功能。
 
 ## ✨ 功能特性
 
 - 🚀 **多协议支持**: 支持 OpenAI 和 Anthropic 协议
 - 🎯 **多模型测试**: 支持同时测试多个模型，用逗号分割模型名称
-- 📊 **实时进度条**: 测试过程可视化显示
+- 🤖 **智能协议推断**: 根据环境变量自动推断协议类型，简化使用
+- 📊 **实时进度条**: 测试过程可视化显示，支持多模型总进度
 - 🎨 **彩色输出**: 美观的终端界面
-- 📋 **表格化结果**: 清晰的结果展示
+- 📋 **表格化结果**: 清晰的结果展示，支持单模型和多模型对比
 - ⚡ **并发测试**: 支持自定义并发数压力测试
 - 📈 **详细统计**: TTFT、TPS、最小/最大/平均响应时间
 - 📄 **多格式报告**: 支持生成 JSON 和 CSV 格式的详细测试报告
 - 🌐 **网络指标**: 包含 DNS、连接、TLS 握手等网络性能指标
+- 🔄 **流式支持**: 默认支持流式响应，更真实的测试场景
 
 ## 🛠️ 安装和使用
 
@@ -69,11 +71,11 @@ go build -o bin/ait ./cmd/
 ### OpenAI 协议测试
 
 ```bash
-./bin/ait 
+ait 
   --protocol=openai 
-  --baseUrl=https://api.openai.com 
-  --apikey=sk-your-api-key 
-  --model=gpt-3.5-turbo 
+  --baseUrl=https://api.openai.com/v1 
+  --apiKey=sk-your-api-key 
+  --models=gpt-3.5-turbo 
   --concurrency=3 
   --count=10
   --report
@@ -82,11 +84,11 @@ go build -o bin/ait ./cmd/
 ### Anthropic 协议测试
 
 ```bash
-./bin/ait 
+ait 
   --protocol=anthropic 
   --baseUrl=https://api.anthropic.com 
-  --apikey=sk-ant-your-api-key 
-  --model=claude-3-haiku-20240307 
+  --apiKey=sk-ant-your-api-key 
+  --models=claude-3-haiku-20240307 
   --concurrency=2 
   --count=5
   --report
@@ -96,13 +98,20 @@ go build -o bin/ait ./cmd/
 
 ```bash
 # 同时测试多个 OpenAI 模型
-./bin/ait 
+ait 
   --protocol=openai 
   --baseUrl=https://api.openai.com/v1 
-  --apikey=sk-your-api-key 
-  --model="gpt-3.5-turbo,gpt-4,gpt-4-turbo" 
+  --apiKey=sk-your-api-key 
+  --models="gpt-3.5-turbo,gpt-4,gpt-4-turbo" 
   --concurrency=3 
   --count=10
+  --report
+
+# 测试最新的 Claude 和 Gemini 模型
+ait 
+  --models=claude-4.1-opus,claude-4.0-sonnet,claude-3.5-haiku,gemini-2.5-pro,gemini-2.0-flash 
+  --concurrency=3 
+  --count=5
   --report
 
 # 多模型测试会为每个模型生成独立的 JSON 和 CSV 报告
@@ -112,11 +121,11 @@ go build -o bin/ait ./cmd/
 ### 本地模型测试（如 Ollama）
 
 ```bash
-./bin/ait 
+ait 
   --protocol=openai 
-  --baseUrl=http://localhost:11434 
-  --apikey=dummy 
-  --model=llama2 
+  --baseUrl=http://localhost:11434/v1 
+  --apiKey=dummy 
+  --models=llama2 
   --concurrency=1 
   --count=3
 ```
@@ -132,7 +141,7 @@ export OPENAI_API_KEY="sk-your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 
 # 简化使用，protocol 会自动推断为 openai
-./bin/ait --model=gpt-3.5-turbo --count=10 --report
+ait --models=gpt-3.5-turbo --count=10 --report
 ```
 
 ### Anthropic 协议
@@ -142,20 +151,21 @@ export ANTHROPIC_API_KEY="sk-ant-your-api-key"
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 
 # 简化使用，protocol 会自动推断为 anthropic
-./bin/ait --model=claude-3-haiku-20240307 --count=5 --report
+ait --models=claude-3-haiku-20240307 --count=5 --report
 ```
 
 ## 📋 命令行参数
 
 | 参数            | 描述                                                          | 默认值                    | 必填 |
 |:---------------|:-------------------------------------------------------------|:--------------------------|:----:|
-| `--protocol`   | 协议类型 (`openai`/`anthropic`)                               | `openai`                  |  ❌  |
+| `--protocol`   | 协议类型 (`openai`/`anthropic`)                               | 根据环境变量自动推断        |  ❌  |
 | `--baseUrl`    | 服务地址<br/>支持环境变量：`OPENAI_BASE_URL` 或 `ANTHROPIC_BASE_URL` | -                         |  ✅  |
-| `--apikey`     | API 密钥<br/>支持环境变量：`OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY`  | -                         |  ✅  |
-| `--model`      | 模型名称，支持多个模型用逗号分割<br/>如：`gpt-4,claude-3-sonnet`     | -                         |  ✅  |
-| `--concurrency`| 并发数                                                        | `1`                       |  ❌  |
+| `--apiKey`     | API 密钥<br/>支持环境变量：`OPENAI_API_KEY` 或 `ANTHROPIC_API_KEY`  | -                         |  ✅  |
+| `--models`     | 模型名称，支持多个模型用逗号分割<br/>如：`gpt-4,claude-3-sonnet`     | -                         |  ✅  |
+| `--concurrency`| 并发数                                                        | `3`                       |  ❌  |
 | `--count`      | 请求总数                                                       | `10`                      |  ❌  |
 | `--prompt`     | 测试提示语                                                     | `"你好，介绍一下你自己。"`     |  ❌  |
+| `--stream`     | 是否开启流模式                                                 | `true`                    |  ❌  |
 | `--report`     | 是否生成报告文件（同时生成 JSON 和 CSV）                           | `false`                   |  ❌  |
 
 ## 📊 输出指标说明
@@ -183,11 +193,25 @@ export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 
 #### 报告内容包含
 
-- **metadata**: 测试元数据（时间戳、配置信息等）
+**JSON 报告文件结构:**
+
+- **metadata**: 测试元数据（时间戳、协议、模型名称、配置信息等）
 - **time_metrics**: 时间性能指标（平均、最小、最大响应时间）
-- **network_metrics**: 网络性能指标（DNS、连接、TLS 时间，目标 IP）
-- **content_metrics**: 服务性能指标（TTFT、Token 统计、TPS 等）
+- **network_metrics**: 网络性能指标（DNS、TCP连接、TLS握手时间，目标IP）
+- **content_metrics**: 服务性能指标（TTFT、Token统计、TPS等）
 - **reliability_metrics**: 可靠性指标（成功率、错误率）
+
+**CSV 报告文件格式:**
+
+- 扁平化的数据结构，便于导入 Excel 或其他数据分析工具
+- 包含所有性能指标的数值化数据
+- 支持多模型对比分析和图表生成
+
+**多模型报告特性:**
+
+- 每个模型生成独立的 JSON 和 CSV 报告
+- 额外生成综合对比 CSV 文件，包含所有模型的关键指标
+- 文件命名格式：`ait-report-{timestamp}.{format}` 或 `ait-report-{model}-{timestamp}.{format}`
 
 ## 🎯 使用场景
 
@@ -200,6 +224,21 @@ export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 - **自动化测试**: 结合 CI/CD 流程进行自动化性能测试
 - **性能报告**: 生成详细的 JSON 和 CSV 报告用于数据分析和存档
 
+## 📝 使用示例
+
+### 最新模型测试
+
+```bash
+# 测试最新的 Claude 4.x 系列模型
+ait --models=claude-4.1-opus,claude-4.0-sonnet,claude-4.0-opus --count=5 --report
+
+# 测试最新的 Gemini 2.x 系列模型
+ait --models=gemini-2.5-pro,gemini-2.5-flash,gemini-2.0-flash --count=5 --report
+
+# 测试 Claude 3.x 系列模型
+ait --models=claude-3.7-sonnet,claude-3.5-haiku --count=5 --report
+```
+
 ## 🔧 开发和贡献
 
 ### 可用命令
@@ -208,6 +247,7 @@ export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 make build          # 编译二进制文件
 make test           # 运行测试
 make clean          # 清理构建文件
+make tidy           # 格式化代码并整理模块依赖
 make help           # 查看所有命令
 ```
 
