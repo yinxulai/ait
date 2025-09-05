@@ -106,7 +106,29 @@ func main() {
 
 	displayer := display.New()
 
+	// 显示欢迎信息
+	displayer.ShowWelcome()
+
+	displayer.ShowInput(&display.Input{
+		Protocol:    finalProtocol,
+		BaseUrl:     finalBaseUrl,
+		ApiKey:      finalApiKey,
+		Models:      modelList,
+		Concurrency: *concurrency,
+		Count:       *count,
+		Stream:      *stream,
+		Prompt:      *prompt,
+		Report:      *reportFlag,
+	})
+
 	// 循环处理每个模型
+	totalRequests := *count * len(modelList)
+	
+	// 初始化总进度条
+	displayer.InitProgress(totalRequests, fmt.Sprintf("🚀 测试进度 (%d 个模型)", len(modelList)))
+
+	completedRequests := 0
+
 	for _, modelName := range modelList {
 
 		config := types.Input{
@@ -128,14 +150,27 @@ func main() {
 		}
 
 		// 执行测试，使用回调函数来更新显示
-		result, err := runnerInstance.Run()
+		result, err := runnerInstance.RunWithProgress(func(sd types.StatsData) {
+			// 计算当前总完成数：之前模型的完成数 + 当前模型的完成数
+			currentCompleted := completedRequests + sd.CompletedCount + sd.FailedCount
+			
+			// 计算百分比
+			percent := float64(currentCompleted) / float64(totalRequests) * 100.0
+			displayer.UpdateProgress(percent)
+		})
 		if err != nil {
 			panic(err)
 		}
 
+		// 更新已完成的请求数（当前模型的所有请求都已完成）
+		completedRequests += config.Count
+
 		// 保存结果用于汇总
 		allResults = append(allResults, result)
 	}
+
+	// 完成进度条
+	displayer.FinishProgress()
 
 	// 为所有结果填充模型名称元数据
 	for i, result := range allResults {

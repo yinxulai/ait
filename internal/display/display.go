@@ -4,8 +4,10 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"sync"
 
 	"github.com/olekukonko/tablewriter"
+	"github.com/schollz/progressbar/v3"
 	"github.com/yinxulai/ait/internal/types"
 )
 
@@ -22,23 +24,125 @@ const (
 	ColorBold   = "\033[1m"
 )
 
+type Input struct {
+	Protocol    string
+	BaseUrl     string
+	ApiKey      string
+	Models      []string // 多个模型列表
+	Concurrency int
+	Count       int
+	Stream      bool
+	Prompt      string
+	Report      bool // 是否生成报告文件
+}
+
 // Displayer 测试显示器
-type Displayer struct {}
+type Displayer struct {
+	progressBar *progressbar.ProgressBar
+	mu          sync.Mutex
+}
 
 // New 创建新的测试显示器
 func New() *Displayer {
 	return &Displayer{}
 }
 
+func (td *Displayer) ShowWelcome() {
+	fmt.Printf("\n")
+	fmt.Printf("🚀 %s%sAIT - AI 模型性能测试工具%s\n", ColorBold, ColorCyan, ColorReset)
+	fmt.Printf("   %s一个强大的 CLI 工具，用于测试 AI 模型的性能指标%s\n", ColorWhite, ColorReset)
+	fmt.Printf("   %s🌐 项目地址: https://github.com/yinxulai/ait%s\n", ColorBlue, ColorReset)
+	fmt.Printf("\n")
+	fmt.Printf("✨ %s功能特性:%s\n", ColorBold, ColorReset)
+	fmt.Printf("   🎯 多模型批量测试  ⚡ 并发压力测试  📊 实时进度显示\n")
+	fmt.Printf("   🌐 网络性能分析  📈 详细统计报告  🎨 美观界面输出\n")
+	fmt.Printf("\n")
+}
+
+func (td *Displayer) ShowInput(data *Input) {
+	// 创建配置信息表格
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("配置项", "值", "说明")
+
+	// 基础配置
+	table.Append("🔗 协议", data.Protocol, "API 协议类型")
+	table.Append("🌐 服务地址", data.BaseUrl, "API 基础 URL")
+	table.Append("🔑 API密钥", maskApiKey(data.ApiKey), "API 访问密钥（已隐藏）")
+
+	// 模型配置
+	modelsStr := ""
+	if len(data.Models) > 0 {
+		for i, model := range data.Models {
+			if i > 0 {
+				modelsStr += ", "
+			}
+			modelsStr += model
+		}
+	}
+	table.Append("🤖 测试模型", modelsStr, "待测试的模型列表")
+
+	// 测试参数
+	table.Append("📊 请求总数", strconv.Itoa(data.Count), "每个模型的请求数量")
+	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "同时发送的请求数")
+	table.Append("🌊 流式模式", strconv.FormatBool(data.Stream), "是否启用流式响应")
+	table.Append("📝 测试提示词", truncatePrompt(data.Prompt), "用于测试的提示内容")
+	table.Append("📄 生成报告", strconv.FormatBool(data.Report), "是否生成测试报告文件")
+
+	table.Render()
+}
+
+// InitProgress 初始化进度条
+func (td *Displayer) InitProgress(total int, description string) {
+	td.mu.Lock()
+	defer td.mu.Unlock()
+
+	td.progressBar = progressbar.NewOptions(total,
+		progressbar.OptionSetDescription(description),
+		progressbar.OptionSetTheme(progressbar.Theme{
+			Saucer:        "█",
+			SaucerPadding: "░",
+			BarStart:      "[",
+			BarEnd:        "]",
+		}),
+		progressbar.OptionShowCount(),
+		progressbar.OptionShowIts(),
+		progressbar.OptionSetWidth(50),
+		progressbar.OptionThrottle(100), // 限制更新频率
+		progressbar.OptionShowElapsedTimeOnFinish(),
+		progressbar.OptionSetRenderBlankState(true),
+	)
+}
+
+func (td *Displayer) UpdateProgress(percent float64) {
+	td.mu.Lock()
+	defer td.mu.Unlock()
+
+	if td.progressBar != nil {
+		// 计算当前进度值（基于进度条的最大值）
+		current := int(percent * float64(td.progressBar.GetMax()) / 100.0)
+		td.progressBar.Set(current)
+	}
+}
+
+// FinishProgress 完成进度条
+func (td *Displayer) FinishProgress() {
+	td.mu.Lock()
+	defer td.mu.Unlock()
+
+	if td.progressBar != nil {
+		td.progressBar.Finish()
+		fmt.Println() // 添加一个空行
+		td.progressBar = nil
+	}
+}
+
 // 将数据更新到终端上（刷新显示）
 // 详细模式，展示所有 ReportData 的数据
 func (td *Displayer) ShowSignalReport(data *types.ReportData) {
-	fmt.Printf("\n=== AIT 开源测试工具结果报告 ===\n\n")
-	
 	// 单个综合表格
 	table := tablewriter.NewWriter(os.Stdout)
 	table.Header("指标", "最小值", "平均值", "最大值", "单位")
-	
+
 	// 基础信息（这些只有单一值，只填最小值列）
 	table.Append("🤖 模型", data.Metadata.Model, "", "", "-")
 	table.Append("🔗 协议", data.Metadata.Protocol, "", "", "-")
@@ -47,10 +151,10 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "个")
 	table.Append("📊 总请求数", strconv.Itoa(data.TotalRequests), "", "", "个")
 	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.ReliabilityMetrics.SuccessRate), "", "", "%")
-	
+
 	// 时间性能指标
 	table.Append("🕐 总耗时", data.TimeMetrics.MinTotalTime.String(), data.TimeMetrics.AvgTotalTime.String(), data.TimeMetrics.MaxTotalTime.String(), "时间")
-	
+
 	// 网络性能指标
 	table.Append("🔍 DNS时间", data.NetworkMetrics.MinDNSTime.String(), data.NetworkMetrics.AvgDNSTime.String(), data.NetworkMetrics.MaxDNSTime.String(), "时间")
 	table.Append("🔒 TLS时间", data.NetworkMetrics.MinTLSHandshakeTime.String(), data.NetworkMetrics.AvgTLSHandshakeTime.String(), data.NetworkMetrics.MaxTLSHandshakeTime.String(), "时间")
@@ -58,14 +162,14 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	if data.NetworkMetrics.TargetIP != "" {
 		table.Append("🎯 目标IP", data.NetworkMetrics.TargetIP, "", "", "-")
 	}
-	
+
 	// 内容性能指标
 	if data.IsStream {
 		table.Append("⚡ TTFT", data.ContentMetrics.MinTTFT.String(), data.ContentMetrics.AvgTTFT.String(), data.ContentMetrics.MaxTTFT.String(), "时间")
 	}
 	table.Append("🎲 Token 数", strconv.Itoa(data.ContentMetrics.MinTokenCount), strconv.Itoa(data.ContentMetrics.AvgTokenCount), strconv.Itoa(data.ContentMetrics.MaxTokenCount), "个")
 	table.Append("🚀 TPS", fmt.Sprintf("%.2f", data.ContentMetrics.MinTPS), fmt.Sprintf("%.2f", data.ContentMetrics.AvgTPS), fmt.Sprintf("%.2f", data.ContentMetrics.MaxTPS), "个/秒")
-	
+
 	table.Render()
 	fmt.Println()
 }
@@ -73,21 +177,19 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 // 将数据更新到终端上（刷新显示）
 // 概览模式，每行一个，展示主要数据（平均值）
 func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
-	fmt.Printf("\n=== AIT 开源测试工具结果报告 ===\n\n")
-	
 	// 单个汇总表格，包含所有不同类型指标的平均值
 	table := tablewriter.NewWriter(os.Stdout)
 	table.Header("🤖 模型", "🎯 目标IP", "📊 请求数", "⚡ 并发", "✅ 成功率",
 		"🕐 平均总耗时", "⚡ 平均TTFT", "🚀 平均TPS", "🎲 平均Token数",
 		"🔍 平均DNS时间", "🔌 平均 TCP 连接时间", "🔒 平均TLS时间")
-	
+
 	for _, report := range data {
 		// TTFT 处理（流式模式才显示）
 		ttftStr := "-"
 		if report.IsStream {
 			ttftStr = report.ContentMetrics.AvgTTFT.String()
 		}
-		
+
 		table.Append(
 			report.Metadata.Model,
 			report.NetworkMetrics.TargetIP,
@@ -103,7 +205,23 @@ func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
 			report.NetworkMetrics.AvgTLSHandshakeTime.String(),
 		)
 	}
-	
+
 	table.Render()
 	fmt.Println()
+}
+
+// maskApiKey 隐藏 API 密钥的敏感部分
+func maskApiKey(apiKey string) string {
+	if len(apiKey) <= 8 {
+		return "***"
+	}
+	return apiKey[:4] + "***" + apiKey[len(apiKey)-4:]
+}
+
+// truncatePrompt 截断过长的提示词
+func truncatePrompt(prompt string) string {
+	if len(prompt) <= 50 {
+		return prompt
+	}
+	return prompt[:47] + "..."
 }
