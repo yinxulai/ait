@@ -83,12 +83,22 @@ func NewOpenAIClient(baseUrl, apiKey, model string) *OpenAIClient {
 	if baseUrl == "" {
 		baseUrl = "https://api.openai.com"
 	}
+	
+	// 禁用连接复用以确保每个请求都是独立的
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+		DisableCompression: false,
+	}
+	
 	return &OpenAIClient{
-		httpClient: &http.Client{Timeout: 30 * time.Second},
-		baseURL:    baseUrl,
-		apiKey:     apiKey,
-		Model:      model,
-		Provider:   "openai",
+		httpClient: &http.Client{
+			Transport: transport,
+			Timeout:   30 * time.Second,
+		},
+		baseURL:  baseUrl,
+		apiKey:   apiKey,
+		Model:    model,
+		Provider: "openai",
 	}
 }
 

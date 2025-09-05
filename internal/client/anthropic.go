@@ -133,8 +133,18 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 
+	// 创建一个新的客户端，禁用连接复用以确保每个请求都是独立的
+	transport := &http.Transport{
+		DisableKeepAlives: true,
+		DisableCompression: false,
+	}
+	httpClient := &http.Client{
+		Transport: transport,
+		Timeout:   30 * time.Second,
+	}
+
 	t0 := time.Now()
-	resp, err := http.DefaultClient.Do(req)
+	resp, err := httpClient.Do(req)
 	if err != nil {
 		// 网络错误（如地址错误、连接失败等）
 		return &ResponseMetrics{
