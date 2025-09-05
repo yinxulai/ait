@@ -2,7 +2,6 @@ package report
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -59,37 +58,4 @@ func (rm *ReportManager) GenerateReports(data []types.ReportData, formats []stri
 	}
 
 	return filePaths, nil
-}
-
-// GenerateReport 便捷函数，用于生成单个报告
-func GenerateReport(input *types.Input, reportData *types.ReportData, formats []string) ([]string, error) {
-	manager := NewReportManager()
-
-	// 填充元数据
-	reportData.Metadata.Timestamp = time.Now().Format(time.RFC3339)
-	reportData.Metadata.Protocol = input.Protocol
-	reportData.Metadata.Model = input.Model
-	reportData.Metadata.BaseUrl = input.BaseUrl
-
-	return manager.GenerateReports([]types.ReportData{*reportData}, formats)
-}
-
-// Reporter 向后兼容的报告生成器
-type Reporter struct {
-	config *types.Input
-	result *types.ReportData
-}
-
-// NewReporter 创建新的报告生成器
-func NewReporter(config types.Input, result types.ReportData) *Reporter {
-	return &Reporter{
-		config: &config,
-		result: &result,
-	}
-}
-
-// Generate 生成报告文件
-func (r *Reporter) Generate() error {
-	_, err := GenerateReport(r.config, r.result, []string{"json", "csv"})
-	return err
 }
