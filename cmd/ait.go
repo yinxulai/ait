@@ -8,6 +8,7 @@ import (
 	"github.com/yinxulai/ait/internal/display"
 	"github.com/yinxulai/ait/internal/report"
 	"github.com/yinxulai/ait/internal/runner"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // detectProviderFromEnv 根据环境变量自动检测 provider
@@ -91,7 +92,7 @@ func main() {
 		os.Exit(1)
 	}
 
-	config := runner.Config{
+	config := types.Input{
 		Protocol:    finalProtocol,
 		BaseUrl:     finalBaseUrl,
 		ApiKey:      finalApiKey,
@@ -110,42 +111,18 @@ func main() {
 	}
 
 	// 创建显示控制器
-	displayConfig := display.TestConfig{
-		Protocol:    config.Protocol,
-		BaseUrl:     config.BaseUrl,
-		ApiKey:      config.ApiKey,
-		Model:       config.Model,
-		Prompt:      config.Prompt,
-		Concurrency: config.Concurrency,
-		Count:       config.Count,
-		Stream:      config.Stream,
-	}
-	testDisplayer := display.NewTestDisplayer(displayConfig)
+	testDisplayer := display.NewTestDisplayer(config)
 
 	// 显示测试开始信息
 	testDisplayer.ShowTestStart()
 
 	// 用于保存最后的统计信息
-	var finalStats display.TestStats
+	var finalStats types.StatsData
 
 	// 执行测试，使用回调函数来更新显示
-	result, err := runnerInstance.RunWithProgress(func(stats runner.TestStats) {
-		displayStats := display.TestStats{
-			CompletedCount: stats.CompletedCount,
-			FailedCount:    stats.FailedCount,
-			TTFTs:          stats.TTFTs,
-			TotalTimes:     stats.TotalTimes,
-			TokenCounts:    stats.TokenCounts,
-			ErrorMessages:  stats.ErrorMessages,
-			StartTime:      stats.StartTime,
-			ElapsedTime:    stats.ElapsedTime,
-			// 网络性能指标
-			DNSTimes:          stats.DNSTimes,
-			ConnectTimes:      stats.ConnectTimes,
-			TLSHandshakeTimes: stats.TLSHandshakeTimes,
-		}
-		finalStats = displayStats // 保存最后的统计信息
-		testDisplayer.UpdateProgress(displayStats)
+	result, err := runnerInstance.RunWithProgress(func(stats types.StatsData) {
+		finalStats = stats // 保存最后的统计信息
+		testDisplayer.UpdateProgress(stats)
 	})
 
 	if err != nil {
@@ -164,20 +141,8 @@ func main() {
 
 	// 如果启用了报告生成，则生成报告文件
 	if config.Report {
-		// 构建报告配置
-		reportConfig := report.TestConfig{
-			Protocol:    config.Protocol,
-			BaseUrl:     config.BaseUrl,
-			ApiKey:      config.ApiKey,
-			Model:       config.Model,
-			Concurrency: config.Concurrency,
-			Count:       config.Count,
-			Stream:      config.Stream,
-			Prompt:      config.Prompt,
-		}
-
 		// 直接使用 runner 的结果生成报告，无需转换
-		reporter := report.NewReporter(reportConfig, *result)
+		reporter := report.NewReporter(config, *result)
 		if err := reporter.Generate(); err != nil {
 			fmt.Printf("生成报告失败: %v\n", err)
 		}

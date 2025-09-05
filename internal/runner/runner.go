@@ -6,50 +6,17 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
-	"github.com/yinxulai/ait/internal/report"
+	"github.com/yinxulai/ait/internal/types"
 )
 
-// Config 性能测试配置
-type Config struct {
-	Protocol    string
-	BaseUrl     string
-	ApiKey      string
-	Model       string
-	Concurrency int
-	Count       int
-	Prompt      string
-	Stream      bool // 是否使用流式请求
-	Report      bool // 是否生成报告文件
-}
+// Config 性能测试配置 - 使用统一的types.Config
+type Config = types.Input
 
-// TestStats 实时测试统计数据
-type TestStats struct {
-	// 基础统计
-	CompletedCount  int                            // 已完成请求数
-	FailedCount     int                            // 失败请求数
-	
-	// 时间指标
-	TTFTs           []time.Duration                // 所有首个token响应时间 (Time to First Token)
-	TotalTimes      []time.Duration                // 所有总耗时
-	
-	// 网络指标
-	DNSTimes        []time.Duration                // 所有DNS解析时间
-	ConnectTimes    []time.Duration                // 所有TCP连接时间
-	TLSHandshakeTimes []time.Duration              // 所有TLS握手时间
-	
-	// 内容指标
-	TokenCounts     []int                          // 所有 completion token 数量 (用于TPS计算)
-	
-	// 错误信息
-	ErrorMessages   []string                       // 所有错误信息
-	
-	// 测试控制
-	StartTime       time.Time                      // 测试开始时间
-	ElapsedTime     time.Duration                  // 已经过时间
-}
+// TestStats 实时测试统计数据 - 使用统一的types.Stats
+type TestStats = types.StatsData
 
-// Result 性能测试结果，使用统一的TestResult结构
-type Result = report.TestResult
+// Result 性能测试结果 - 使用统一的types.TestResult
+type Result = types.ReportData
 
 // Runner 性能测试执行器
 type Runner struct {

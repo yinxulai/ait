@@ -3,11 +3,13 @@ package report
 import (
 	"testing"
 	"time"
+
+	"github.com/yinxulai/ait/internal/types"
 )
 
 func TestReporter_Generate(t *testing.T) {
 	// 创建测试配置
-	config := TestConfig{
+	config := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com/v1",
 		ApiKey:      "test-api-key",
@@ -19,7 +21,7 @@ func TestReporter_Generate(t *testing.T) {
 	}
 
 	// 创建测试结果
-	result := TestResult{
+	result := types.ReportData{
 		TotalRequests: 10,
 		Concurrency:   3,
 		IsStream:      true,

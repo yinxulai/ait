@@ -9,12 +9,12 @@ import (
 	"github.com/fatih/color"
 	"github.com/olekukonko/tablewriter"
 	"github.com/schollz/progressbar/v3"
-	"github.com/yinxulai/ait/internal/report"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // TestDisplayer 测试显示控制器
 type TestDisplayer struct {
-	config      TestConfig
+	config      types.Input
 	progressBar *progressbar.ProgressBar
 	startTime   time.Time
 
@@ -27,46 +27,14 @@ type TestDisplayer struct {
 	statsColor   *color.Color
 }
 
-// TestConfig 测试显示配置
-type TestConfig struct {
-	Protocol    string
-	BaseUrl     string
-	ApiKey      string
-	Model       string
-	Prompt      string
-	Concurrency int
-	Count       int
-	Stream      bool
-}
+// TestConfig 测试显示配置 - 使用统一的types.Config
+type TestConfig = types.Input
 
-// TestStats 实时测试统计数据
-type TestStats struct {
-	// 基础统计
-	CompletedCount int // 已完成请求数
-	FailedCount    int // 失败请求数
-
-	// 时间指标
-	TTFTs      []time.Duration // 所有首个token响应时间 (Time to First Token)
-	TotalTimes []time.Duration // 所有总耗时
-
-	// 网络指标
-	DNSTimes          []time.Duration // 所有DNS解析时间
-	ConnectTimes      []time.Duration // 所有TCP连接时间
-	TLSHandshakeTimes []time.Duration // 所有TLS握手时间
-
-	// 服务性能指标
-	TokenCounts []int // 所有 completion token 数量 (用于TPS计算)
-
-	// 错误信息
-	ErrorMessages []string // 所有错误信息
-
-	// 测试控制
-	StartTime   time.Time     // 测试开始时间
-	ElapsedTime time.Duration // 已经过时间
-}
+// TestStats 实时测试统计数据 - 使用统一的types.Stats
+type TestStats = types.StatsData
 
 // NewTestDisplayer 创建新的测试显示控制器
-func NewTestDisplayer(config TestConfig) *TestDisplayer {
+func NewTestDisplayer(config types.Input) *TestDisplayer {
 	return &TestDisplayer{
 		config:       config,
 		titleColor:   color.New(color.FgCyan, color.Bold),
@@ -175,7 +143,7 @@ func (td *TestDisplayer) truncateString(s string, maxLen int) string {
 }
 
 // UpdateProgress 更新测试进度
-func (td *TestDisplayer) UpdateProgress(stats TestStats) {
+func (td *TestDisplayer) UpdateProgress(stats types.StatsData) {
 	// 更新进度条
 	if td.progressBar != nil {
 		td.progressBar.Set(stats.CompletedCount)
@@ -227,22 +195,22 @@ func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 	}
 
 	table.Render()
-	
+
 	// 如果有错误，显示错误信息
 	if len(stats.ErrorMessages) > 0 {
 		fmt.Println()
 		td.errorColor.Println("🚨 错误详情：")
-		
+
 		// 统计错误类型
 		errorCounts := make(map[string]int)
 		for _, errMsg := range stats.ErrorMessages {
 			errorCounts[errMsg]++
 		}
-		
+
 		// 显示错误统计
 		errorTable := tablewriter.NewWriter(os.Stdout)
 		errorTable.Header("错误信息", "出现次数")
-		
+
 		for errMsg, count := range errorCounts {
 			// 截断过长的错误信息
 			displayMsg := errMsg
@@ -251,10 +219,10 @@ func (td *TestDisplayer) ShowTestSummary(stats TestStats) {
 			}
 			errorTable.Append([]string{displayMsg, fmt.Sprintf("%d", count)})
 		}
-		
+
 		errorTable.Render()
 	}
-	
+
 	fmt.Println()
 }
 
@@ -264,22 +232,22 @@ func (td *TestDisplayer) ShowError(message string) {
 }
 
 // ShowErrorDetails 显示错误详情
-func (td *TestDisplayer) ShowErrorDetails(stats TestStats) {
+func (td *TestDisplayer) ShowErrorDetails(stats types.StatsData) {
 	// 如果有错误，显示错误信息
 	if len(stats.ErrorMessages) > 0 {
 		fmt.Println()
 		td.errorColor.Println("🚨 错误详情：")
-		
+
 		// 统计错误类型
 		errorCounts := make(map[string]int)
 		for _, errMsg := range stats.ErrorMessages {
 			errorCounts[errMsg]++
 		}
-		
+
 		// 显示错误统计
 		errorTable := tablewriter.NewWriter(os.Stdout)
 		errorTable.Header("错误信息", "出现次数")
-		
+
 		for errMsg, count := range errorCounts {
 			// 截断过长的错误信息
 			displayMsg := errMsg
@@ -288,14 +256,14 @@ func (td *TestDisplayer) ShowErrorDetails(stats TestStats) {
 			}
 			errorTable.Append([]string{displayMsg, fmt.Sprintf("%d", count)})
 		}
-		
+
 		errorTable.Render()
 		fmt.Println()
 	}
 }
 
-// Result 使用统一的测试结果结构
-type Result = report.TestResult
+// Result 结果显示 - 使用统一的types.TestResult
+type Result = types.ReportData
 
 // PrintResult 输出结果
 func PrintResult(r *Result) {
@@ -331,13 +299,12 @@ func PrintResult(r *Result) {
 		FormatDuration(r.NetworkMetrics.AvgTLSHandshakeTime),
 		FormatDuration(r.NetworkMetrics.MaxTLSHandshakeTime), ""})
 
-
 	// 添加服务性能指标
 	table.Append([]string{"🔤 输出Token数量",
 		fmt.Sprintf("%d", r.ContentMetrics.MinTokenCount),
 		fmt.Sprintf("%d", r.ContentMetrics.AvgTokenCount),
 		fmt.Sprintf("%d", r.ContentMetrics.MaxTokenCount), "个"})
-	
+
 	// 在非流式模式下，TTFT显示为"-"避免歧义
 	if r.IsStream {
 		table.Append([]string{"🚀 TTFT (首个Token)",
@@ -348,7 +315,7 @@ func PrintResult(r *Result) {
 		table.Append([]string{"🚀 TTFT (首个Token)",
 			"-", "-", "-", "非流式模式"})
 	}
-	
+
 	table.Append([]string{"🚀 TPS(每秒 Token)",
 		FormatFloat(r.ContentMetrics.MinTPS, 2),
 		FormatFloat(r.ContentMetrics.AvgTPS, 2),
@@ -377,13 +344,13 @@ func printModeInfo(r *Result) {
 
 	// 显示详细的指标说明
 	fmt.Println("\n📖 指标说明：")
-	
+
 	// 基础测试信息
 	infoColor.Println("【基础信息】")
 	infoColor.Println("  • 目标服务器 IP: 实际连接的服务器IP地址")
 	infoColor.Println("  • 总请求数: 测试执行的请求总数量")
 	infoColor.Println("  • 并发数: 同时进行的并发请求数量")
-	
+
 	// 时间性能指标
 	infoColor.Println("\n【时间性能指标】")
 	infoColor.Println("  • 请求耗时: 从发起请求到接收完整响应的总时间")
@@ -394,20 +361,20 @@ func printModeInfo(r *Result) {
 		infoColor.Println("  • 响应时间: 完整请求-响应周期的时间")
 		infoColor.Println("    - 非流式模式下测量完整响应的总时间")
 	}
-	
+
 	// 网络性能指标
 	infoColor.Println("\n【网络性能指标】")
 	infoColor.Println("  • DNS 解析时间: 域名解析为IP地址所需时间")
 	infoColor.Println("  • TCP 连接时间: 建立TCP连接所需时间")
 	infoColor.Println("  • TLS 握手时间: 完成TLS/SSL握手所需时间")
 	infoColor.Println("    - 这些指标帮助分析网络层面的性能瓶颈")
-	
+
 	// 服务性能指标
 	infoColor.Println("\n【服务性能指标】")
 	infoColor.Println("  • Token 数量: API 返回的 token 总数（输入+输出）")
 	infoColor.Println("  • TPS: Tokens Per Second，每秒处理的令牌数")
 	infoColor.Println("    - 衡量AI模型实际处理能力的核心指标")
-	
+
 	// 可靠性指标
 	infoColor.Println("\n【可靠性指标】")
 	infoColor.Println("  • 成功率: 成功完成的请求占总请求的百分比")
