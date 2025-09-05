@@ -113,7 +113,17 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return nil, err
+		// URL 格式错误或其他请求构建错误
+		return &ResponseMetrics{
+			TimeToFirstToken: 0,
+			TotalTime:        0,
+			DNSTime:          0,
+			ConnectTime:      0,
+			TLSHandshakeTime: 0,
+			TargetIP:         "",
+			CompletionTokens: 0,
+			ErrorMessage:     fmt.Sprintf("Request creation error: %s", err.Error()),
+		}, err
 	}
 
 	req.Header.Set("Content-Type", "application/json")
@@ -160,7 +170,17 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		// 流式请求
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			// 网络错误（如地址错误、连接失败等）
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        time.Since(t0),
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
+			}, err
 		}
 		defer resp.Body.Close()
 
@@ -224,7 +244,17 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		// 非流式请求
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
-			return nil, err
+			// 网络错误（如地址错误、连接失败等）
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        time.Since(t0),
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
+			}, err
 		}
 		defer resp.Body.Close()
 

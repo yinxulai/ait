@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"testing"
 	"time"
 )
@@ -118,5 +119,82 @@ func TestOpenAIClient_Request_ServerError(t *testing.T) {
 
 	if err == nil {
 		t.Error("Request() should return error for server error")
+	}
+}
+
+func TestOpenAIClient_Request_NetworkError(t *testing.T) {
+	// 使用一个无效的地址来模拟网络错误
+	client := NewOpenAIClient("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo")
+
+	metrics, err := client.Request("test prompt", false)
+
+	// 应该返回错误
+	if err == nil {
+		t.Error("Request() should return error for network error")
+	}
+
+	// 但应该返回包含错误信息的 metrics
+	if metrics == nil {
+		t.Error("Request() should return metrics even on network error")
+	}
+
+	if metrics != nil {
+		if metrics.CompletionTokens != 0 {
+			t.Errorf("Request() CompletionTokens should be 0 on network error, got %v", metrics.CompletionTokens)
+		}
+
+		if !strings.Contains(metrics.ErrorMessage, "Network error:") {
+			t.Errorf("Request() ErrorMessage should contain 'Network error:', got %v", metrics.ErrorMessage)
+		}
+
+		if metrics.TotalTime <= 0 {
+			t.Errorf("Request() TotalTime should be > 0 even on network error, got %v", metrics.TotalTime)
+		}
+	}
+}
+
+func TestOpenAIClient_Request_StreamNetworkError(t *testing.T) {
+	// 测试流式模式下的网络错误
+	client := NewOpenAIClient("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo")
+
+	metrics, err := client.Request("test prompt", true)
+
+	// 应该返回错误
+	if err == nil {
+		t.Error("Request() should return error for network error in stream mode")
+	}
+
+	// 但应该返回包含错误信息的 metrics
+	if metrics == nil {
+		t.Error("Request() should return metrics even on network error in stream mode")
+	}
+
+	if metrics != nil {
+		if !strings.Contains(metrics.ErrorMessage, "Network error:") {
+			t.Errorf("Request() ErrorMessage should contain 'Network error:', got %v", metrics.ErrorMessage)
+		}
+	}
+}
+
+func TestOpenAIClient_Request_InvalidURL(t *testing.T) {
+	// 使用一个格式错误的 URL
+	client := NewOpenAIClient("://invalid-url", "test-key", "gpt-3.5-turbo")
+
+	metrics, err := client.Request("test prompt", false)
+
+	// 应该返回错误
+	if err == nil {
+		t.Error("Request() should return error for invalid URL")
+	}
+
+	// 但应该返回包含错误信息的 metrics
+	if metrics == nil {
+		t.Error("Request() should return metrics even on invalid URL error")
+	}
+
+	if metrics != nil {
+		if !strings.Contains(metrics.ErrorMessage, "Request creation error:") {
+			t.Errorf("Request() ErrorMessage should contain 'Request creation error:', got %v", metrics.ErrorMessage)
+		}
 	}
 }

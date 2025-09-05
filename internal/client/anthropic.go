@@ -79,9 +79,19 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 
 	reqBody := []byte(fmt.Sprintf(reqBodyTemplate, c.Model, prompt, stream))
 
-	req, err := http.NewRequest("POST", c.BaseUrl+"/messages", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest("POST", c.BaseUrl+"/v1/messages", bytes.NewBuffer(reqBody))
 	if err != nil {
-		return nil, err
+		// URL 格式错误或其他请求构建错误
+		return &ResponseMetrics{
+			TimeToFirstToken: 0,
+			TotalTime:        0,
+			DNSTime:          0,
+			ConnectTime:      0,
+			TLSHandshakeTime: 0,
+			TargetIP:         "",
+			CompletionTokens: 0,
+			ErrorMessage:     fmt.Sprintf("Request creation error: %s", err.Error()),
+		}, err
 	}
 	req.Header.Set("x-api-key", c.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
@@ -126,9 +136,34 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	t0 := time.Now()
 	resp, err := http.DefaultClient.Do(req)
 	if err != nil {
-		return nil, err
+		// 网络错误（如地址错误、连接失败等）
+		return &ResponseMetrics{
+			TimeToFirstToken: 0,
+			TotalTime:        time.Since(t0),
+			DNSTime:          dnsTime,
+			ConnectTime:      connectTime,
+			TLSHandshakeTime: tlsTime,
+			TargetIP:         targetIP,
+			CompletionTokens: 0,
+			ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
+		}, err
 	}
 	defer resp.Body.Close()
+
+	// 检查 HTTP 状态码
+	if resp.StatusCode != http.StatusOK {
+		responseData, _ := io.ReadAll(resp.Body)
+		return &ResponseMetrics{
+			TimeToFirstToken: 0,
+			TotalTime:        time.Since(t0),
+			DNSTime:          dnsTime,
+			ConnectTime:      connectTime,
+			TLSHandshakeTime: tlsTime,
+			TargetIP:         targetIP,
+			CompletionTokens: 0,
+			ErrorMessage:     fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(responseData)),
+		}, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+	}
 
 	if stream {
 		// 流式响应处理
