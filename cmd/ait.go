@@ -41,9 +41,9 @@ func loadEnvForProvider(provider string) (baseUrl, apiKey string) {
 
 func main() {
 	baseUrl := flag.String("baseUrl", "", "服务地址")
-	apikey := flag.String("apikey", "", "API 密钥")
-	model := flag.String("model", "", "模型名称，支持多个模型用逗号分割")
+	apiKey := flag.String("apiKey", "", "API 密钥")
 	count := flag.Int("count", 10, "请求总数")
+	models := flag.String("models", "", "模型名称，支持多个模型用,(逗号)分割")
 	protocol := flag.String("protocol", "", "协议类型: openai 或 anthropic")
 	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt")
 	stream := flag.Bool("stream", true, "是否开启流模式")
@@ -54,7 +54,7 @@ func main() {
 	// 自动推断 protocol 和加载环境变量
 	finalProtocol := *protocol
 	finalBaseUrl := *baseUrl
-	finalApiKey := *apikey
+	finalApiKey := *apiKey
 
 	// 如果未指定 protocol，根据环境变量自动推断
 	if finalProtocol == "" {
@@ -73,16 +73,16 @@ func main() {
 	}
 
 	// model 参数检查（只能通过命令行参数指定）
-	if *model == "" {
+	if *models == "" {
 		fmt.Println("model 参数必填，请通过 -model 参数指定")
 		fmt.Println("支持多个模型，用逗号分割，例如：gpt-3.5-turbo,gpt-4")
 		os.Exit(1)
 	}
 
 	// 解析多个模型
-	models := strings.Split(*model, ",")
-	for i, m := range models {
-		models[i] = strings.TrimSpace(m)
+	modelList := strings.Split(*models, ",")
+	for i, m := range modelList {
+		modelList[i] = strings.TrimSpace(m)
 	}
 
 	// baseUrl 和 apikey 检查（可以通过环境变量获取）
@@ -104,10 +104,11 @@ func main() {
 	// 用于汇总所有模型的测试结果
 	var allResults []*types.ReportData
 
+	displayer := display.New()
+
 	// 循环处理每个模型
-	for i, modelName := range models {
-		fmt.Printf("\n=== 开始测试模型 [%d/%d]: %s ===\n", i+1, len(models), modelName)
-		
+	for _, modelName := range modelList {
+
 		config := types.Input{
 			Protocol:    finalProtocol,
 			BaseUrl:     finalBaseUrl,
@@ -126,62 +127,38 @@ func main() {
 			continue
 		}
 
-		// 创建显示控制器
-		testDisplayer := display.NewTestDisplayer(config)
-
-		// 显示测试开始信息
-		testDisplayer.ShowTestStart()
-
-		// 用于保存最后的统计信息
-		var finalStats types.StatsData
-
 		// 执行测试，使用回调函数来更新显示
-		result, err := runnerInstance.RunWithProgress(func(stats types.StatsData) {
-			finalStats = stats // 保存最后的统计信息
-			testDisplayer.UpdateProgress(stats)
-		})
-
+		result, err := runnerInstance.Run()
 		if err != nil {
-			testDisplayer.ShowError(fmt.Sprintf("执行测试失败: %v", err))
-			continue
+			panic(err)
 		}
-
-		// 显示测试完成
-		testDisplayer.ShowTestComplete()
-
-		// 显示错误详情（如果有错误的话）
-		testDisplayer.ShowErrorDetails(finalStats)
-
-		// 直接使用 runner 的结果显示，无需转换
-		display.PrintResult(result)
 
 		// 保存结果用于汇总
 		allResults = append(allResults, result)
 	}
 
-	// 显示汇总结果
-	if len(allResults) > 1 {
-		fmt.Printf("\n=== 所有模型测试结果汇总 ===\n")
-		for i, result := range allResults {
-			fmt.Printf("\n模型 %s 的测试结果:\n", models[i])
-			fmt.Printf("  成功率: %.2f%%\n", result.ReliabilityMetrics.SuccessRate)
-			fmt.Printf("  平均响应时间: %v\n", result.TimeMetrics.AvgTotalTime)
-			fmt.Printf("  平均 TTFT: %v\n", result.ContentMetrics.AvgTTFT)
-			fmt.Printf("  平均 TPS: %.2f\n", result.ContentMetrics.AvgTPS)
-		}
+	// 为所有结果填充模型名称元数据
+	for i, result := range allResults {
+		result.Metadata.Model = modelList[i]
+		result.Metadata.BaseUrl = finalBaseUrl
+		result.Metadata.Protocol = finalProtocol
+		result.Metadata.Timestamp = time.Now().Format(time.RFC3339)
+	}
+
+	if len(modelList) == 1 {
+		displayer.ShowSignalReport(allResults[0])
+	}
+
+	if len(modelList) > 1 {
+		displayer.ShowMultiReport(allResults)
 	}
 
 	// 如果启用了报告生成，则生成包含所有模型结果的汇总报告文件
 	if *reportFlag && len(allResults) > 0 {
-		// 为每个结果填充元数据
+		// 转换为 ReportData 切片
 		reportDataList := make([]types.ReportData, len(allResults))
 		for i, result := range allResults {
-			reportData := *result
-			reportData.Metadata.Timestamp = time.Now().Format(time.RFC3339)
-			reportData.Metadata.Protocol = finalProtocol
-			reportData.Metadata.Model = models[i]
-			reportData.Metadata.BaseUrl = finalBaseUrl
-			reportDataList[i] = reportData
+			reportDataList[i] = *result
 		}
 
 		// 使用 ReportManager 生成汇总报告

@@ -2,24 +2,14 @@ package display
 
 import (
 	"fmt"
-	"strings"
-	"time"
+	"os"
+	"strconv"
+
+	"github.com/olekukonko/tablewriter"
+	"github.com/yinxulai/ait/internal/types"
 )
 
-// 计算字符串的显示宽度（考虑中文字符）
-func displayWidth(s string) int {
-	width := 0
-	for _, r := range s {
-		if r >= 0x4e00 && r <= 0x9fff { // 中文字符范围
-			width += 2
-		} else {
-			width += 1
-		}
-	}
-	return width
-}
-
-// Colors 定义终端颜色
+// Colors 定义终端颜色 - 导出供外部使用
 const (
 	ColorReset  = "\033[0m"
 	ColorRed    = "\033[31m"
@@ -32,192 +22,88 @@ const (
 	ColorBold   = "\033[1m"
 )
 
-// PrintTitle 打印标题
-func PrintTitle(title string) {
-	fmt.Printf("\n%s%s=== %s ===%s\n\n", ColorBold, ColorCyan, title, ColorReset)
+// Displayer 测试显示器
+type Displayer struct {}
+
+// New 创建新的测试显示器
+func New() *Displayer {
+	return &Displayer{}
 }
 
-// PrintSection 打印章节
-func PrintSection(section string) {
-	fmt.Printf("%s%s%s%s\n", ColorBold, ColorYellow, section, ColorReset)
-}
-
-// PrintSuccess 打印成功信息
-func PrintSuccess(message string) {
-	fmt.Printf("%s✓ %s%s\n", ColorGreen, message, ColorReset)
-}
-
-// PrintError 打印错误信息
-func PrintError(message string) {
-	fmt.Printf("%s✗ %s%s\n", ColorRed, message, ColorReset)
-}
-
-// PrintWarning 打印警告信息
-func PrintWarning(message string) {
-	fmt.Printf("%s⚠ %s%s\n", ColorYellow, message, ColorReset)
-}
-
-// PrintInfo 打印信息
-func PrintInfo(message string) {
-	fmt.Printf("%sℹ %s%s\n", ColorBlue, message, ColorReset)
-}
-
-// ProgressBar 进度条结构
-type ProgressBar struct {
-	total   int
-	current int
-	width   int
-	prefix  string
-}
-
-// NewProgressBar 创建新的进度条
-func NewProgressBar(total int, prefix string) *ProgressBar {
-	return &ProgressBar{
-		total:  total,
-		width:  50,
-		prefix: prefix,
+// 将数据更新到终端上（刷新显示）
+// 详细模式，展示所有 ReportData 的数据
+func (td *Displayer) ShowSignalReport(data *types.ReportData) {
+	fmt.Printf("\n=== AIT 开源测试工具结果报告 ===\n\n")
+	
+	// 单个综合表格
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("指标", "最小值", "平均值", "最大值", "单位")
+	
+	// 基础信息（这些只有单一值，只填最小值列）
+	table.Append("🤖 模型", data.Metadata.Model, "", "", "-")
+	table.Append("🔗 协议", data.Metadata.Protocol, "", "", "-")
+	table.Append("🌐 基础URL", data.Metadata.BaseUrl, "", "", "-")
+	table.Append("🌊 流式", strconv.FormatBool(data.IsStream), "", "", "-")
+	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "个")
+	table.Append("📊 总请求数", strconv.Itoa(data.TotalRequests), "", "", "个")
+	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.ReliabilityMetrics.SuccessRate), "", "", "%")
+	
+	// 时间性能指标
+	table.Append("🕐 总耗时", data.TimeMetrics.MinTotalTime.String(), data.TimeMetrics.AvgTotalTime.String(), data.TimeMetrics.MaxTotalTime.String(), "时间")
+	
+	// 网络性能指标
+	table.Append("🔍 DNS时间", data.NetworkMetrics.MinDNSTime.String(), data.NetworkMetrics.AvgDNSTime.String(), data.NetworkMetrics.MaxDNSTime.String(), "时间")
+	table.Append("🔒 TLS时间", data.NetworkMetrics.MinTLSHandshakeTime.String(), data.NetworkMetrics.AvgTLSHandshakeTime.String(), data.NetworkMetrics.MaxTLSHandshakeTime.String(), "时间")
+	table.Append("🔌 TCP 连接时间", data.NetworkMetrics.MinConnectTime.String(), data.NetworkMetrics.AvgConnectTime.String(), data.NetworkMetrics.MaxConnectTime.String(), "时间")
+	if data.NetworkMetrics.TargetIP != "" {
+		table.Append("🎯 目标IP", data.NetworkMetrics.TargetIP, "", "", "-")
 	}
-}
-
-// Update 更新进度条
-func (pb *ProgressBar) Update(current int) {
-	pb.current = current
-	pb.render()
-}
-
-// Finish 完成进度条
-func (pb *ProgressBar) Finish() {
-	pb.current = pb.total
-	pb.render()
+	
+	// 内容性能指标
+	if data.IsStream {
+		table.Append("⚡ TTFT", data.ContentMetrics.MinTTFT.String(), data.ContentMetrics.AvgTTFT.String(), data.ContentMetrics.MaxTTFT.String(), "时间")
+	}
+	table.Append("🎲 Token 数", strconv.Itoa(data.ContentMetrics.MinTokenCount), strconv.Itoa(data.ContentMetrics.AvgTokenCount), strconv.Itoa(data.ContentMetrics.MaxTokenCount), "个")
+	table.Append("🚀 TPS", fmt.Sprintf("%.2f", data.ContentMetrics.MinTPS), fmt.Sprintf("%.2f", data.ContentMetrics.AvgTPS), fmt.Sprintf("%.2f", data.ContentMetrics.MaxTPS), "个/秒")
+	
+	table.Render()
 	fmt.Println()
 }
 
-// render 渲染进度条
-func (pb *ProgressBar) render() {
-	percent := float64(pb.current) / float64(pb.total)
-	filled := int(percent * float64(pb.width))
-
-	bar := strings.Repeat("█", filled) + strings.Repeat("░", pb.width-filled)
-
-	fmt.Printf("\r%s%s %s[%s]%s %d/%d (%.1f%%)",
-		ColorCyan, pb.prefix, ColorGreen, bar, ColorReset, pb.current, pb.total, percent*100)
-}
-
-// Table 表格结构
-type Table struct {
-	headers []string
-	rows    [][]string
-	widths  []int
-}
-
-// NewTable 创建新表格
-func NewTable(headers []string) *Table {
-	widths := make([]int, len(headers))
-	for i, header := range headers {
-		widths[i] = displayWidth(header)
-	}
-
-	return &Table{
-		headers: headers,
-		widths:  widths,
-	}
-}
-
-// AddRow 添加行
-func (t *Table) AddRow(row []string) {
-	for i, cell := range row {
-		if i < len(t.widths) {
-			cellWidth := displayWidth(cell)
-			if cellWidth > t.widths[i] {
-				t.widths[i] = cellWidth
-			}
+// 将数据更新到终端上（刷新显示）
+// 概览模式，每行一个，展示主要数据（平均值）
+func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
+	fmt.Printf("\n=== AIT 开源测试工具结果报告 ===\n\n")
+	
+	// 单个汇总表格，包含所有不同类型指标的平均值
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("🤖 模型", "🎯 目标IP", "📊 请求数", "⚡ 并发", "✅ 成功率",
+		"🕐 平均总耗时", "⚡ 平均TTFT", "🚀 平均TPS", "🎲 平均Token数",
+		"🔍 平均DNS时间", "🔌 平均 TCP 连接时间", "🔒 平均TLS时间")
+	
+	for _, report := range data {
+		// TTFT 处理（流式模式才显示）
+		ttftStr := "-"
+		if report.IsStream {
+			ttftStr = report.ContentMetrics.AvgTTFT.String()
 		}
+		
+		table.Append(
+			report.Metadata.Model,
+			report.NetworkMetrics.TargetIP,
+			strconv.Itoa(report.TotalRequests),
+			strconv.Itoa(report.Concurrency),
+			fmt.Sprintf("%.2f%%", report.ReliabilityMetrics.SuccessRate),
+			report.TimeMetrics.AvgTotalTime.String(),
+			ttftStr,
+			fmt.Sprintf("%.2f", report.ContentMetrics.AvgTPS),
+			strconv.Itoa(report.ContentMetrics.AvgTokenCount),
+			report.NetworkMetrics.AvgDNSTime.String(),
+			report.NetworkMetrics.AvgConnectTime.String(),
+			report.NetworkMetrics.AvgTLSHandshakeTime.String(),
+		)
 	}
-	t.rows = append(t.rows, row)
-}
-
-// Render 渲染表格
-func (t *Table) Render() {
-	// 打印顶部边框
-	t.printTopBorder()
-
-	// 打印表头
-	t.printRow(t.headers, ColorBold+ColorCyan)
-
-	// 打印分隔线
-	t.printSeparator()
-
-	// 打印数据行
-	for _, row := range t.rows {
-		t.printRow(row, "")
-	}
-
-	// 打印底部边框
-	t.printBottomBorder()
-}
-
-// printTopBorder 打印顶部边框
-func (t *Table) printTopBorder() {
-	fmt.Print("┌")
-	for i, width := range t.widths {
-		fmt.Print(strings.Repeat("─", width+2))
-		if i < len(t.widths)-1 {
-			fmt.Print("┬")
-		}
-	}
-	fmt.Println("┐")
-}
-
-// printBottomBorder 打印底部边框
-func (t *Table) printBottomBorder() {
-	fmt.Print("└")
-	for i, width := range t.widths {
-		fmt.Print(strings.Repeat("─", width+2))
-		if i < len(t.widths)-1 {
-			fmt.Print("┴")
-		}
-	}
-	fmt.Println("┘")
-}
-
-// printSeparator 打印分隔线
-func (t *Table) printSeparator() {
-	fmt.Print("├")
-	for i, width := range t.widths {
-		fmt.Print(strings.Repeat("─", width+2))
-		if i < len(t.widths)-1 {
-			fmt.Print("┼")
-		}
-	}
-	fmt.Println("┤")
-}
-
-// printRow 打印行
-func (t *Table) printRow(row []string, color string) {
-	fmt.Print("│")
-	for i, cell := range row {
-		if i < len(t.widths) {
-			cellWidth := displayWidth(cell)
-			padding := t.widths[i] - cellWidth
-			fmt.Printf(" %s%s%s%s │", color, cell, strings.Repeat(" ", padding), ColorReset)
-		}
-	}
+	
+	table.Render()
 	fmt.Println()
-}
-
-// FormatDuration 格式化时间
-func FormatDuration(d time.Duration) string {
-	if d < time.Microsecond {
-		return fmt.Sprintf("%.0fns", float64(d.Nanoseconds()))
-	} else if d < time.Millisecond {
-		return fmt.Sprintf("%.2fμs", float64(d.Nanoseconds())/1000)
-	} else if d < time.Second {
-		return fmt.Sprintf("%.2fms", float64(d.Nanoseconds())/1000000)
-	}
-	return fmt.Sprintf("%.2fs", d.Seconds())
-}
-
-// FormatFloat 格式化浮点数
-func FormatFloat(f float64, precision int) string {
-	return fmt.Sprintf("%."+fmt.Sprintf("%d", precision)+"f", f)
 }
