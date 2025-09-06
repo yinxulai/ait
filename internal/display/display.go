@@ -136,6 +136,50 @@ func (td *Displayer) FinishProgress() {
 	}
 }
 
+func (td *Displayer) ShowErrorsReport(errors []*string) {
+	if len(errors) == 0 {
+		return
+	}
+
+	// 统计错误信息和出现次数
+	errorCounts := make(map[string]int)
+	totalErrors := 0
+	
+	for _, errorPtr := range errors {
+		if errorPtr != nil {
+			errorMsg := *errorPtr
+			errorCounts[errorMsg]++
+			totalErrors++
+		}
+	}
+
+	if totalErrors == 0 {
+		return
+	}
+
+	fmt.Printf("%s%s❌ 错误信息报告%s\n", ColorBold, ColorRed, ColorReset)
+	fmt.Printf("   %s检测到 %d 个错误（%d 种不同类型）%s\n\n", ColorYellow, totalErrors, len(errorCounts), ColorReset)
+
+	// 创建错误信息表格
+	table := tablewriter.NewWriter(os.Stdout)
+	table.Header("序号", "错误详情", "出现次数")
+
+	// 添加错误信息到表格
+	index := 1
+	for errorMsg, count := range errorCounts {
+		// 如果错误信息太长，进行适当的截断和格式化
+		displayMsg := errorMsg
+		if len(displayMsg) > 100 {
+			displayMsg = displayMsg[:97] + "..."
+		}
+		table.Append(fmt.Sprintf("%d", index), displayMsg, fmt.Sprintf("%d", count))
+		index++
+	}
+
+	table.Render()
+	fmt.Println()
+}
+
 // 将数据更新到终端上（刷新显示）
 // 详细模式，展示所有 ReportData 的数据
 func (td *Displayer) ShowSignalReport(data *types.ReportData) {
