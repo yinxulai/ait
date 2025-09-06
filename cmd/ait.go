@@ -101,6 +101,9 @@ func main() {
 		os.Exit(1)
 	}
 
+	// 用于收集所有错误信息
+	var allErrors []string
+
 	// 用于汇总所有模型的测试结果
 	var allResults []*types.ReportData
 
@@ -123,7 +126,7 @@ func main() {
 
 	// 循环处理每个模型
 	totalRequests := *count * len(modelList)
-	
+
 	// 初始化总进度条
 	displayer.InitProgress(totalRequests, fmt.Sprintf("🚀 测试进度 (%d 个模型)", len(modelList)))
 
@@ -149,17 +152,33 @@ func main() {
 			continue
 		}
 
+		// 用于收集当前模型的错误信息
+		var currentModelErrors []string
+
 		// 执行测试，使用回调函数来更新显示
 		result, err := runnerInstance.RunWithProgress(func(sd types.StatsData) {
 			// 计算当前总完成数：之前模型的完成数 + 当前模型的完成数
 			currentCompleted := completedRequests + sd.CompletedCount + sd.FailedCount
-			
+
 			// 计算百分比
 			percent := float64(currentCompleted) / float64(totalRequests) * 100.0
 			displayer.UpdateProgress(percent)
+
+			// 保存最新的错误信息（覆盖之前的，确保获取最完整的错误列表）
+			currentModelErrors = make([]string, len(sd.ErrorMessages))
+			copy(currentModelErrors, sd.ErrorMessages)
 		})
 		if err != nil {
 			panic(err)
+		}
+
+		// 处理当前模型的错误信息
+		for _, errorMsg := range currentModelErrors {
+			if errorMsg != "" {
+				// 为错误信息添加模型上下文
+				errorWithContext := fmt.Sprintf("[%s] %s", modelName, errorMsg)
+				allErrors = append(allErrors, errorWithContext)
+			}
 		}
 
 		// 更新已完成的请求数（当前模型的所有请求都已完成）
@@ -178,6 +197,16 @@ func main() {
 		result.Metadata.BaseUrl = finalBaseUrl
 		result.Metadata.Protocol = finalProtocol
 		result.Metadata.Timestamp = time.Now().Format(time.RFC3339)
+	}
+
+	// 显示错误报告（如果有错误的话）
+	if len(allErrors) > 0 {
+		// 将 []string 转换为 []*string
+		errorPtrs := make([]*string, len(allErrors))
+		for i := range allErrors {
+			errorPtrs[i] = &allErrors[i]
+		}
+		displayer.ShowErrorsReport(errorPtrs)
 	}
 
 	if len(modelList) == 1 {
