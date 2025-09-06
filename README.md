@@ -1,5 +1,7 @@
 # AIT - AI 模型性能测试工具
 
+[![test](https://github.com/yinxulai/ait/actions/workflows/test.yaml/badge.svg)](https://github.com/yinxulai/ait/actions/workflows/test.yaml)
+
 一个强大的 CLI 工具，用于批量测试符合 OpenAI 协议和 Anthropic 协议的 AI 模型性能指标。支持 TTFT（首字节时间）、TPS（吞吐量）、网络延迟等关键性能指标的测量，提供多模型对比测试和详细的性能报告生成功能。
 
 ## ✨ 功能特性
@@ -15,6 +17,8 @@
 - 📄 **多格式报告**: 支持生成 JSON 和 CSV 格式的详细测试报告
 - 🌐 **网络指标**: 包含 DNS、连接、TLS 握手等网络性能指标
 - 🔄 **流式支持**: 默认支持流式响应，更真实的测试场景
+
+![AIT 工具使用截图](snapshot/snapsho.png)
 
 ## 🛠️ 安装和使用
 
