@@ -17,7 +17,7 @@ type Runner struct {
 
 // NewRunner 创建新的性能测试执行器
 func NewRunner(config types.Input) (*Runner, error) {
-	client, err := client.NewClient(config.Protocol, config.BaseUrl, config.ApiKey, config.Model)
+	client, err := client.NewClientWithTimeout(config.Protocol, config.BaseUrl, config.ApiKey, config.Model, config.Timeout)
 	if err != nil {
 		return nil, err
 	}

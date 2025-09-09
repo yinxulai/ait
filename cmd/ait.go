@@ -49,6 +49,7 @@ func main() {
 	stream := flag.Bool("stream", true, "是否开启流模式")
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	reportFlag := flag.Bool("report", false, "是否生成报告文件")
+	timeout := flag.Int("timeout", 30, "请求超时时间(秒)")
 	flag.Parse()
 
 	// 自动推断 protocol 和加载环境变量
@@ -122,6 +123,7 @@ func main() {
 		Stream:      *stream,
 		Prompt:      *prompt,
 		Report:      *reportFlag,
+		Timeout:     *timeout,
 	})
 
 	// 循环处理每个模型
@@ -144,6 +146,7 @@ func main() {
 			Prompt:      *prompt,
 			Stream:      *stream,
 			Report:      *reportFlag,
+			Timeout:     time.Duration(*timeout) * time.Second,
 		}
 
 		runnerInstance, err := runner.NewRunner(config)

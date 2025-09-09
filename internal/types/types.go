@@ -16,6 +16,7 @@ type Input struct {
 	Stream      bool
 	Prompt      string
 	Report      bool // 是否生成报告文件
+	Timeout     time.Duration // 请求超时时间
 }
 
 // StatsData 实时测试统计数据 - runner 内部使用的统计结构

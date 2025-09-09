@@ -80,6 +80,18 @@ type OpenAIClient struct {
 
 // NewOpenAIClient 创建新的 OpenAI 客户端
 func NewOpenAIClient(baseUrl, apiKey, model string) *OpenAIClient {
+	return NewOpenAIClientWithTimeout(baseUrl, apiKey, model, 30*time.Second)
+}
+
+// NewOpenAIClientWithTimeout 创建新的带超时配置的 OpenAI 客户端
+// 
+// 重要配置说明：
+// - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
+//   这对于准确的性能测量至关重要，因为连接复用会跳过 DNS 解析和 TCP 连接建立时间，
+//   导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
+//   网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
+// - DisableCompression=false: 启用压缩以节省带宽
+func NewOpenAIClientWithTimeout(baseUrl, apiKey, model string, timeout time.Duration) *OpenAIClient {
 	if baseUrl == "" {
 		baseUrl = "https://api.openai.com"
 	}
@@ -93,7 +105,7 @@ func NewOpenAIClient(baseUrl, apiKey, model string) *OpenAIClient {
 	return &OpenAIClient{
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   30 * time.Second,
+			Timeout:   timeout,
 		},
 		baseURL:  baseUrl,
 		apiKey:   apiKey,

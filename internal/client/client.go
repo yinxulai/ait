@@ -33,11 +33,16 @@ type ModelClient interface {
 
 // NewClient 根据 protocol 类型创建客户端
 func NewClient(protocol, baseUrl, apiKey, model string) (ModelClient, error) {
+	return NewClientWithTimeout(protocol, baseUrl, apiKey, model, 30*time.Second)
+}
+
+// NewClientWithTimeout 根据 protocol 类型创建带超时配置的客户端
+func NewClientWithTimeout(protocol, baseUrl, apiKey, model string, timeout time.Duration) (ModelClient, error) {
 	switch protocol {
 	case "openai":
-		return NewOpenAIClient(baseUrl, apiKey, model), nil
+		return NewOpenAIClientWithTimeout(baseUrl, apiKey, model, timeout), nil
 	case "anthropic":
-		return NewAnthropicClient(baseUrl, apiKey, model), nil
+		return NewAnthropicClientWithTimeout(baseUrl, apiKey, model, timeout), nil
 	default:
 		return nil, fmt.Errorf("不支持的 protocol 类型: %s", protocol)
 	}

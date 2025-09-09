@@ -46,19 +46,43 @@ type AnthropicStreamChunk struct {
 
 // AnthropicClient Anthropic 协议客户端
 type AnthropicClient struct {
-	BaseUrl  string
-	ApiKey   string
-	Model    string
-	Provider string
+	BaseUrl    string
+	ApiKey     string
+	Model      string
+	Provider   string
+	httpClient *http.Client
 }
 
 // NewAnthropicClient 创建新的 Anthropic 客户端
 func NewAnthropicClient(baseUrl, apiKey, model string) *AnthropicClient {
+	return NewAnthropicClientWithTimeout(baseUrl, apiKey, model, 30*time.Second)
+}
+
+// NewAnthropicClientWithTimeout 创建新的带超时配置的 Anthropic 客户端
+// NewAnthropicClientWithTimeout 创建新的带超时配置的 Anthropic 客户端
+//
+// 重要配置说明：
+// - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
+//   这对于准确的性能测量至关重要，因为连接复用会跳过 DNS 解析和 TCP 连接建立时间，
+//   导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
+//   网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
+// - DisableCompression=false: 启用压缩以节省带宽
+func NewAnthropicClientWithTimeout(baseUrl, apiKey, model string, timeout time.Duration) *AnthropicClient {
+	// 禁用连接复用以确保每个请求都是独立的
+	transport := &http.Transport{
+		DisableKeepAlives:  true,
+		DisableCompression: false,
+	}
+
 	return &AnthropicClient{
 		BaseUrl:  baseUrl,
 		ApiKey:   apiKey,
 		Model:    model,
 		Provider: "anthropic",
+		httpClient: &http.Client{
+			Transport: transport,
+			Timeout:   timeout,
+		},
 	}
 }
 
@@ -133,18 +157,8 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 
-	// 创建一个新的客户端，禁用连接复用以确保每个请求都是独立的
-	transport := &http.Transport{
-		DisableKeepAlives: true,
-		DisableCompression: false,
-	}
-	httpClient := &http.Client{
-		Transport: transport,
-		Timeout:   30 * time.Second,
-	}
-
 	t0 := time.Now()
-	resp, err := httpClient.Do(req)
+	resp, err := c.httpClient.Do(req)
 	if err != nil {
 		// 网络错误（如地址错误、连接失败等）
 		return &ResponseMetrics{
