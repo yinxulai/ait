@@ -1,4 +1,4 @@
-name: go test
+name: 测试
 
 on: [pull_request, push]
 
@@ -6,26 +6,21 @@ jobs:
   golang:
     runs-on: ubuntu-latest
     steps:
-      - name: Checkout
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: 设置 Go 环境
         uses: actions/setup-go@v4
         with:
           go-version: '1.22'
 
-      - name: Cache Go modules
-        uses: actions/cache@v3
+      - name: 运行测试并生成覆盖率报告
+        run: go test -v -race -coverprofile=coverage.txt ./...
+
+      - name: 上传覆盖率报告
+        uses: codecov/codecov-action@v5
         with:
-          path: |
-            ~/.cache/go-build
-            ~/go/pkg/mod
-          key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
-          restore-keys: |
-            ${{ runner.os }}-go-
+          token: ${{ secrets.CODECOV_TOKEN }}
 
-      - name: Run tests
-        run: make test
-
-      - name: Build
+      - name: 构建项目
         run: make build

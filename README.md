@@ -2,6 +2,8 @@
 
 [![test](https://github.com/yinxulai/ait/actions/workflows/test.yaml/badge.svg)](https://github.com/yinxulai/ait/actions/workflows/test.yaml)
 
+[![codecov](https://codecov.io/gh/yinxulai/ait/graph/badge.svg?token=WO1ZIWNGJ8)](https://codecov.io/gh/yinxulai/ait)
+
 一个强大的 CLI 工具，用于批量测试符合 OpenAI 协议和 Anthropic 协议的 AI 模型性能指标。支持 TTFT（首字节时间）、TPS（吞吐量）、网络延迟等关键性能指标的测量，提供多模型对比测试和详细的性能报告生成功能。
 
 ## ✨ 功能特性
@@ -256,6 +258,10 @@ make clean          # 清理构建文件
 make tidy           # 格式化代码并整理模块依赖
 make help           # 查看所有命令
 ```
+
+### 测试覆盖率
+
+项目已集成 codecov 测试覆盖率上报，每次 push 和 pull request 都会自动运行测试并上报覆盖率数据。
 
 ## 📄 许可证
 

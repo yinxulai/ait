@@ -1,4 +1,4 @@
-name: Release
+name: 发布
 
 on:
   release:
@@ -51,15 +51,15 @@ jobs:
             extension: .exe
 
     steps:
-      - name: Checkout repository
+      - name: 检出代码
         uses: actions/checkout@v4
 
-      - name: Set up Go
+      - name: 设置 Go 环境
         uses: actions/setup-go@v4
         with:
           go-version: '1.22'
 
-      - name: Build binary
+      - name: 构建二进制文件
         env:
           GOOS: ${{ matrix.goos }}
           GOARCH: ${{ matrix.goarch }}
@@ -69,7 +69,7 @@ jobs:
             -o dist/ait-${{ matrix.suffix }}${{ matrix.extension }} \
             ./cmd/
 
-      - name: Upload artifacts
+      - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
           name: ait-${{ matrix.suffix }}
@@ -83,18 +83,18 @@ jobs:
       contents: write
 
     steps:
-      - name: Download all artifacts
+      - name: 下载所有构建产物
         uses: actions/download-artifact@v4
         with:
           path: dist
 
-      - name: Prepare release files
+      - name: 准备发布文件
         run: |
           mkdir -p release-files
           find dist -type f -name "ait-*" | xargs -I {} cp {} release-files/
           ls -la release-files/
 
-      - name: Upload to Release
+      - name: 上传到发布页面
         uses: softprops/action-gh-release@v1
         with:
           files: release-files/*

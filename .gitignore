@@ -2,3 +2,7 @@ bin/*
 .env
 ait-report-*
 test.sh
+
+# 测试覆盖率文件
+coverage.out
+coverage.html
