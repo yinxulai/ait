@@ -61,7 +61,10 @@ func (td *Displayer) ShowWelcome() {
 
 func (td *Displayer) ShowInput(data *Input) {
 	// 创建配置信息表格
-	table := tablewriter.NewWriter(os.Stdout)
+	table := tablewriter.NewTable(
+		os.Stdout,
+		tablewriter.WithEastAsian(false),
+	)
 	table.Header("配置项", "值", "说明")
 
 	// 基础配置
@@ -161,7 +164,11 @@ func (td *Displayer) ShowErrorsReport(errors []*string) {
 	fmt.Printf("   %s检测到 %d 个错误（%d 种不同类型）%s\n\n", ColorYellow, totalErrors, len(errorCounts), ColorReset)
 
 	// 创建错误信息表格
-	table := tablewriter.NewWriter(os.Stdout)
+	table := tablewriter.NewTable(
+		os.Stdout,
+		tablewriter.WithEastAsian(false),
+	)
+
 	table.Header("序号", "错误详情", "出现次数")
 
 	// 添加错误信息到表格
@@ -184,7 +191,11 @@ func (td *Displayer) ShowErrorsReport(errors []*string) {
 // 详细模式，展示所有 ReportData 的数据
 func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	// 单个综合表格
-	table := tablewriter.NewWriter(os.Stdout)
+	table := tablewriter.NewTable(
+		os.Stdout,
+		tablewriter.WithEastAsian(false),
+	)
+
 	table.Header("指标", "最小值", "平均值", "最大值", "单位")
 
 	// 基础信息（这些只有单一值，只填最小值列）
@@ -224,7 +235,11 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 // 概览模式，每行一个，展示主要数据（平均值）
 func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
 	// 单个汇总表格，包含所有不同类型指标的平均值
-	table := tablewriter.NewWriter(os.Stdout)
+	table := tablewriter.NewTable(
+		os.Stdout,
+		tablewriter.WithEastAsian(false),
+	)
+
 	table.Header("🤖 模型", "🎯 目标 IP", "📊 请求数", "⚡ 并发", "✅ 成功率",
 		"🕐 平均总耗时", "⚡ 平均 TTFT", "🚀 平均 TPS", "🎲 平均 Token 数",
 		"🔍 平均 DNS 时间", "🔌 平均 TCP 连接时间", "🔒 平均 TLS 时间")
