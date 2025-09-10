@@ -625,3 +625,196 @@ func TestOpenAIClient_Request_EmptyChoicesArray(t *testing.T) {
 		t.Error("Expected metrics even with empty choices")
 	}
 }
+
+// TestOpenAIClient_Request_ReasoningContent 测试 ReasoningContent 字段对 TTFT 统计的影响
+func TestOpenAIClient_Request_ReasoningContent(t *testing.T) {
+	tests := []struct {
+		name               string
+		streamResponses    []string
+		expectedTTFTValid  bool
+		description        string
+	}{
+		{
+			name: "reasoning content first, then regular content",
+			streamResponses: []string{
+				`{"choices":[{"delta":{"reasoning_content":"Let me think about this..."}}]}`,
+				`{"choices":[{"delta":{"content":"Hello"}}]}`,
+				`{"choices":[{"delta":{"content":" world"}}]}`,
+				"[DONE]",
+			},
+			expectedTTFTValid: true,
+			description:       "TTFT should be captured when reasoning_content appears first",
+		},
+		{
+			name: "regular content first",
+			streamResponses: []string{
+				`{"choices":[{"delta":{"content":"Hello"}}]}`,
+				`{"choices":[{"delta":{"reasoning_content":"Now I'm thinking..."}}]}`,
+				`{"choices":[{"delta":{"content":" world"}}]}`,
+				"[DONE]",
+			},
+			expectedTTFTValid: true,
+			description:       "TTFT should be captured when regular content appears first",
+		},
+		{
+			name: "only reasoning content",
+			streamResponses: []string{
+				`{"choices":[{"delta":{"reasoning_content":"Thinking step 1..."}}]}`,
+				`{"choices":[{"delta":{"reasoning_content":"Thinking step 2..."}}]}`,
+				`{"choices":[{"delta":{"reasoning_content":"Final thought..."}}]}`,
+				"[DONE]",
+			},
+			expectedTTFTValid: true,
+			description:       "TTFT should be captured with only reasoning content",
+		},
+		{
+			name: "empty chunks before content",
+			streamResponses: []string{
+				`{"choices":[{"delta":{}}]}`,
+				`{"choices":[{"delta":{"content":""}}]}`,
+				`{"choices":[{"delta":{"reasoning_content":"First actual content"}}]}`,
+				`{"choices":[{"delta":{"content":"Regular content"}}]}`,
+				"[DONE]",
+			},
+			expectedTTFTValid: true,
+			description:       "TTFT should skip empty chunks and capture first non-empty content",
+		},
+		{
+			name: "null reasoning content",
+			streamResponses: []string{
+				`{"choices":[{"delta":{"reasoning_content":null}}]}`,
+				`{"choices":[{"delta":{"content":"First content"}}]}`,
+				"[DONE]",
+			},
+			expectedTTFTValid: true,
+			description:       "TTFT should handle null reasoning_content correctly",
+		},
+		{
+			name: "empty reasoning content string",
+			streamResponses: []string{
+				`{"choices":[{"delta":{"reasoning_content":""}}]}`,
+				`{"choices":[{"delta":{"content":"First content"}}]}`,
+				"[DONE]",
+			},
+			expectedTTFTValid: true,
+			description:       "TTFT should skip empty reasoning_content string",
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+				w.Header().Set("Content-Type", "text/event-stream")
+				w.WriteHeader(http.StatusOK)
+				
+				// 添加小延迟以确保 TTFT 有意义的值
+				for i, response := range tt.streamResponses {
+					if i > 0 {
+						time.Sleep(10 * time.Millisecond)
+					}
+					if response == "[DONE]" {
+						fmt.Fprint(w, "data: [DONE]\n\n")
+					} else {
+						fmt.Fprintf(w, "data: %s\n\n", response)
+					}
+					if flusher, ok := w.(http.Flusher); ok {
+						flusher.Flush()
+					}
+				}
+			}))
+			defer server.Close()
+
+			client := NewOpenAIClient(server.URL, "test-key", "test-model")
+			
+			metrics, err := client.Request("test prompt", true)
+			if err != nil {
+				t.Errorf("Request failed: %v", err)
+				return
+			}
+
+			if metrics == nil {
+				t.Error("Expected metrics to be returned")
+				return
+			}
+
+			if tt.expectedTTFTValid {
+				if metrics.TimeToFirstToken <= 0 {
+					t.Errorf("Expected valid TTFT, got %v. %s", metrics.TimeToFirstToken, tt.description)
+				}
+				if metrics.TimeToFirstToken > metrics.TotalTime {
+					t.Errorf("TTFT (%v) should not exceed total time (%v). %s", 
+						metrics.TimeToFirstToken, metrics.TotalTime, tt.description)
+				}
+			}
+
+			t.Logf("Test: %s - TTFT: %v, Total: %v", tt.name, metrics.TimeToFirstToken, metrics.TotalTime)
+		})
+	}
+}
+
+// TestOpenAIClient_Request_TTFTAccuracy 测试 TTFT 统计的准确性
+func TestOpenAIClient_Request_TTFTAccuracy(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/event-stream")
+		w.WriteHeader(http.StatusOK)
+		
+		// 第一个 chunk: 只有空的 delta
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{}}]}\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		
+		// 等待 50ms 后发送第一个有内容的 chunk
+		time.Sleep(50 * time.Millisecond)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"reasoning_content\":\"Thinking...\"}}]}\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		
+		// 等待 30ms 后发送常规内容
+		time.Sleep(30 * time.Millisecond)
+		fmt.Fprint(w, "data: {\"choices\":[{\"delta\":{\"content\":\"Hello\"}}]}\n\n")
+		if flusher, ok := w.(http.Flusher); ok {
+			flusher.Flush()
+		}
+		
+		// 结束
+		fmt.Fprint(w, "data: [DONE]\n\n")
+	}))
+	defer server.Close()
+
+	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	
+	start := time.Now()
+	metrics, err := client.Request("test prompt", true)
+	totalDuration := time.Since(start)
+	
+	if err != nil {
+		t.Errorf("Request failed: %v", err)
+		return
+	}
+
+	if metrics == nil {
+		t.Error("Expected metrics to be returned")
+		return
+	}
+
+	// TTFT 应该大约是 50ms（第一个有内容的响应的延迟）
+	if metrics.TimeToFirstToken < 40*time.Millisecond || metrics.TimeToFirstToken > 70*time.Millisecond {
+		t.Errorf("TTFT should be around 50ms, got %v", metrics.TimeToFirstToken)
+	}
+
+	// 总时间应该大约是 80ms（50 + 30ms 的延迟）
+	if metrics.TotalTime < 70*time.Millisecond || metrics.TotalTime > 100*time.Millisecond {
+		t.Errorf("Total time should be around 80ms, got %v", metrics.TotalTime)
+	}
+
+	// TTFT 应该小于总时间
+	if metrics.TimeToFirstToken >= metrics.TotalTime {
+		t.Errorf("TTFT (%v) should be less than total time (%v)", 
+			metrics.TimeToFirstToken, metrics.TotalTime)
+	}
+
+	t.Logf("Actual timing - TTFT: %v, Total: %v, External total: %v", 
+		metrics.TimeToFirstToken, metrics.TotalTime, totalDuration)
+}

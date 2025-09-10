@@ -58,6 +58,7 @@ type StreamResponseChunk struct {
 	Choices []struct {
 		Index int `json:"index"`
 		Delta struct {
+			ReasoningContent *string `json:"reasoning_content,omitempty"`
 			Content string `json:"content"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
@@ -229,9 +230,13 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 					continue // 跳过无法解析的行
 				}
 				
-				if !gotFirst && len(chunk.Choices) > 0 && chunk.Choices[0].Delta.Content != "" {
-					firstTokenTime = time.Since(t0)
-					gotFirst = true
+				if !gotFirst && len(chunk.Choices) > 0 {
+					delta := chunk.Choices[0].Delta
+					// 检查是否有 ReasoningContent 或 Content，任一不为空都算作第一个 token
+					if delta.Content != "" || (delta.ReasoningContent != nil && *delta.ReasoningContent != "") {
+						firstTokenTime = time.Since(t0)
+						gotFirst = true
+					}
 				}
 				
 				// 累积内容
