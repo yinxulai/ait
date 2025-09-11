@@ -37,6 +37,8 @@ type AnthropicStreamChunk struct {
 	Delta struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
+		Thinking *string `json:"thinking,omitempty"`
+		PartialJSON *string `json:"partial_json,omitempty"`
 	} `json:"delta,omitempty"`
 	Usage *struct {
 		InputTokens  int `json:"input_tokens"`
@@ -210,12 +212,25 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 					continue // 跳过无法解析的行
 				}
 				
-				if chunk.Type == "content_block_delta" && chunk.Delta.Text != "" {
-					if !gotFirst {
+				if chunk.Type == "content_block_delta" {
+					// 检查是否有任何形式的内容输出（包括 Text、Thinking 或 PartialJSON）
+					hasContent := false
+					if chunk.Delta.Text != "" {
+						fullContent.WriteString(chunk.Delta.Text)
+						hasContent = true
+					}
+					if chunk.Delta.Thinking != nil && *chunk.Delta.Thinking != "" {
+						hasContent = true
+					}
+					if chunk.Delta.PartialJSON != nil && *chunk.Delta.PartialJSON != "" {
+						hasContent = true
+					}
+					
+					// 如果有任何内容输出且这是第一次，记录 TTFT 时间
+					if hasContent && !gotFirst {
 						firstTokenTime = time.Since(t0)
 						gotFirst = true
 					}
-					fullContent.WriteString(chunk.Delta.Text)
 				}
 				
 				// 获取 token 统计信息

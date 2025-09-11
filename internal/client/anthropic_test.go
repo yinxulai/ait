@@ -821,3 +821,247 @@ func TestAnthropicClient_Request_EmptyContentArray(t *testing.T) {
 		t.Error("Expected metrics even with empty content")
 	}
 }
+
+// TestAnthropicClient_Request_StreamWithThinking 测试包含 Thinking 输出的 TTFT 计算
+func TestAnthropicClient_Request_StreamWithThinking(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Transfer-Encoding", "chunked")
+		
+		flusher, _ := w.(http.Flusher)
+		
+		// 发送开始事件
+		fmt.Fprint(w, "event: message_start\n")
+		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
+		flusher.Flush()
+		
+		// 模拟延迟，然后发送 thinking 内容
+		time.Sleep(10 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "thinking": "Let me think about this..."}}`+"\n\n")
+		flusher.Flush()
+		
+		// 再发送一些普通文本
+		time.Sleep(5 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello there!"}}`+"\n\n")
+		flusher.Flush()
+		
+		// 发送结束事件
+		fmt.Fprint(w, "event: message_delta\n")
+		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 10}}`+"\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	
+	start := time.Now()
+	metrics, err := client.Request("test prompt", true)
+	
+	if err != nil {
+		t.Errorf("Request() error = %v", err)
+	}
+	
+	if metrics.TimeToFirstToken <= 0 {
+		t.Errorf("Request() TTFT should be > 0 when thinking content is present, got %v", metrics.TimeToFirstToken)
+	}
+	
+	// TTFT 应该在第一个 thinking 输出时就开始计算
+	if metrics.TimeToFirstToken > time.Since(start) {
+		t.Errorf("TTFT should be calculated from thinking output, got %v", metrics.TimeToFirstToken)
+	}
+	
+	if metrics.CompletionTokens != 10 {
+		t.Errorf("Request() CompletionTokens = %v, want 10", metrics.CompletionTokens)
+	}
+}
+
+// TestAnthropicClient_Request_StreamWithPartialJSON 测试包含 PartialJSON 输出的 TTFT 计算
+func TestAnthropicClient_Request_StreamWithPartialJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Transfer-Encoding", "chunked")
+		
+		flusher, _ := w.(http.Flusher)
+		
+		// 发送开始事件
+		fmt.Fprint(w, "event: message_start\n")
+		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
+		flusher.Flush()
+		
+		// 模拟延迟，然后发送 partial_json 内容
+		time.Sleep(10 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": "{\"name\": \"John\""}}`+"\n\n")
+		flusher.Flush()
+		
+		// 继续发送更多的 partial_json
+		time.Sleep(5 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": ", \"age\": 30}"}}`+"\n\n")
+		flusher.Flush()
+		
+		// 发送结束事件
+		fmt.Fprint(w, "event: message_delta\n")
+		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 8}}`+"\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	
+	start := time.Now()
+	metrics, err := client.Request("test prompt", true)
+	
+	if err != nil {
+		t.Errorf("Request() error = %v", err)
+	}
+	
+	if metrics.TimeToFirstToken <= 0 {
+		t.Errorf("Request() TTFT should be > 0 when partial_json content is present, got %v", metrics.TimeToFirstToken)
+	}
+	
+	// TTFT 应该在第一个 partial_json 输出时就开始计算
+	if metrics.TimeToFirstToken > time.Since(start) {
+		t.Errorf("TTFT should be calculated from partial_json output, got %v", metrics.TimeToFirstToken)
+	}
+	
+	if metrics.CompletionTokens != 8 {
+		t.Errorf("Request() CompletionTokens = %v, want 8", metrics.CompletionTokens)
+	}
+}
+
+// TestAnthropicClient_Request_StreamWithMixedContent 测试混合内容类型的 TTFT 计算
+func TestAnthropicClient_Request_StreamWithMixedContent(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Transfer-Encoding", "chunked")
+		
+		flusher, _ := w.(http.Flusher)
+		
+		// 发送开始事件
+		fmt.Fprint(w, "event: message_start\n")
+		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
+		flusher.Flush()
+		
+		// 首先发送 thinking 内容
+		time.Sleep(15 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "thinking": "I need to analyze this carefully..."}}`+"\n\n")
+		flusher.Flush()
+		
+		// 然后发送 partial_json
+		time.Sleep(5 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": "{\"result\": \""}}`+"\n\n")
+		flusher.Flush()
+		
+		// 最后发送普通文本
+		time.Sleep(5 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "This is the final answer."}}`+"\n\n")
+		flusher.Flush()
+		
+		// 发送结束事件
+		fmt.Fprint(w, "event: message_delta\n")
+		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 20}}`+"\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	
+	start := time.Now()
+	metrics, err := client.Request("test prompt", true)
+	
+	if err != nil {
+		t.Errorf("Request() error = %v", err)
+	}
+	
+	if metrics.TimeToFirstToken <= 0 {
+		t.Errorf("Request() TTFT should be > 0 with mixed content, got %v", metrics.TimeToFirstToken)
+	}
+	
+	// TTFT 应该在第一个内容输出时就开始计算（thinking 内容）
+	expectedMinTime := 10 * time.Millisecond  // 小于第一个 thinking 输出的延迟
+	if metrics.TimeToFirstToken < expectedMinTime {
+		t.Errorf("TTFT seems too fast, expected >= %v, got %v", expectedMinTime, metrics.TimeToFirstToken)
+	}
+	
+	expectedMaxTime := time.Since(start)
+	if metrics.TimeToFirstToken > expectedMaxTime {
+		t.Errorf("TTFT should be calculated from first output, got %v", metrics.TimeToFirstToken)
+	}
+	
+	if metrics.CompletionTokens != 20 {
+		t.Errorf("Request() CompletionTokens = %v, want 20", metrics.CompletionTokens)
+	}
+}
+
+// TestAnthropicClient_Request_StreamWithEmptyThinkingAndPartialJSON 测试空的 thinking 和 partial_json 字段
+func TestAnthropicClient_Request_StreamWithEmptyThinkingAndPartialJSON(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		w.Header().Set("Transfer-Encoding", "chunked")
+		
+		flusher, _ := w.(http.Flusher)
+		
+		// 发送开始事件
+		fmt.Fprint(w, "event: message_start\n")
+		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
+		flusher.Flush()
+		
+		// 发送空的 thinking 内容（不应该触发 TTFT）
+		time.Sleep(10 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "thinking": ""}}`+"\n\n")
+		flusher.Flush()
+		
+		// 发送空的 partial_json 内容（不应该触发 TTFT）
+		time.Sleep(5 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": ""}}`+"\n\n")
+		flusher.Flush()
+		
+		// 最后发送真正的文本内容（应该触发 TTFT）
+		time.Sleep(5 * time.Millisecond)
+		fmt.Fprint(w, "event: content_block_delta\n")
+		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Real content here"}}`+"\n\n")
+		flusher.Flush()
+		
+		// 发送结束事件
+		fmt.Fprint(w, "event: message_delta\n")
+		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}}`+"\n\n")
+		flusher.Flush()
+	}))
+	defer server.Close()
+
+	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	
+	start := time.Now()
+	metrics, err := client.Request("test prompt", true)
+	
+	if err != nil {
+		t.Errorf("Request() error = %v", err)
+	}
+	
+	if metrics.TimeToFirstToken <= 0 {
+		t.Errorf("Request() TTFT should be > 0 when real text content is present, got %v", metrics.TimeToFirstToken)
+	}
+	
+	// TTFT 应该在真正的文本内容输出时计算，而不是空的 thinking/partial_json
+	expectedMinTime := 15 * time.Millisecond  // 应该大于前两个空内容的延迟总和
+	if metrics.TimeToFirstToken < expectedMinTime {
+		t.Errorf("TTFT should be calculated from real text content, expected >= %v, got %v", expectedMinTime, metrics.TimeToFirstToken)
+	}
+	
+	expectedMaxTime := time.Since(start)
+	if metrics.TimeToFirstToken > expectedMaxTime {
+		t.Errorf("TTFT calculation error, got %v", metrics.TimeToFirstToken)
+	}
+	
+	if metrics.CompletionTokens != 5 {
+		t.Errorf("Request() CompletionTokens = %v, want 5", metrics.CompletionTokens)
+	}
+}
