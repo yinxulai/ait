@@ -211,8 +211,8 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	table.Header("指标", "最小值", "平均值", "最大值", "单位", "采样方式说明")
 
 	// 基础信息（这些只有单一值，只填最小值列）
-	table.Append("🤖 模型", data.Metadata.Model, "", "", "-", "配置信息")
 	table.Append("🔗 协议", data.Metadata.Protocol, "", "", "-", "配置信息")
+	table.Append("🤖 模型", data.Metadata.Model, "", "", "-", "配置信息")
 	table.Append("🌐 URL", data.Metadata.BaseUrl, "", "", "-", "配置信息")
 	table.Append("🌊 流式", strconv.FormatBool(data.IsStream), "", "", "-", "配置信息")
 	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "个", "配置信息")
