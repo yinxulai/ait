@@ -50,23 +50,14 @@ func New() *Displayer {
 
 func (td *Displayer) ShowWelcome() {
 	fmt.Printf("\n")
-	// AIT ASCII 字符画
-	fmt.Printf("%s%s", ColorBold, ColorCyan)
-	fmt.Printf("    █████╗  ██╗ ████████╗\n")
-	fmt.Printf("   ██╔══██╗ ██║ ╚══██╔══╝\n")
-	fmt.Printf("   ███████║ ██║    ██║   \n")
-	fmt.Printf("   ██╔══██║ ██║    ██║   \n")
-	fmt.Printf("   ██║  ██║ ██║    ██║   \n")
-	fmt.Printf("   ╚═╝  ╚═╝ ╚═╝    ╚═╝   \n")
-	fmt.Printf("%s", ColorReset)
-	fmt.Printf("\n")
-	fmt.Printf("🚀 %s%sAI 模型性能测试工具%s\n", ColorBold, ColorCyan, ColorReset)
-	fmt.Printf("   %s一个强大的 CLI 工具，用于测试 AI 模型的性能指标%s\n", ColorWhite, ColorReset)
-	fmt.Printf("   %s🌐 项目地址: https://github.com/yinxulai/ait%s\n", ColorBlue, ColorReset)
-	fmt.Printf("\n")
-	fmt.Printf("✨ %s功能特性:%s\n", ColorBold, ColorReset)
-	fmt.Printf("   🎯 多模型批量测试  ⚡ 并发压力测试  📊 实时进度显示\n")
-	fmt.Printf("   🌐 网络性能分析  📈 详细统计报告  🎨 美观界面输出\n")
+	// AIT ASCII 字符画和说明信息并排显示，使用统一的青色+粗体
+	fmt.Printf("%s%s    █████╗  ██╗ ████████╗%s    %s🚀 %sAI 模型性能测试工具%s\n", ColorBold, ColorCyan, ColorReset, ColorBold, ColorCyan, ColorReset)
+	fmt.Printf("%s%s   ██╔══██╗ ██║ ╚══██╔══╝%s       %s一个强大的 CLI 工具，用于测试 AI 模型的性能指标%s\n", ColorBold, ColorCyan, ColorReset, ColorWhite, ColorReset)
+	fmt.Printf("%s%s   ███████║ ██║    ██║%s          %s🌐 项目地址: https://github.com/yinxulai/ait%s\n", ColorBold, ColorCyan, ColorReset, ColorBlue, ColorReset)
+	fmt.Printf("%s%s   ██╔══██║ ██║    ██║%s       \n", ColorBold, ColorCyan, ColorReset)
+	fmt.Printf("%s%s   ██║  ██║ ██║    ██║%s          %s✨ 功能特性:%s\n", ColorBold, ColorCyan, ColorReset, ColorBold, ColorReset)
+	fmt.Printf("%s%s   ╚═╝  ╚═╝ ╚═╝    ╚═╝%s          🎯 多模型批量测试  ⚡ 并发压力测试  📊 实时进度显示\n", ColorBold, ColorCyan, ColorReset)
+	fmt.Printf("                                🌐 网络性能分析    📈 详细统计报告  🎨 美观界面输出\n")
 	fmt.Printf("\n")
 }
 
