@@ -99,22 +99,33 @@ func NewAnthropicClientWithTimeout(baseUrl, apiKey, model string, timeout time.D
 
 // Request 发送 Anthropic 协议请求（支持流式和非流式）
 func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
-	// Anthropic 使用不同的 API 格式
-	reqBodyTemplate := `{
-		"model": "%s",
-		"max_tokens": 1024,
-		"messages": [
+	// 构造请求体结构，使用正确的 JSON 编码
+	requestBody := map[string]interface{}{
+		"model": c.Model,
+		"messages": []map[string]interface{}{
 			{
-				"role": "user",
-				"content": "%s"
-			}
-		],
-		"stream": %t
-	}`
+				"role":    "user",
+				"content": prompt,
+			},
+		},
+		"stream": stream,
+	}
 
-	reqBody := []byte(fmt.Sprintf(reqBodyTemplate, c.Model, prompt, stream))
+	reqBodyBytes, err := json.Marshal(requestBody)
+	if err != nil {
+		return &ResponseMetrics{
+			TimeToFirstToken: 0,
+			TotalTime:        0,
+			DNSTime:          0,
+			ConnectTime:      0,
+			TLSHandshakeTime: 0,
+			TargetIP:         "",
+			CompletionTokens: 0,
+			ErrorMessage:     fmt.Sprintf("JSON encoding error: %s", err.Error()),
+		}, err
+	}
 
-	req, err := http.NewRequest("POST", c.BaseUrl+"/v1/messages", bytes.NewBuffer(reqBody))
+	req, err := http.NewRequest("POST", c.BaseUrl+"/v1/messages", bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
 		// URL 格式错误或其他请求构建错误
 		return &ResponseMetrics{
