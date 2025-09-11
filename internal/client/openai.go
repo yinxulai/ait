@@ -49,6 +49,16 @@ type ChatCompletionResponse struct {
 	} `json:"usage"`
 }
 
+// OpenAIErrorResponse represents OpenAI API error response
+type OpenAIErrorResponse struct {
+	Error struct {
+		Message string `json:"message"`
+		Type    string `json:"type"`
+		Param   string `json:"param,omitempty"`
+		Code    string `json:"code,omitempty"`
+	} `json:"error"`
+}
+
 // StreamResponseChunk 流式响应数据块
 type StreamResponseChunk struct {
 	ID      string `json:"id"`
@@ -208,7 +218,28 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+			responseData, _ := io.ReadAll(resp.Body)
+			
+			// 尝试解析 OpenAI API 的错误响应
+			var errorResp OpenAIErrorResponse
+			errorMessage := fmt.Sprintf("HTTP %d", resp.StatusCode)
+			
+			if err := json.Unmarshal(responseData, &errorResp); err == nil && errorResp.Error.Message != "" {
+				// 成功解析错误响应，使用业务返回的详细错误信息
+				errorMessage = fmt.Sprintf("[%s] %s", 
+					errorResp.Error.Type, errorResp.Error.Message)
+			}
+			
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        time.Since(t0),
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     errorMessage,
+			}, fmt.Errorf(errorMessage)
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
@@ -286,7 +317,28 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		defer resp.Body.Close()
 
 		if resp.StatusCode != http.StatusOK {
-			return nil, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+			responseData, _ := io.ReadAll(resp.Body)
+			
+			// 尝试解析 OpenAI API 的错误响应
+			var errorResp OpenAIErrorResponse
+			errorMessage := fmt.Sprintf("HTTP %d", resp.StatusCode)
+			
+			if err := json.Unmarshal(responseData, &errorResp); err == nil && errorResp.Error.Message != "" {
+				// 成功解析错误响应，使用业务返回的详细错误信息
+				errorMessage = fmt.Sprintf("[%s] %s", 
+					errorResp.Error.Type, errorResp.Error.Message)
+			}
+			
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        time.Since(t0),
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     errorMessage,
+			}, fmt.Errorf(errorMessage)
 		}
 
 		responseData, err := io.ReadAll(resp.Body)

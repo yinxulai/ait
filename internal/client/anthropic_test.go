@@ -245,7 +245,7 @@ func TestAnthropicClient_Request_ServerError(t *testing.T) {
 			t.Errorf("Request() CompletionTokens should be 0 on error, got %v", metrics.CompletionTokens)
 		}
 
-		if !strings.Contains(metrics.ErrorMessage, "API request failed with status 500") {
+		if !strings.Contains(metrics.ErrorMessage, "[api_error] Test error") {
 			t.Errorf("Request() ErrorMessage should contain status code, got %v", metrics.ErrorMessage)
 		}
 

@@ -30,6 +30,15 @@ type AnthropicResponse struct {
 	} `json:"usage"`
 }
 
+// AnthropicErrorResponse Anthropic API 错误响应结构
+type AnthropicErrorResponse struct {
+	Type  string `json:"type"`
+	Error struct {
+		Type    string `json:"type"`
+		Message string `json:"message"`
+	} `json:"error"`
+}
+
 // AnthropicStreamChunk Anthropic 流式响应数据块
 type AnthropicStreamChunk struct {
 	Type  string `json:"type"`
@@ -179,6 +188,17 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	// 检查 HTTP 状态码
 	if resp.StatusCode != http.StatusOK {
 		responseData, _ := io.ReadAll(resp.Body)
+		
+		// 尝试解析 Anthropic API 的错误响应
+		var errorResp AnthropicErrorResponse
+		errorMessage := fmt.Sprintf("HTTP %d", resp.StatusCode)
+		
+		if err := json.Unmarshal(responseData, &errorResp); err == nil && errorResp.Error.Message != "" {
+			// 成功解析错误响应，使用业务返回的详细错误信息
+			errorMessage = fmt.Sprintf("[%s] %s", 
+				errorResp.Error.Type, errorResp.Error.Message)
+		}
+		
 		return &ResponseMetrics{
 			TimeToFirstToken: 0,
 			TotalTime:        time.Since(t0),
@@ -187,8 +207,8 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
 			CompletionTokens: 0,
-			ErrorMessage:     fmt.Sprintf("API request failed with status %d: %s", resp.StatusCode, string(responseData)),
-		}, fmt.Errorf("API request failed with status %d", resp.StatusCode)
+			ErrorMessage:     errorMessage,
+		}, fmt.Errorf(errorMessage)
 	}
 
 	if stream {
