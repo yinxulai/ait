@@ -281,10 +281,12 @@ func maskApiKey(apiKey string) string {
 	return apiKey[:4] + "***" + apiKey[len(apiKey)-4:]
 }
 
-// truncatePrompt 截断过长的提示词
+// truncatePrompt 截断过长的提示词并显示长度信息
 func truncatePrompt(prompt string) string {
-	if len(prompt) <= 50 {
-		return prompt
+	runes := []rune(prompt)
+	charCount := len(runes)
+	if charCount <= 50 {
+		return fmt.Sprintf("%s (长度: %d)", prompt, charCount)
 	}
-	return prompt[:47] + "..."
+	return fmt.Sprintf("%s... (长度: %d)", string(runes[:47]), charCount)
 }
