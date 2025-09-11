@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"io"
 	"os"
 	"strings"
 	"time"
@@ -12,6 +13,46 @@ import (
 	"github.com/yinxulai/ait/internal/runner"
 	"github.com/yinxulai/ait/internal/types"
 )
+
+// readPromptFromStdin 从标准输入读取 prompt 内容
+func readPromptFromStdin() (string, error) {
+	// 检查是否有标准输入数据
+	stat, err := os.Stdin.Stat()
+	if err != nil {
+		return "", err
+	}
+
+	// 如果没有管道输入，返回空字符串
+	if stat.Mode()&os.ModeCharDevice != 0 {
+		return "", nil
+	}
+
+	// 读取标准输入的所有内容
+	content, err := io.ReadAll(os.Stdin)
+	if err != nil {
+		return "", err
+	}
+
+	return strings.TrimSpace(string(content)), nil
+}
+
+// resolvePrompt 解析最终的 prompt 内容
+// 优先级：1. 用户指定的命令行参数 > 2. 管道输入 > 3. 默认值
+func resolvePrompt(userSpecified bool, flagPrompt string) string {
+	// 1. 如果用户明确指定了 --prompt 参数，则优先使用
+	if userSpecified {
+		return flagPrompt
+	}
+	
+	// 2. 检查是否有管道输入
+	stdinPrompt, err := readPromptFromStdin()
+	if err == nil && stdinPrompt != "" {
+		return stdinPrompt
+	}
+	
+	// 3. 使用默认值
+	return flagPrompt
+}
 
 // detectProviderFromEnv 根据环境变量自动检测 provider
 func detectProviderFromEnv() string {
@@ -292,6 +333,17 @@ func main() {
 	// 解析模型列表
 	modelList := parseModelList(*models)
 
+	// 检查用户是否明确指定了 --prompt 参数
+	promptSpecified := false
+	flag.Visit(func(f *flag.Flag) {
+		if f.Name == "prompt" {
+			promptSpecified = true
+		}
+	})
+
+	// 解析最终的 prompt，优先级：用户指定 > 管道输入 > 默认值
+	finalPrompt := resolvePrompt(promptSpecified, *prompt)
+
 	displayer := display.New()
 
 	// 显示欢迎信息
@@ -305,14 +357,14 @@ func main() {
 		Concurrency: *concurrency,
 		Count:       *count,
 		Stream:      *stream,
-		Prompt:      *prompt,
+		Prompt:      finalPrompt,
 		Report:      *reportFlag,
 		Timeout:     *timeout,
 	})
 
 	// 执行多个模型的测试套件
 	allResults, allErrors, err := executeModelsTestSuite(
-		modelList, finalProtocol, finalBaseUrl, finalApiKey, *prompt,
+		modelList, finalProtocol, finalBaseUrl, finalApiKey, finalPrompt,
 		*concurrency, *count, *timeout, *stream, *reportFlag, displayer,
 	)
 	if err != nil {

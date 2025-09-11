@@ -160,6 +160,52 @@ export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 ait --models=claude-3-haiku-20240307 --count=5 --report
 ```
 
+## 📝 管道输入支持
+
+AIT 支持通过管道（pipe）方式输入测试提示语，这对于测试复杂的多行 prompt 或从文件读取内容非常有用。
+
+**优先级规则**：
+
+1. **用户明确指定的 `--prompt` 参数**（最高优先级）
+2. **管道输入**（中等优先级，仅当未使用 `--prompt` 参数时生效）
+3. **默认值**（最低优先级）
+
+### 基本管道输入
+
+```bash
+# 直接通过管道输入（未使用 --prompt 参数时生效）
+echo "请分析这段代码的性能优化建议" | ait --models=gpt-4 --count=3
+
+# 从文件输入
+cat complex_prompt.txt | ait --models=claude-3-sonnet --count=5
+
+# 用户明确使用 --prompt 参数时，管道输入不会生效（无论内容是否为默认值）
+echo "这个不会生效" | ait --models=gpt-3.5-turbo --prompt="用户明确指定"
+echo "这个也不会生效" | ait --models=gpt-3.5-turbo --prompt="你好，介绍一下你自己。"
+```
+
+### 多行 prompt 测试
+
+```bash
+# 创建复杂的测试 prompt
+cat << EOF | ait --models=gpt-4,claude-3-sonnet --count=3 --report
+请分析以下代码，并提供：
+1. 性能优化建议
+2. 安全性评估  
+3. 可读性改进
+4. 最佳实践建议
+
+\`\`\`python
+def process_data(data):
+    result = []
+    for item in data:
+        if item > 0:
+            result.append(item * 2)
+    return result
+\`\`\`
+EOF
+```
+
 ## 📋 命令行参数
 
 | 参数            | 描述                                                          | 默认值                    | 必填 |
@@ -171,7 +217,7 @@ ait --models=claude-3-haiku-20240307 --count=5 --report
 | `--concurrency`| 并发数                                                        | `3`                       |  ❌  |
 | `--count`      | 请求总数                                                       | `10`                      |  ❌  |
 | `--timeout`    | 请求超时时间（秒）                                              | `30`                      |  ❌  |
-| `--prompt`     | 测试提示语                                                     | `"你好，介绍一下你自己。"`     |  ❌  |
+| `--prompt`     | 测试提示语<br/>**支持管道输入**：当未使用此参数时，可通过管道输入内容 | `"你好，介绍一下你自己。"`     |  ❌  |
 | `--stream`     | 是否开启流模式                                                 | `true`                    |  ❌  |
 | `--report`     | 是否生成报告文件（同时生成 JSON 和 CSV）                           | `false`                   |  ❌  |
 
