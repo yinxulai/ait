@@ -50,7 +50,17 @@ func New() *Displayer {
 
 func (td *Displayer) ShowWelcome() {
 	fmt.Printf("\n")
-	fmt.Printf("🚀 %s%sAIT - AI 模型性能测试工具%s\n", ColorBold, ColorCyan, ColorReset)
+	// AIT ASCII 字符画
+	fmt.Printf("%s%s", ColorBold, ColorCyan)
+	fmt.Printf("    █████╗  ██╗ ████████╗\n")
+	fmt.Printf("   ██╔══██╗ ██║ ╚══██╔══╝\n")
+	fmt.Printf("   ███████║ ██║    ██║   \n")
+	fmt.Printf("   ██╔══██║ ██║    ██║   \n")
+	fmt.Printf("   ██║  ██║ ██║    ██║   \n")
+	fmt.Printf("   ╚═╝  ╚═╝ ╚═╝    ╚═╝   \n")
+	fmt.Printf("%s", ColorReset)
+	fmt.Printf("\n")
+	fmt.Printf("🚀 %s%sAI 模型性能测试工具%s\n", ColorBold, ColorCyan, ColorReset)
 	fmt.Printf("   %s一个强大的 CLI 工具，用于测试 AI 模型的性能指标%s\n", ColorWhite, ColorReset)
 	fmt.Printf("   %s🌐 项目地址: https://github.com/yinxulai/ait%s\n", ColorBlue, ColorReset)
 	fmt.Printf("\n")
@@ -198,36 +208,36 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 		tablewriter.WithEastAsian(false),
 	)
 
-	table.Header("指标", "最小值", "平均值", "最大值", "单位")
+	table.Header("指标", "最小值", "平均值", "最大值", "单位", "采样方式说明")
 
 	// 基础信息（这些只有单一值，只填最小值列）
-	table.Append("🤖 模型", data.Metadata.Model, "", "", "-")
-	table.Append("🔗 协议", data.Metadata.Protocol, "", "", "-")
-	table.Append("🌐 URL", data.Metadata.BaseUrl, "", "", "-")
-	table.Append("🌊 流式", strconv.FormatBool(data.IsStream), "", "", "-")
-	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "个")
-	table.Append("📊 总请求数", strconv.Itoa(data.TotalRequests), "", "", "个")
-	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.ReliabilityMetrics.SuccessRate), "", "", "%")
+	table.Append("🤖 模型", data.Metadata.Model, "", "", "-", "配置信息")
+	table.Append("🔗 协议", data.Metadata.Protocol, "", "", "-", "配置信息")
+	table.Append("🌐 URL", data.Metadata.BaseUrl, "", "", "-", "配置信息")
+	table.Append("🌊 流式", strconv.FormatBool(data.IsStream), "", "", "-", "配置信息")
+	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "个", "配置信息")
+	table.Append("📊 总请求数", strconv.Itoa(data.TotalRequests), "", "", "个", "完成的请求总数")
+	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.ReliabilityMetrics.SuccessRate), "", "", "%", "成功请求占比")
 
 	// 时间性能指标
-	table.Append("🕐 总耗时", data.TimeMetrics.MinTotalTime.String(), data.TimeMetrics.AvgTotalTime.String(), data.TimeMetrics.MaxTotalTime.String(), "时间")
+	table.Append("🕐 总耗时", data.TimeMetrics.MinTotalTime.String(), data.TimeMetrics.AvgTotalTime.String(), data.TimeMetrics.MaxTotalTime.String(), "时间", "从发起请求到完全结束的时间")
 
 	if data.NetworkMetrics.TargetIP != "" {
-		table.Append("🎯 目标 IP", data.NetworkMetrics.TargetIP, "", "", "-")
+		table.Append("🎯 目标 IP", data.NetworkMetrics.TargetIP, "", "", "-", "DNS解析后的实际连接IP")
 	}
 
 	// 网络性能指标
-	table.Append("🔍 DNS 时间", data.NetworkMetrics.MinDNSTime.String(), data.NetworkMetrics.AvgDNSTime.String(), data.NetworkMetrics.MaxDNSTime.String(), "时间")
-	table.Append("🔒 TLS 时间", data.NetworkMetrics.MinTLSHandshakeTime.String(), data.NetworkMetrics.AvgTLSHandshakeTime.String(), data.NetworkMetrics.MaxTLSHandshakeTime.String(), "时间")
-	table.Append("🔌 TCP 连接时间", data.NetworkMetrics.MinConnectTime.String(), data.NetworkMetrics.AvgConnectTime.String(), data.NetworkMetrics.MaxConnectTime.String(), "时间")
+	table.Append("🔍 DNS 时间", data.NetworkMetrics.MinDNSTime.String(), data.NetworkMetrics.AvgDNSTime.String(), data.NetworkMetrics.MaxDNSTime.String(), "时间", "域名解析耗时(httptrace)")
+	table.Append("🔒 TLS 时间", data.NetworkMetrics.MinTLSHandshakeTime.String(), data.NetworkMetrics.AvgTLSHandshakeTime.String(), data.NetworkMetrics.MaxTLSHandshakeTime.String(), "时间", "TLS握手耗时(httptrace)")
+	table.Append("🔌 TCP 连接时间", data.NetworkMetrics.MinConnectTime.String(), data.NetworkMetrics.AvgConnectTime.String(), data.NetworkMetrics.MaxConnectTime.String(), "时间", "TCP连接建立耗时(httptrace)")
 
 	// 内容性能指标
 	if data.IsStream {
-		table.Append("⚡ TTFT", data.ContentMetrics.MinTTFT.String(), data.ContentMetrics.AvgTTFT.String(), data.ContentMetrics.MaxTTFT.String(), "时间")
+		table.Append("⚡ TTFT", data.ContentMetrics.MinTTFT.String(), data.ContentMetrics.AvgTTFT.String(), data.ContentMetrics.MaxTTFT.String(), "时间", "首个token响应时间(含请求发送+网络+服务器处理)")
 	}
 
-	table.Append("🎲 Token 数", strconv.Itoa(data.ContentMetrics.MinTokenCount), strconv.Itoa(data.ContentMetrics.AvgTokenCount), strconv.Itoa(data.ContentMetrics.MaxTokenCount), "个")
-	table.Append("🚀 TPS", fmt.Sprintf("%.2f", data.ContentMetrics.MinTPS), fmt.Sprintf("%.2f", data.ContentMetrics.AvgTPS), fmt.Sprintf("%.2f", data.ContentMetrics.MaxTPS), "个/秒")
+	table.Append("🎲 Token 数", strconv.Itoa(data.ContentMetrics.MinTokenCount), strconv.Itoa(data.ContentMetrics.AvgTokenCount), strconv.Itoa(data.ContentMetrics.MaxTokenCount), "个", "API 返回的 completion tokens")
+	table.Append("🚀 TPS", fmt.Sprintf("%.2f", data.ContentMetrics.MinTPS), fmt.Sprintf("%.2f", data.ContentMetrics.AvgTPS), fmt.Sprintf("%.2f", data.ContentMetrics.MaxTPS), "个/秒", "tokens/总耗时计算得出")
 
 	table.Render()
 	fmt.Println()
