@@ -81,7 +81,7 @@ func (td *Displayer) ShowInput(data *Input) {
 	// 基础配置
 	table.Append("🔗 协议", data.Protocol, "API 协议类型")
 	table.Append("🌐 服务地址", data.BaseUrl, "API 基础 URL")
-	table.Append("🔑 API密钥", maskApiKey(data.ApiKey), "API 访问密钥（已隐藏）")
+	table.Append("🔑 API 密钥", maskApiKey(data.ApiKey), "API 访问密钥（已隐藏）")
 
 	// 模型配置
 	modelsStr := ""
@@ -220,24 +220,24 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.ReliabilityMetrics.SuccessRate), "", "", "%", "成功请求占比")
 
 	// 时间性能指标
-	table.Append("🕐 总耗时", data.TimeMetrics.MinTotalTime.String(), data.TimeMetrics.AvgTotalTime.String(), data.TimeMetrics.MaxTotalTime.String(), "时间", "从发起请求到完全结束的时间")
+	table.Append("🕐 总耗时", data.TimeMetrics.MinTotalTime.String(), data.TimeMetrics.AvgTotalTime.String(), data.TimeMetrics.MaxTotalTime.String(), "时间", "单个请求从发起到完全结束的时间")
 
 	if data.NetworkMetrics.TargetIP != "" {
-		table.Append("🎯 目标 IP", data.NetworkMetrics.TargetIP, "", "", "-", "DNS解析后的实际连接IP")
+		table.Append("🎯 目标 IP", data.NetworkMetrics.TargetIP, "", "", "-", "DNS 解析后的实际连接 IP")
 	}
 
 	// 网络性能指标
-	table.Append("🔍 DNS 时间", data.NetworkMetrics.MinDNSTime.String(), data.NetworkMetrics.AvgDNSTime.String(), data.NetworkMetrics.MaxDNSTime.String(), "时间", "域名解析耗时(httptrace)")
-	table.Append("🔒 TLS 时间", data.NetworkMetrics.MinTLSHandshakeTime.String(), data.NetworkMetrics.AvgTLSHandshakeTime.String(), data.NetworkMetrics.MaxTLSHandshakeTime.String(), "时间", "TLS握手耗时(httptrace)")
-	table.Append("🔌 TCP 连接时间", data.NetworkMetrics.MinConnectTime.String(), data.NetworkMetrics.AvgConnectTime.String(), data.NetworkMetrics.MaxConnectTime.String(), "时间", "TCP连接建立耗时(httptrace)")
+	table.Append("🔍 DNS 时间", data.NetworkMetrics.MinDNSTime.String(), data.NetworkMetrics.AvgDNSTime.String(), data.NetworkMetrics.MaxDNSTime.String(), "时间", "域名解析耗时 (httptrace)")
+	table.Append("🔒 TLS 时间", data.NetworkMetrics.MinTLSHandshakeTime.String(), data.NetworkMetrics.AvgTLSHandshakeTime.String(), data.NetworkMetrics.MaxTLSHandshakeTime.String(), "时间", "TLS 握手耗时 (httptrace)")
+	table.Append("🔌 TCP 连接时间", data.NetworkMetrics.MinConnectTime.String(), data.NetworkMetrics.AvgConnectTime.String(), data.NetworkMetrics.MaxConnectTime.String(), "时间", "TCP 连接建立耗时 (httptrace)")
 
 	// 内容性能指标
 	if data.IsStream {
-		table.Append("⚡ TTFT", data.ContentMetrics.MinTTFT.String(), data.ContentMetrics.AvgTTFT.String(), data.ContentMetrics.MaxTTFT.String(), "时间", "首个token响应时间(含请求发送+网络+服务器处理)")
+		table.Append("⚡ TTFT", data.ContentMetrics.MinTTFT.String(), data.ContentMetrics.AvgTTFT.String(), data.ContentMetrics.MaxTTFT.String(), "时间", "首个 token 响应时间 (含请求发送+网络+服务器处理)")
 	}
 
 	table.Append("🎲 Token 数", strconv.Itoa(data.ContentMetrics.MinTokenCount), strconv.Itoa(data.ContentMetrics.AvgTokenCount), strconv.Itoa(data.ContentMetrics.MaxTokenCount), "个", "API 返回的 completion tokens")
-	table.Append("🚀 TPS", fmt.Sprintf("%.2f", data.ContentMetrics.MinTPS), fmt.Sprintf("%.2f", data.ContentMetrics.AvgTPS), fmt.Sprintf("%.2f", data.ContentMetrics.MaxTPS), "个/秒", "tokens/总耗时计算得出")
+	table.Append("🚀 TPS", fmt.Sprintf("%.2f", data.ContentMetrics.MinTPS), fmt.Sprintf("%.2f", data.ContentMetrics.AvgTPS), fmt.Sprintf("%.2f", data.ContentMetrics.MaxTPS), "个/秒", "tokens/总耗时 计算得出")
 
 	table.Render()
 	fmt.Println()
