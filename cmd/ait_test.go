@@ -962,7 +962,7 @@ func TestValidateParameters(t *testing.T) {
 			// 模拟参数验证逻辑
 			shouldExit := false
 
-			// model 参数检查
+			// models 参数检查
 			if tt.models == "" {
 				shouldExit = true
 			}
@@ -1044,7 +1044,7 @@ func TestValidateRequiredParams(t *testing.T) {
 			apiKey:      "sk-test123", 
 			protocol:    "openai",
 			expectError: true,
-			errorMsg:    "model 参数必填",
+			errorMsg:    "models 参数必填",
 		},
 		{
 			name:        "Empty baseUrl",

@@ -83,7 +83,7 @@ func loadEnvForProvider(provider string) (baseUrl, apiKey string) {
 // validateRequiredParams 验证必需的参数
 func validateRequiredParams(models, baseUrl, apiKey, protocol string) error {
 	if models == "" {
-		return fmt.Errorf("model 参数必填，请通过 -model 参数指定")
+		return fmt.Errorf("models 参数必填，请通过 -models 参数指定")
 	}
 	
 	if baseUrl == "" || apiKey == "" {
@@ -322,7 +322,7 @@ func main() {
 	// 验证必需参数
 	if err := validateRequiredParams(*models, finalBaseUrl, finalApiKey, finalProtocol); err != nil {
 		if *models == "" {
-			fmt.Println("model 参数必填，请通过 -model 参数指定")
+			fmt.Println("models 参数必填，请通过 -models 参数指定")
 			fmt.Println("支持多个模型，用逗号分割，例如：gpt-3.5-turbo,gpt-4")
 		} else {
 			printErrorMessages(finalProtocol)
