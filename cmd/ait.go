@@ -43,13 +43,13 @@ func resolvePrompt(userSpecified bool, flagPrompt string) string {
 	if userSpecified {
 		return flagPrompt
 	}
-	
+
 	// 2. 检查是否有管道输入
 	stdinPrompt, err := readPromptFromStdin()
 	if err == nil && stdinPrompt != "" {
 		return stdinPrompt
 	}
-	
+
 	// 3. 使用默认值
 	return flagPrompt
 }
@@ -85,11 +85,11 @@ func validateRequiredParams(models, baseUrl, apiKey, protocol string) error {
 	if models == "" {
 		return fmt.Errorf("models 参数必填，请通过 -models 参数指定")
 	}
-	
+
 	if baseUrl == "" || apiKey == "" {
 		return fmt.Errorf("baseUrl 和 apikey 参数必填，对于 %s 协议，你也可以设置相应的环境变量", protocol)
 	}
-	
+
 	return nil
 }
 
@@ -98,7 +98,7 @@ func parseModelList(models string) []string {
 	if models == "" {
 		return nil
 	}
-	
+
 	modelList := strings.Split(models, ",")
 	for i, m := range modelList {
 		modelList[i] = strings.TrimSpace(m)
@@ -163,7 +163,7 @@ func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurr
 }
 
 // processModelExecution 处理单个模型的执行逻辑
-func processModelExecution(modelName string, config types.Input, displayer interface{}, completedRequests, totalRequests int) (*types.ReportData, []string, error) {
+func processModelExecution(modelName string, config types.Input, displayer *display.Displayer, completedRequests, totalRequests int) (*types.ReportData, []string, error) {
 	runnerInstance, err := runner.NewRunner(config)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建测试执行器失败: %v", err)
@@ -179,11 +179,9 @@ func processModelExecution(modelName string, config types.Input, displayer inter
 
 		// 计算百分比
 		percent := float64(currentCompleted) / float64(totalRequests) * 100.0
-		
+
 		// 类型断言来调用UpdateProgress方法
-		if disp, ok := displayer.(interface{ UpdateProgress(float64) }); ok {
-			disp.UpdateProgress(percent)
-		}
+		displayer.UpdateProgress(percent)
 
 		// 保存最新的错误信息（覆盖之前的，确保获取最完整的错误列表）
 		currentModelErrors = make([]string, len(sd.ErrorMessages))
@@ -246,7 +244,7 @@ func generateReportsIfEnabled(reportFlag bool, results []*types.ReportData) erro
 	if err != nil {
 		return fmt.Errorf("生成汇总报告失败: %v", err)
 	}
-	
+
 	fmt.Printf("\n汇总报告已生成:\n")
 	for _, filePath := range filePaths {
 		fmt.Printf("  - %s\n", filePath)
@@ -255,7 +253,7 @@ func generateReportsIfEnabled(reportFlag bool, results []*types.ReportData) erro
 }
 
 // executeModelsTestSuite 执行多个模型的测试套件
-func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag bool, displayer interface{}) ([]*types.ReportData, []string, error) {
+func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag bool, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
 	// 用于收集所有错误信息
 	var allErrors []string
 
@@ -266,9 +264,7 @@ func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, fin
 	totalRequests := count * len(modelList)
 
 	// 初始化总进度条
-	if disp, ok := displayer.(interface{ InitProgress(int, string) }); ok {
-		disp.InitProgress(totalRequests, fmt.Sprintf("🚀 测试进度 (%d 个模型)", len(modelList)))
-	}
+	displayer.InitProgress(totalRequests, fmt.Sprintf("🚀 测试进度 (%d 个模型)", len(modelList)))
 
 	completedRequests := 0
 
@@ -293,9 +289,7 @@ func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, fin
 	}
 
 	// 完成进度条
-	if disp, ok := displayer.(interface{ FinishProgress() }); ok {
-		disp.FinishProgress()
-	}
+	displayer.FinishProgress()
 
 	// 为所有结果填充模型名称元数据
 	fillResultMetadata(allResults, modelList, finalBaseUrl, finalProtocol)
