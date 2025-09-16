@@ -8,6 +8,7 @@ import (
 	"testing"
 	"time"
 
+	"github.com/yinxulai/ait/internal/display"
 	"github.com/yinxulai/ait/internal/types"
 )
 
@@ -1614,7 +1615,7 @@ func TestProcessModelExecution(t *testing.T) {
 		name               string
 		modelName          string
 		config             types.Input
-		displayer          interface{}
+		displayer          *display.Displayer
 		completedRequests  int
 		totalRequests      int
 		expectedResult     bool
@@ -1631,7 +1632,7 @@ func TestProcessModelExecution(t *testing.T) {
 				Count:       1,
 				Concurrency: 1,
 			},
-			displayer:         &MockDisplay{},
+			displayer:         display.New(),
 			completedRequests: 0,
 			totalRequests:     1,
 			expectedResult:    true,
@@ -1648,7 +1649,7 @@ func TestProcessModelExecution(t *testing.T) {
 				Count:       1,
 				Concurrency: 1,
 			},
-			displayer:         &MockDisplay{},
+			displayer:         display.New(),
 			completedRequests: 0,
 			totalRequests:     1,
 			expectedResult:    true,
@@ -1698,7 +1699,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 		timeout      int
 		stream       bool
 		reportFlag   bool
-		displayer    interface{}
+		displayer    *display.Displayer
 		expectedLen  int
 		expectError  bool
 	}{
@@ -1714,7 +1715,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 			timeout:     30,
 			stream:      false,
 			reportFlag:  false,
-			displayer:   &MockDisplay{},
+			displayer:   display.New(),
 			expectedLen: 1,
 			expectError: false,
 		},
@@ -1730,7 +1731,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 			timeout:     30,
 			stream:      false,
 			reportFlag:  false,
-			displayer:   &MockDisplay{},
+			displayer:   display.New(),
 			expectedLen: 2,
 			expectError: false,
 		},
@@ -1746,7 +1747,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 			timeout:     30,
 			stream:      false,
 			reportFlag:  false,
-			displayer:   &MockDisplay{},
+			displayer:   display.New(),
 			expectedLen: 0,
 			expectError: false,
 		},
