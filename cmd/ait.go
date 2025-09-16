@@ -313,7 +313,7 @@ func main() {
 	stream := flag.Bool("stream", true, "是否开启流模式")
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	reportFlag := flag.Bool("report", false, "是否生成报告文件")
-	timeout := flag.Int("timeout", 30, "请求超时时间(秒)")
+	timeout := flag.Int("timeout", 300, "请求超时时间(秒)")
 	flag.Parse()
 
 	// 解析和验证配置
