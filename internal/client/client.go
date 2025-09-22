@@ -3,6 +3,8 @@ package client
 import (
 	"fmt"
 	"time"
+
+	"github.com/yinxulai/ait/internal/logger"
 )
 
 // ResponseMetrics 响应指标数据
@@ -18,6 +20,7 @@ type ResponseMetrics struct {
 	TargetIP         string        // 目标服务器IP地址
 	
 	// 内容指标
+	PromptTokens     int           // 输入 token 数量
 	CompletionTokens int           // 输出 token 数量 (用于TPS计算)
 	
 	// 错误信息
@@ -29,20 +32,25 @@ type ModelClient interface {
 	Request(prompt string, stream bool) (*ResponseMetrics, error)
 	GetProtocol() string
 	GetModel() string
+	SetLogger(logger *logger.Logger) // 设置日志记录器
 }
 
 // NewClient 根据 protocol 类型创建客户端
-func NewClient(protocol, baseUrl, apiKey, model string) (ModelClient, error) {
-	return NewClientWithTimeout(protocol, baseUrl, apiKey, model, 30*time.Second)
+func NewClient(protocol, baseUrl, apiKey, model string, logger *logger.Logger) (ModelClient, error) {
+	return NewClientWithTimeout(protocol, baseUrl, apiKey, model, 30*time.Second, logger)
 }
 
 // NewClientWithTimeout 根据 protocol 类型创建带超时配置的客户端
-func NewClientWithTimeout(protocol, baseUrl, apiKey, model string, timeout time.Duration) (ModelClient, error) {
+func NewClientWithTimeout(protocol, baseUrl, apiKey, model string, timeout time.Duration, logger *logger.Logger) (ModelClient, error) {
 	switch protocol {
 	case "openai":
-		return NewOpenAIClientWithTimeout(baseUrl, apiKey, model, timeout), nil
+		client := NewOpenAIClientWithTimeout(baseUrl, apiKey, model, timeout)
+		client.SetLogger(logger)
+		return client, nil
 	case "anthropic":
-		return NewAnthropicClientWithTimeout(baseUrl, apiKey, model, timeout), nil
+		client := NewAnthropicClientWithTimeout(baseUrl, apiKey, model, timeout)
+		client.SetLogger(logger)
+		return client, nil
 	default:
 		return nil, fmt.Errorf("不支持的 protocol 类型: %s", protocol)
 	}

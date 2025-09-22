@@ -6,50 +6,69 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
+	"github.com/yinxulai/ait/internal/logger"
 	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/upload"
 )
 
 // Runner 性能测试执行器
 type Runner struct {
-	config types.Input
+	taskID string
+	input  types.Input
+	upload *upload.Uploader
 	client client.ModelClient
 }
 
 // NewRunner 创建新的性能测试执行器
-func NewRunner(config types.Input) (*Runner, error) {
-	client, err := client.NewClientWithTimeout(config.Protocol, config.BaseUrl, config.ApiKey, config.Model, config.Timeout)
+func NewRunner(taskID string, config types.Input) (*Runner, error) {
+	// 创建日志记录器（如果启用）
+	var loggerInstance *logger.Logger
+	if config.Log {
+		loggerInstance = logger.New(config.Log)
+	}
+
+	client, err := client.NewClientWithTimeout(config.Protocol, config.BaseUrl, config.ApiKey, config.Model, config.Timeout, loggerInstance)
 	if err != nil {
 		return nil, err
 	}
+	
 	return &Runner{
+		taskID: taskID,
 		client: client,
-		config: config,
+		input:  config,
+		upload: upload.New(),
 	}, nil
 }
 
 // Run 执行性能测试，返回结果数据
 func (r *Runner) Run() (*types.ReportData, error) {
 	var wg sync.WaitGroup
-	results := make([]*client.ResponseMetrics, r.config.Count)
+	results := make([]*client.ResponseMetrics, r.input.Count)
 	start := time.Now()
-	ch := make(chan int, r.config.Concurrency)
+	ch := make(chan int, r.input.Concurrency)
 
 	completed := int64(0)
 	failed := int64(0)
 
-	for i := 0; i < r.config.Count; i++ {
+	for i := 0; i < r.input.Count; i++ {
 		wg.Add(1)
 		ch <- 1
 		go func(idx int) {
 			defer wg.Done()
 			defer func() { <-ch }()
 
-			metrics, err := r.client.Request(r.config.Prompt, r.config.Stream)
+			metrics, err := r.client.Request(r.input.Prompt, r.input.Stream)
 			if err != nil {
 				atomic.AddInt64(&failed, 1)
 				return
 			}
+
 			results[idx] = metrics
+
+			if metrics.ErrorMessage == "" && r.upload != nil {
+				r.upload.UploadReport(r.taskID, metrics, r.input)
+			}
+
 			atomic.AddInt64(&completed, 1)
 		}(i)
 	}
@@ -63,9 +82,9 @@ func (r *Runner) Run() (*types.ReportData, error) {
 // RunWithProgress 运行性能测试并实时显示进度
 func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types.ReportData, error) {
 	var wg sync.WaitGroup
-	results := make([]*client.ResponseMetrics, r.config.Count)
+	results := make([]*client.ResponseMetrics, r.input.Count)
 	start := time.Now()
-	ch := make(chan int, r.config.Concurrency)
+	ch := make(chan int, r.input.Concurrency)
 
 	completed := int64(0)
 	failed := int64(0)
@@ -117,14 +136,14 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 		}
 	}()
 
-	for i := 0; i < r.config.Count; i++ {
+	for i := 0; i < r.input.Count; i++ {
 		wg.Add(1)
 		ch <- 1
 		go func(idx int) {
 			defer wg.Done()
 			defer func() { <-ch }()
 
-			metrics, err := r.client.Request(r.config.Prompt, r.config.Stream)
+			metrics, err := r.client.Request(r.input.Prompt, r.input.Stream)
 			if err != nil {
 				ttftsMutex.Lock()
 				errorMessages = append(errorMessages, err.Error())
@@ -144,6 +163,10 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			tokenCounts = append(tokenCounts, metrics.CompletionTokens)
 			ttftsMutex.Unlock()
 
+			if metrics.ErrorMessage == "" && r.upload != nil {
+				r.upload.UploadReport(r.taskID, metrics, r.input)
+			}
+			
 			atomic.AddInt64(&completed, 1)
 		}(i)
 	}
@@ -272,7 +295,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			remainingTime := result.TotalTime - result.TimeToFirstToken
 			tpot = remainingTime / time.Duration(result.CompletionTokens-1)
 			sumTPOT += tpot
-			
+
 			if tpot < minTPOT || minTPOT == 0 {
 				minTPOT = tpot
 			}
@@ -331,16 +354,16 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	validCount := len(validResults)
 
 	// 计算错误率和成功率
-	errorRate := float64(r.config.Count-validCount) / float64(r.config.Count) * 100
-	successRate := float64(validCount) / float64(r.config.Count) * 100
+	errorRate := float64(r.input.Count-validCount) / float64(r.input.Count) * 100
+	successRate := float64(validCount) / float64(r.input.Count) * 100
 
 	// 如果没有有效结果，返回基础结果
 	if validCount == 0 {
 		result := &types.ReportData{
-			TotalRequests: r.config.Count,
-			Concurrency:   r.config.Concurrency,
+			TotalRequests: r.input.Count,
+			Concurrency:   r.input.Concurrency,
 			TotalTime:     totalTime,
-			IsStream:      r.config.Stream,
+			IsStream:      r.input.Stream,
 		}
 
 		// 可靠性指标
@@ -386,10 +409,10 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	avgTPS := sumTPS / float64(validCount)
 
 	result := &types.ReportData{
-		TotalRequests: r.config.Count,
-		Concurrency:   r.config.Concurrency,
+		TotalRequests: r.input.Count,
+		Concurrency:   r.input.Concurrency,
 		TotalTime:     totalTime,
-		IsStream:      r.config.Stream,
+		IsStream:      r.input.Stream,
 	}
 
 	// 时间指标

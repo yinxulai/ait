@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,18 @@ import (
 	"github.com/yinxulai/ait/internal/runner"
 	"github.com/yinxulai/ait/internal/types"
 )
+
+func generateTaskID() string {
+    bytes := make([]byte, 16)
+    rand.Read(bytes)
+    
+    // 设置版本 (4) 和变体位
+    bytes[6] = (bytes[6] & 0x0f) | 0x40 // Version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80 // Variant 10
+    
+    return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+        bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
+}
 
 // readPromptFromStdin 从标准输入读取 prompt 内容
 func readPromptFromStdin() (string, error) {
@@ -147,7 +160,7 @@ func printErrorMessages(protocol string) {
 }
 
 // createRunnerConfig 创建runner配置
-func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurrency, count, timeout int, stream, report bool) types.Input {
+func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurrency, count, timeout int, stream, report, log bool) types.Input {
 	return types.Input{
 		Protocol:    protocol,
 		BaseUrl:     baseUrl,
@@ -159,12 +172,13 @@ func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurr
 		Stream:      stream,
 		Report:      report,
 		Timeout:     time.Duration(timeout) * time.Second,
+		Log:         log,
 	}
 }
 
 // processModelExecution 处理单个模型的执行逻辑
-func processModelExecution(modelName string, config types.Input, displayer *display.Displayer, completedRequests, totalRequests int) (*types.ReportData, []string, error) {
-	runnerInstance, err := runner.NewRunner(config)
+func processModelExecution(taskID string, modelName string, config types.Input, displayer *display.Displayer, completedRequests, totalRequests int) (*types.ReportData, []string, error) {
+	runnerInstance, err := runner.NewRunner(taskID, config)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建测试执行器失败: %v", err)
 	}
@@ -217,7 +231,6 @@ func fillResultMetadata(results []*types.ReportData, modelList []string, baseUrl
 	}
 }
 
-// convertErrorsToPointers 将错误字符串切片转换为指针切片
 func convertErrorsToPointers(errors []string) []*string {
 	errorPtrs := make([]*string, len(errors))
 	for i := range errors {
@@ -253,7 +266,7 @@ func generateReportsIfEnabled(reportFlag bool, results []*types.ReportData) erro
 }
 
 // executeModelsTestSuite 执行多个模型的测试套件
-func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag bool, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
+func executeModelsTestSuite(taskID string, modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag, log bool, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
 	// 用于收集所有错误信息
 	var allErrors []string
 
@@ -269,9 +282,9 @@ func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, fin
 	completedRequests := 0
 
 	for _, modelName := range modelList {
-		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, prompt, concurrency, count, timeout, stream, reportFlag)
+		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, prompt, concurrency, count, timeout, stream, reportFlag, log)
 
-		result, currentModelErrors, err := processModelExecution(modelName, config, displayer, completedRequests, totalRequests)
+		result, currentModelErrors, err := processModelExecution(taskID, modelName, config, displayer, completedRequests, totalRequests)
 		if err != nil {
 			fmt.Printf("模型 %s 执行失败: %v\n", modelName, err)
 			continue
@@ -298,6 +311,7 @@ func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, fin
 }
 
 func main() {
+	taskID := generateTaskID()
 	baseUrl := flag.String("baseUrl", "", "服务地址")
 	apiKey := flag.String("apiKey", "", "API 密钥")
 	count := flag.Int("count", 10, "请求总数")
@@ -308,6 +322,7 @@ func main() {
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	reportFlag := flag.Bool("report", false, "是否生成报告文件")
 	timeout := flag.Int("timeout", 300, "请求超时时间(秒)")
+	logFlag := flag.Bool("log", false, "是否开启详细日志记录")
 	flag.Parse()
 
 	// 解析和验证配置
@@ -358,8 +373,8 @@ func main() {
 
 	// 执行多个模型的测试套件
 	allResults, allErrors, err := executeModelsTestSuite(
-		modelList, finalProtocol, finalBaseUrl, finalApiKey, finalPrompt,
-		*concurrency, *count, *timeout, *stream, *reportFlag, displayer,
+		taskID, modelList, finalProtocol, finalBaseUrl, finalApiKey, finalPrompt,
+		*concurrency, *count, *timeout, *stream, *reportFlag, *logFlag, displayer,
 	)
 	if err != nil {
 		fmt.Printf("执行测试套件失败: %v\n", err)

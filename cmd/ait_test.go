@@ -14,8 +14,8 @@ import (
 
 // MockRunner 模拟 runner 以便测试 main 函数逻辑
 type MockRunner struct {
-	config types.Input
 	result *types.ReportData
+	input types.Input
 	err    error
 }
 
@@ -25,7 +25,7 @@ func NewMockRunner(config types.Input) (*MockRunner, error) {
 	}
 	
 	return &MockRunner{
-		config: config,
+		input: config,
 		result: &types.ReportData{
 			TotalRequests: config.Count,
 			Concurrency:   config.Concurrency,
@@ -95,7 +95,7 @@ func (m *MockRunner) RunWithProgress(callback func(types.StatsData)) (*types.Rep
 	}
 
 	// 模拟进度回调
-	for i := 0; i <= m.config.Count; i++ {
+	for i := 0; i <= m.input.Count; i++ {
 		callback(types.StatsData{
 			CompletedCount: i,
 			FailedCount:    0,
@@ -447,7 +447,7 @@ func TestInputConfig(t *testing.T) {
 		baseUrl  string
 		apiKey   string
 		model    string
-		config   types.Input
+		input   types.Input
 	}{
 		{
 			name:     "OpenAI configuration",
@@ -455,7 +455,7 @@ func TestInputConfig(t *testing.T) {
 			baseUrl:  "https://api.openai.com",
 			apiKey:   "test-openai-key",
 			model:    "gpt-3.5-turbo",
-			config: types.Input{
+			input: types.Input{
 				Protocol:    "openai",
 				BaseUrl:     "https://api.openai.com",
 				ApiKey:      "test-openai-key",
@@ -474,7 +474,7 @@ func TestInputConfig(t *testing.T) {
 			baseUrl:  "https://api.anthropic.com",
 			apiKey:   "test-anthropic-key",
 			model:    "claude-3",
-			config: types.Input{
+			input: types.Input{
 				Protocol:    "anthropic",
 				BaseUrl:     "https://api.anthropic.com",
 				ApiKey:      "test-anthropic-key",
@@ -492,46 +492,46 @@ func TestInputConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// 模拟创建 Input 配置的过程
-			config := types.Input{
+			input := types.Input{
 				Protocol:    tt.protocol,
 				BaseUrl:     tt.baseUrl,
 				ApiKey:      tt.apiKey,
 				Model:       tt.model,
-				Concurrency: tt.config.Concurrency,
-				Count:       tt.config.Count,
-				Prompt:      tt.config.Prompt,
-				Stream:      tt.config.Stream,
-				Report:      tt.config.Report,
-				Timeout:     tt.config.Timeout,
+				Concurrency: tt.input.Concurrency,
+				Count:       tt.input.Count,
+				Prompt:      tt.input.Prompt,
+				Stream:      tt.input.Stream,
+				Report:      tt.input.Report,
+				Timeout:     tt.input.Timeout,
 			}
 
 			// 验证配置字段
-			if config.Protocol != tt.config.Protocol {
-				t.Errorf("Protocol: expected %s, got %s", tt.config.Protocol, config.Protocol)
+			if input.Protocol != tt.input.Protocol {
+				t.Errorf("Protocol: expected %s, got %s", tt.input.Protocol, input.Protocol)
 			}
-			if config.BaseUrl != tt.config.BaseUrl {
-				t.Errorf("BaseUrl: expected %s, got %s", tt.config.BaseUrl, config.BaseUrl)
+			if input.BaseUrl != tt.input.BaseUrl {
+				t.Errorf("BaseUrl: expected %s, got %s", tt.input.BaseUrl, input.BaseUrl)
 			}
-			if config.ApiKey != tt.config.ApiKey {
-				t.Errorf("ApiKey: expected %s, got %s", tt.config.ApiKey, config.ApiKey)
+			if input.ApiKey != tt.input.ApiKey {
+				t.Errorf("ApiKey: expected %s, got %s", tt.input.ApiKey, input.ApiKey)
 			}
-			if config.Model != tt.config.Model {
-				t.Errorf("Model: expected %s, got %s", tt.config.Model, config.Model)
+			if input.Model != tt.input.Model {
+				t.Errorf("Model: expected %s, got %s", tt.input.Model, input.Model)
 			}
-			if config.Concurrency != tt.config.Concurrency {
-				t.Errorf("Concurrency: expected %d, got %d", tt.config.Concurrency, config.Concurrency)
+			if input.Concurrency != tt.input.Concurrency {
+				t.Errorf("Concurrency: expected %d, got %d", tt.input.Concurrency, input.Concurrency)
 			}
-			if config.Count != tt.config.Count {
-				t.Errorf("Count: expected %d, got %d", tt.config.Count, config.Count)
+			if input.Count != tt.input.Count {
+				t.Errorf("Count: expected %d, got %d", tt.input.Count, input.Count)
 			}
-			if config.Stream != tt.config.Stream {
-				t.Errorf("Stream: expected %t, got %t", tt.config.Stream, config.Stream)
+			if input.Stream != tt.input.Stream {
+				t.Errorf("Stream: expected %t, got %t", tt.input.Stream, input.Stream)
 			}
-			if config.Report != tt.config.Report {
-				t.Errorf("Report: expected %t, got %t", tt.config.Report, config.Report)
+			if input.Report != tt.input.Report {
+				t.Errorf("Report: expected %t, got %t", tt.input.Report, input.Report)
 			}
-			if config.Timeout != tt.config.Timeout {
-				t.Errorf("Timeout: expected %v, got %v", tt.config.Timeout, config.Timeout)
+			if input.Timeout != tt.input.Timeout {
+				t.Errorf("Timeout: expected %v, got %v", tt.input.Timeout, input.Timeout)
 			}
 		})
 	}
@@ -842,7 +842,7 @@ func TestConfigCreation(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// 模拟 main 函数中创建配置的过程
-			config := types.Input{
+			input := types.Input{
 				Protocol:    tt.input.protocol,
 				BaseUrl:     tt.input.baseUrl,
 				ApiKey:      tt.input.apiKey,
@@ -856,17 +856,17 @@ func TestConfigCreation(t *testing.T) {
 			}
 
 			// 验证所有字段
-			if config.Protocol != tt.expected.Protocol {
-				t.Errorf("Protocol: expected %s, got %s", tt.expected.Protocol, config.Protocol)
+			if input.Protocol != tt.expected.Protocol {
+				t.Errorf("Protocol: expected %s, got %s", tt.expected.Protocol, input.Protocol)
 			}
-			if config.BaseUrl != tt.expected.BaseUrl {
-				t.Errorf("BaseUrl: expected %s, got %s", tt.expected.BaseUrl, config.BaseUrl)
+			if input.BaseUrl != tt.expected.BaseUrl {
+				t.Errorf("BaseUrl: expected %s, got %s", tt.expected.BaseUrl, input.BaseUrl)
 			}
-			if config.Model != tt.expected.Model {
-				t.Errorf("Model: expected %s, got %s", tt.expected.Model, config.Model)
+			if input.Model != tt.expected.Model {
+				t.Errorf("Model: expected %s, got %s", tt.expected.Model, input.Model)
 			}
-			if config.Timeout != tt.expected.Timeout {
-				t.Errorf("Timeout: expected %v, got %v", tt.expected.Timeout, config.Timeout)
+			if input.Timeout != tt.expected.Timeout {
+				t.Errorf("Timeout: expected %v, got %v", tt.expected.Timeout, input.Timeout)
 			}
 		})
 	}
@@ -1379,12 +1379,13 @@ func TestCreateRunnerConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			result := createRunnerConfig(
-				tt.protocol, tt.baseUrl, tt.apiKey, tt.model, tt.prompt,
-				tt.concurrency, tt.count, tt.timeout, tt.stream, tt.report,
-			)
+		result := createRunnerConfig(
+			tt.protocol, tt.baseUrl, tt.apiKey, tt.model, tt.prompt,
+			tt.concurrency, tt.count, tt.timeout, tt.stream, tt.report,
+			false,
+		)
 
-			if result.Protocol != tt.expected.Protocol {
+		if result.Protocol != tt.expected.Protocol {
 				t.Errorf("Protocol: expected %s, got %s", tt.expected.Protocol, result.Protocol)
 			}
 			if result.BaseUrl != tt.expected.BaseUrl {
@@ -1620,7 +1621,7 @@ func TestProcessModelExecution(t *testing.T) {
 	tests := []struct {
 		name               string
 		modelName          string
-		config             types.Input
+		input             types.Input
 		displayer          *display.Displayer
 		completedRequests  int
 		totalRequests      int
@@ -1629,7 +1630,7 @@ func TestProcessModelExecution(t *testing.T) {
 		{
 			name:      "Successful execution",
 			modelName: "gpt-3.5-turbo",
-			config: types.Input{
+			input: types.Input{
 				Prompt:      "test prompt",
 				Protocol:    "openai",
 				BaseUrl:     "https://api.openai.com",
@@ -1646,7 +1647,7 @@ func TestProcessModelExecution(t *testing.T) {
 		{
 			name:      "Another model execution",
 			modelName: "gpt-4",
-			config: types.Input{
+			input: types.Input{
 				Prompt:      "test prompt",
 				Protocol:    "openai",
 				BaseUrl:     "https://api.openai.com",
@@ -1665,11 +1666,12 @@ func TestProcessModelExecution(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// 设置模型配置
-			tt.config.Model = tt.modelName
+			tt.input.Model = tt.modelName
 			
 			result, errorMessages, err := processModelExecution(
+				"test-task-id",
 				tt.modelName, 
-				tt.config, 
+				tt.input, 
 				tt.displayer, 
 				tt.completedRequests, 
 				tt.totalRequests,
@@ -1762,6 +1764,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			results, errorMessages, err := executeModelsTestSuite(
+				"test-task-id",
 				tt.modelList,
 				tt.protocol,
 				tt.baseUrl,
@@ -1772,6 +1775,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 				tt.timeout,
 				tt.stream,
 				tt.reportFlag,
+				false,
 				tt.displayer,
 			)
 

@@ -12,6 +12,8 @@ import (
 	"net/http/httptrace"
 	"strings"
 	"time"
+
+	"github.com/yinxulai/ait/internal/logger"
 )
 
 // AnthropicResponse Anthropic 非流式响应结构
@@ -62,6 +64,7 @@ type AnthropicClient struct {
 	Model      string
 	Provider   string
 	httpClient *http.Client
+	logger     *logger.Logger
 }
 
 // NewAnthropicClient 创建新的 Anthropic 客户端
@@ -94,11 +97,26 @@ func NewAnthropicClientWithTimeout(baseUrl, apiKey, model string, timeout time.D
 			Transport: transport,
 			Timeout:   timeout,
 		},
+		logger: nil,
 	}
+}
+
+// SetLogger 设置日志记录器
+func (c *AnthropicClient) SetLogger(l *logger.Logger) {
+	c.logger = l
 }
 
 // Request 发送 Anthropic 协议请求（支持流式和非流式）
 func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
+	// 记录请求开始日志
+	if c.logger != nil && c.logger.IsEnabled() {
+		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
+			"stream":     stream,
+			"protocol":   c.Provider,
+			"base_url":   c.BaseUrl,
+		})
+	}
+
 	// 构造请求体结构，使用正确的 JSON 编码
 	requestBody := map[string]interface{}{
 		"model": c.Model,
@@ -113,6 +131,10 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 
 	reqBodyBytes, err := json.Marshal(requestBody)
 	if err != nil {
+		// 记录错误日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.Error(c.Model, "JSON encoding failed", err)
+		}
 		return &ResponseMetrics{
 			TimeToFirstToken: 0,
 			TotalTime:        0,
@@ -127,6 +149,10 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 
 	req, err := http.NewRequest("POST", c.BaseUrl+"/v1/messages", bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
+		// 记录错误日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.Error(c.Model, "Request creation failed", err)
+		}
 		// URL 格式错误或其他请求构建错误
 		return &ResponseMetrics{
 			TimeToFirstToken: 0,
@@ -142,6 +168,25 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	req.Header.Set("x-api-key", c.ApiKey)
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("anthropic-version", "2023-06-01")
+
+	// 记录请求日志
+	if c.logger != nil && c.logger.IsEnabled() {
+		headers := make(map[string]string)
+		for k, v := range req.Header {
+			if k == "x-api-key" {
+				headers[k] = "***" // 隐藏敏感信息
+			} else {
+				headers[k] = strings.Join(v, ", ")
+			}
+		}
+		
+		c.logger.LogRequest(c.Model, logger.RequestData{
+			Method:  req.Method,
+			URL:     req.URL.String(),
+			Headers: headers,
+			Body:    string(reqBodyBytes),
+		})
+	}
 
 	// 网络指标收集
 	var dnsStart, connectStart, tlsStart time.Time
@@ -182,6 +227,10 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	t0 := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		// 记录网络错误日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.Error(c.Model, "Network error occurred", err)
+		}
 		// 网络错误（如地址错误、连接失败等）
 		return &ResponseMetrics{
 			TimeToFirstToken: 0,
@@ -199,6 +248,22 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 	// 检查 HTTP 状态码
 	if resp.StatusCode != http.StatusOK {
 		responseData, _ := io.ReadAll(resp.Body)
+		responseBody := string(responseData)
+		
+		// 记录HTTP错误响应日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			headers := make(map[string]string)
+			for k, v := range resp.Header {
+				headers[k] = strings.Join(v, ", ")
+			}
+			
+			c.logger.LogResponse(c.Model, logger.ResponseData{
+				StatusCode: resp.StatusCode,
+				Headers:    headers,
+				Body:       responseBody,
+				Error:      fmt.Sprintf("HTTP %d Error", resp.StatusCode),
+			})
+		}
 		
 		// 尝试解析 Anthropic API 的错误响应
 		var errorResp AnthropicErrorResponse
@@ -229,6 +294,21 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		gotFirst := false
 		var fullContent strings.Builder
 		var outputTokens int
+		var inputTokens int
+		var streamChunks []string // 用于记录所有流式数据块
+		
+		// 记录流式响应开始日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			headers := make(map[string]string)
+			for k, v := range resp.Header {
+				headers[k] = strings.Join(v, ", ")
+			}
+			
+			c.logger.Debug(c.Model, "Stream response started", map[string]interface{}{
+				"status_code": resp.StatusCode,
+				"headers":     headers,
+			})
+		}
 		
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -236,6 +316,11 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 				data := strings.TrimPrefix(line, "data: ")
 				if strings.TrimSpace(data) == "" {
 					continue
+				}
+				
+				// 记录流数据块
+				if c.logger != nil && c.logger.IsEnabled() {
+					streamChunks = append(streamChunks, data)
 				}
 				
 				var chunk AnthropicStreamChunk
@@ -266,16 +351,37 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 				
 				// 获取 token 统计信息
 				if chunk.Usage != nil {
+					inputTokens = chunk.Usage.InputTokens
 					outputTokens = chunk.Usage.OutputTokens
 				}
 			}
 		}
 
 		if err := scanner.Err(); err != nil {
+			// 记录扫描错误日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Stream scanning failed", err)
+			}
 			return nil, err
 		}
 
 		totalTime := time.Since(t0)
+		
+		// 记录流式响应完成日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.LogResponse(c.Model, logger.ResponseData{
+				StatusCode:   resp.StatusCode,
+				StreamChunks: streamChunks,
+			})
+			
+			c.logger.LogTestEnd(c.Model, map[string]interface{}{
+				"total_time":         totalTime.String(),
+				"time_to_first_token": firstTokenTime.String(),
+				"input_tokens":       inputTokens,
+				"output_tokens":      outputTokens,
+				"full_content":       fullContent.String(),
+			})
+		}
 		
 		return &ResponseMetrics{
 			TimeToFirstToken: firstTokenTime,
@@ -284,6 +390,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
+			PromptTokens:     inputTokens,
 			CompletionTokens: outputTokens,
 			ErrorMessage:     "",
 		}, nil
@@ -291,14 +398,53 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		// 非流式响应处理
 		responseData, err := io.ReadAll(resp.Body)
 		if err != nil {
+			// 记录读取响应错误日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Failed to read response body", err)
+			}
 			return nil, err
 		}
 
 		totalTime := time.Since(t0)
+		responseBody := string(responseData)
+		
+		// 记录响应日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			headers := make(map[string]string)
+			for k, v := range resp.Header {
+				headers[k] = strings.Join(v, ", ")
+			}
+			
+			c.logger.LogResponse(c.Model, logger.ResponseData{
+				StatusCode: resp.StatusCode,
+				Headers:    headers,
+				Body:       responseBody,
+			})
+		}
 		
 		var anthropicResp AnthropicResponse
 		if err := json.Unmarshal(responseData, &anthropicResp); err != nil {
+			// 记录JSON解析错误日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Failed to parse response JSON", err)
+			}
 			return nil, err
+		}
+
+		// 记录测试完成日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			var contentText string
+			if len(anthropicResp.Content) > 0 {
+				contentText = anthropicResp.Content[0].Text
+			}
+			
+			c.logger.LogTestEnd(c.Model, map[string]interface{}{
+				"total_time":     totalTime.String(),
+				"output_tokens":  anthropicResp.Usage.OutputTokens,
+				"input_tokens":   anthropicResp.Usage.InputTokens,
+				"response_id":    anthropicResp.ID,
+				"content_length": len(contentText),
+			})
 		}
 
 		return &ResponseMetrics{
@@ -308,6 +454,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
+			PromptTokens:     anthropicResp.Usage.InputTokens,
 			CompletionTokens: anthropicResp.Usage.OutputTokens,
 			ErrorMessage:     "",
 		}, nil

@@ -1,6 +1,7 @@
 bin/*
 .env
 ait-report-*
+ait-*.log
 test.sh
 
 # 测试覆盖率文件

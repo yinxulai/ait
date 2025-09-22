@@ -7,7 +7,9 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
+	"github.com/yinxulai/ait/internal/logger"
 	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/upload"
 )
 
 // MockClient 用于测试的模拟客户端
@@ -81,11 +83,17 @@ func (m *MockClient) ResetCallCount() {
 	atomic.StoreInt64(&m.callCount, 0)
 }
 
+// SetLogger 设置日志记录器
+func (m *MockClient) SetLogger(logger *logger.Logger) {
+	// MockClient 不需要实际的日志记录器，所以这里是空实现
+}
+
 // NewRunnerWithClient 创建带有自定义客户端的Runner（用于测试）
-func NewRunnerWithClient(config types.Input, client client.ModelClient) *Runner {
+func NewRunnerWithClient(input types.Input, client client.ModelClient) *Runner {
 	return &Runner{
-		config: config,
+		input: input,
 		client: client,
+		upload: upload.New(),
 	}
 }
 
@@ -141,7 +149,7 @@ func TestNewRunner(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			runner, err := NewRunner(tt.input)
+			runner, err := NewRunner("test-task-id", tt.input)
 
 			if tt.wantError {
 				if err == nil {
@@ -164,12 +172,12 @@ func TestNewRunner(t *testing.T) {
 				t.Error("NewRunner().client should not be nil")
 			}
 
-			if runner.config.Protocol != tt.input.Protocol {
-				t.Errorf("NewRunner().config.Protocol = %v, want %v", runner.config.Protocol, tt.input.Protocol)
+			if runner.input.Protocol != tt.input.Protocol {
+				t.Errorf("NewRunner().config.Protocol = %v, want %v", runner.input.Protocol, tt.input.Protocol)
 			}
 
-			if runner.config.Stream != tt.input.Stream {
-				t.Errorf("NewRunner().config.Stream = %v, want %v", runner.config.Stream, tt.input.Stream)
+			if runner.input.Stream != tt.input.Stream {
+				t.Errorf("NewRunner().config.Stream = %v, want %v", runner.input.Stream, tt.input.Stream)
 			}
 		})
 	}
@@ -177,7 +185,7 @@ func TestNewRunner(t *testing.T) {
 
 func TestRunner_Run_Success(t *testing.T) {
 	// 创建测试配置
-	config := types.Input{
+	input := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com",
 		ApiKey:      "test-key",
@@ -202,7 +210,7 @@ func TestRunner_Run_Success(t *testing.T) {
 		},
 	}
 	
-	runner := NewRunnerWithClient(config, mockClient)
+	runner := NewRunnerWithClient(input, mockClient)
 	
 	// 执行测试
 	result, err := runner.Run()
@@ -217,21 +225,21 @@ func TestRunner_Run_Success(t *testing.T) {
 	}
 	
 	// 验证调用次数
-	if mockClient.GetCallCount() != int64(config.Count) {
-		t.Errorf("Expected %d client calls, got %d", config.Count, mockClient.GetCallCount())
+	if mockClient.GetCallCount() != int64(input.Count) {
+		t.Errorf("Expected %d client calls, got %d", input.Count, mockClient.GetCallCount())
 	}
 	
 	// 验证基本配置
-	if result.TotalRequests != config.Count {
-		t.Errorf("Expected TotalRequests %d, got %d", config.Count, result.TotalRequests)
+	if result.TotalRequests != input.Count {
+		t.Errorf("Expected TotalRequests %d, got %d", input.Count, result.TotalRequests)
 	}
 	
-	if result.Concurrency != config.Concurrency {
-		t.Errorf("Expected Concurrency %d, got %d", config.Concurrency, result.Concurrency)
+	if result.Concurrency != input.Concurrency {
+		t.Errorf("Expected Concurrency %d, got %d", input.Concurrency, result.Concurrency)
 	}
 	
-	if result.IsStream != config.Stream {
-		t.Errorf("Expected IsStream %v, got %v", config.Stream, result.IsStream)
+	if result.IsStream != input.Stream {
+		t.Errorf("Expected IsStream %v, got %v", input.Stream, result.IsStream)
 	}
 	
 	// 验证成功率
@@ -255,7 +263,7 @@ func TestRunner_Run_Success(t *testing.T) {
 }
 
 func TestRunner_Run_PartialFailures(t *testing.T) {
-	config := types.Input{
+	input := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com",
 		ApiKey:      "test-key",
@@ -287,7 +295,7 @@ func TestRunner_Run_PartialFailures(t *testing.T) {
 		},
 	}
 	
-	runner := NewRunnerWithClient(config, mockClient)
+	runner := NewRunnerWithClient(input, mockClient)
 	
 	result, err := runner.Run()
 	
@@ -300,8 +308,8 @@ func TestRunner_Run_PartialFailures(t *testing.T) {
 	}
 	
 	// 验证总调用次数
-	if mockClient.GetCallCount() != int64(config.Count) {
-		t.Errorf("Expected %d client calls, got %d", config.Count, mockClient.GetCallCount())
+	if mockClient.GetCallCount() != int64(input.Count) {
+		t.Errorf("Expected %d client calls, got %d", input.Count, mockClient.GetCallCount())
 	}
 	
 	// 验证错误率和成功率  
@@ -319,7 +327,7 @@ func TestRunner_Run_PartialFailures(t *testing.T) {
 }
 
 func TestRunner_Run_AllFailures(t *testing.T) {
-	config := types.Input{
+	input := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com", 
 		ApiKey:      "test-key",
@@ -336,7 +344,7 @@ func TestRunner_Run_AllFailures(t *testing.T) {
 		errorMsg:    "network timeout",
 	}
 	
-	runner := NewRunnerWithClient(config, mockClient)
+	runner := NewRunnerWithClient(input, mockClient)
 	
 	result, err := runner.Run()
 	
@@ -349,8 +357,8 @@ func TestRunner_Run_AllFailures(t *testing.T) {
 	}
 	
 	// 验证调用次数
-	if mockClient.GetCallCount() != int64(config.Count) {
-		t.Errorf("Expected %d client calls, got %d", config.Count, mockClient.GetCallCount())
+	if mockClient.GetCallCount() != int64(input.Count) {
+		t.Errorf("Expected %d client calls, got %d", input.Count, mockClient.GetCallCount())
 	}
 	
 	// 调试输出
@@ -375,7 +383,7 @@ func TestRunner_Run_AllFailures(t *testing.T) {
 }
 
 func TestRunner_Run_ConcurrencyControl(t *testing.T) {
-	config := types.Input{
+	input := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com",
 		ApiKey:      "test-key", 
@@ -401,7 +409,7 @@ func TestRunner_Run_ConcurrencyControl(t *testing.T) {
 		},
 	}
 	
-	runner := NewRunnerWithClient(config, mockClient)
+	runner := NewRunnerWithClient(input, mockClient)
 	
 	start := time.Now()
 	result, err := runner.Run()
@@ -429,13 +437,13 @@ func TestRunner_Run_ConcurrencyControl(t *testing.T) {
 	}
 	
 	// 验证所有请求都被执行
-	if mockClient.GetCallCount() != int64(config.Count) {
-		t.Errorf("Expected %d client calls, got %d", config.Count, mockClient.GetCallCount())
+	if mockClient.GetCallCount() != int64(input.Count) {
+		t.Errorf("Expected %d client calls, got %d", input.Count, mockClient.GetCallCount())
 	}
 }
 
 func TestRunner_RunWithProgress_Success(t *testing.T) {
-	config := types.Input{
+	input := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com",
 		ApiKey:      "test-key",
@@ -460,7 +468,7 @@ func TestRunner_RunWithProgress_Success(t *testing.T) {
 		},
 	}
 	
-	runner := NewRunnerWithClient(config, mockClient)
+	runner := NewRunnerWithClient(input, mockClient)
 	
 	// 跟踪进度回调
 	var progressCallbacks []types.StatsData
@@ -479,12 +487,12 @@ func TestRunner_RunWithProgress_Success(t *testing.T) {
 	}
 	
 	// 验证基本结果
-	if result.TotalRequests != config.Count {
-		t.Errorf("Expected TotalRequests %d, got %d", config.Count, result.TotalRequests)
+	if result.TotalRequests != input.Count {
+		t.Errorf("Expected TotalRequests %d, got %d", input.Count, result.TotalRequests)
 	}
 	
-	if result.Concurrency != config.Concurrency {
-		t.Errorf("Expected Concurrency %d, got %d", config.Concurrency, result.Concurrency)
+	if result.Concurrency != input.Concurrency {
+		t.Errorf("Expected Concurrency %d, got %d", input.Concurrency, result.Concurrency)
 	}
 	
 	// 验证进度回调被调用
@@ -496,35 +504,35 @@ func TestRunner_RunWithProgress_Success(t *testing.T) {
 	if len(progressCallbacks) > 0 {
 		finalProgress := progressCallbacks[len(progressCallbacks)-1]
 		
-		if finalProgress.CompletedCount != config.Count {
-			t.Errorf("Expected final CompletedCount %d, got %d", config.Count, finalProgress.CompletedCount)
+		if finalProgress.CompletedCount != input.Count {
+			t.Errorf("Expected final CompletedCount %d, got %d", input.Count, finalProgress.CompletedCount)
 		}
 		
 		if finalProgress.FailedCount != 0 {
 			t.Errorf("Expected final FailedCount 0, got %d", finalProgress.FailedCount)
 		}
 		
-		if len(finalProgress.TTFTs) != config.Count {
-			t.Errorf("Expected %d TTFTs, got %d", config.Count, len(finalProgress.TTFTs))
+		if len(finalProgress.TTFTs) != input.Count {
+			t.Errorf("Expected %d TTFTs, got %d", input.Count, len(finalProgress.TTFTs))
 		}
 		
-		if len(finalProgress.TotalTimes) != config.Count {
-			t.Errorf("Expected %d TotalTimes, got %d", config.Count, len(finalProgress.TotalTimes))
+		if len(finalProgress.TotalTimes) != input.Count {
+			t.Errorf("Expected %d TotalTimes, got %d", input.Count, len(finalProgress.TotalTimes))
 		}
 		
-		if len(finalProgress.TokenCounts) != config.Count {
-			t.Errorf("Expected %d TokenCounts, got %d", config.Count, len(finalProgress.TokenCounts))
+		if len(finalProgress.TokenCounts) != input.Count {
+			t.Errorf("Expected %d TokenCounts, got %d", input.Count, len(finalProgress.TokenCounts))
 		}
 	}
 	
 	// 验证客户端调用次数
-	if mockClient.GetCallCount() != int64(config.Count) {
-		t.Errorf("Expected %d client calls, got %d", config.Count, mockClient.GetCallCount())
+	if mockClient.GetCallCount() != int64(input.Count) {
+		t.Errorf("Expected %d client calls, got %d", input.Count, mockClient.GetCallCount())
 	}
 }
 
 func TestRunner_RunWithProgress_WithFailures(t *testing.T) {
-	config := types.Input{
+	input := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com",
 		ApiKey:      "test-key",
@@ -553,7 +561,7 @@ func TestRunner_RunWithProgress_WithFailures(t *testing.T) {
 		},
 	}
 	
-	runner := NewRunnerWithClient(config, mockClient)
+	runner := NewRunnerWithClient(input, mockClient)
 	
 	var progressCallbacks []types.StatsData
 	progressCallback := func(stats types.StatsData) {
@@ -596,14 +604,14 @@ func TestRunner_RunWithProgress_WithFailures(t *testing.T) {
 	}
 	
 	// 验证最终结果的错误率
-	expectedErrorRate := float64(expectedFailureCount) / float64(config.Count) * 100
+	expectedErrorRate := float64(expectedFailureCount) / float64(input.Count) * 100
 	if result.ReliabilityMetrics.ErrorRate != expectedErrorRate {
 		t.Errorf("Expected ErrorRate %f, got %f", expectedErrorRate, result.ReliabilityMetrics.ErrorRate)
 	}
 }
 
 func TestRunner_RunWithProgress_ProgressTiming(t *testing.T) {
-	config := types.Input{
+	input := types.Input{
 		Protocol:    "openai",
 		BaseUrl:     "https://api.openai.com",
 		ApiKey:      "test-key",
@@ -628,7 +636,7 @@ func TestRunner_RunWithProgress_ProgressTiming(t *testing.T) {
 		},
 	}
 	
-	runner := NewRunnerWithClient(config, mockClient)
+	runner := NewRunnerWithClient(input, mockClient)
 	
 	var progressCallbacks []types.StatsData
 	var callbackTimes []time.Time
@@ -693,7 +701,7 @@ func TestRunner_CalculateResult_EmptyResults(t *testing.T) {
 		Stream:      false,
 	}
 	
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	var emptyResults []*client.ResponseMetrics
 	totalTime := 5 * time.Second
@@ -730,7 +738,7 @@ func TestRunner_CalculateResult_AllNilResults(t *testing.T) {
 		Stream:      false,
 	}
 	
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	// 创建一些nil结果
 	results := []*client.ResponseMetrics{nil, nil, nil}
@@ -759,7 +767,7 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 		Stream:      true,
 	}
 	
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	// 创建混合结果：一些有效，一些nil，一些无效(token=0)
 	results := []*client.ResponseMetrics{
@@ -873,7 +881,7 @@ func TestRunner_CalculateResult_SingleValidResult(t *testing.T) {
 		Stream:      true,
 	}
 	
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	singleResult := &client.ResponseMetrics{
 		TotalTime:         500 * time.Millisecond,
@@ -971,19 +979,19 @@ func TestRunner_RunWithProgress_BasicFunctionality(t *testing.T) {
 	
 	// 由于我们无法轻易模拟实际的客户端，这个测试主要验证
 	// RunWithProgress方法的存在和基本结构
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	// 验证runner配置正确设置
-	if runner.config.Count != 2 {
-		t.Errorf("Expected Count 2, got %d", runner.config.Count)
+	if runner.input.Count != 2 {
+		t.Errorf("Expected Count 2, got %d", runner.input.Count)
 	}
 	
-	if runner.config.Concurrency != 1 {
-		t.Errorf("Expected Concurrency 1, got %d", runner.config.Concurrency)
+	if runner.input.Concurrency != 1 {
+		t.Errorf("Expected Concurrency 1, got %d", runner.input.Concurrency)
 	}
 	
-	if runner.config.Stream != true {
-		t.Errorf("Expected Stream true, got %v", runner.config.Stream)
+	if runner.input.Stream != true {
+		t.Errorf("Expected Stream true, got %v", runner.input.Stream)
 	}
 }
 
@@ -1034,7 +1042,7 @@ func TestRunner_CalculateResult_TPOT(t *testing.T) {
 		Stream:      true, // 流式模式下才有TPOT
 	}
 	
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	// 创建具有不同token数和时间的测试结果
 	results := []*client.ResponseMetrics{
@@ -1109,7 +1117,7 @@ func TestRunner_CalculateResult_TPOT_SingleToken(t *testing.T) {
 		Stream:      true,
 	}
 	
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	// 创建所有结果都只有1个token的情况
 	results := []*client.ResponseMetrics{
@@ -1167,7 +1175,7 @@ func TestRunner_CalculateResult_TPOT_NonStream(t *testing.T) {
 		Stream:      false, // 非流式模式
 	}
 	
-	runner := &Runner{config: input}
+	runner := &Runner{input: input}
 	
 	result := &client.ResponseMetrics{
 		TotalTime:         500 * time.Millisecond,
