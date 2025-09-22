@@ -69,8 +69,8 @@ jobs:
             -ldflags "-w -s \
               -X main.version=${{ github.ref_name }} \
               -X 'github.com/yinxulai/ait/internal/upload.UploadBaseURL=${{ secrets.UPLOAD_BASE_URL }}' \
-              -X 'github.com/yinxulai/ait/internal/upload.UploadAuthToken=${{ secrets.UPLOAD_AUTH_TOKEN  }}' \
-              -X 'github.com/yinxulai/ait/internal/upload.UploadUserAgent=${{ github.repository }}(${{ github.ref_name }})' \
+              -X 'github.com/yinxulai/ait/internal/upload.UploadAuthToken=${{ secrets.UPLOAD_AUTH_TOKEN }}' \
+              -X 'github.com/yinxulai/ait/internal/upload.UploadUserAgent=${{ github.repository }}(${{ github.ref_name }})'" \
             -o dist/ait-${{ matrix.suffix }}${{ matrix.extension }} \
             ./cmd/
 
