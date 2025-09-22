@@ -90,6 +90,9 @@ type ReportData struct {
 		AvgTTFT       time.Duration `json:"avg_ttft"`        // 平均首个token响应时间
 		MinTTFT       time.Duration `json:"min_ttft"`        // 最小首个token响应时间
 		MaxTTFT       time.Duration `json:"max_ttft"`        // 最大首个token响应时间
+		AvgTPOT       time.Duration `json:"avg_tpot"`        // 平均每个输出token的耗时（除首token外）
+		MinTPOT       time.Duration `json:"min_tpot"`        // 最小每个输出token的耗时
+		MaxTPOT       time.Duration `json:"max_tpot"`        // 最大每个输出token的耗时
 		AvgTokenCount int           `json:"avg_token_count"` // 平均token数量
 		MinTokenCount int           `json:"min_token_count"` // 最小token数量
 		MaxTokenCount int           `json:"max_token_count"` // 最大token数量
@@ -132,6 +135,9 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 			AvgTTFT       string  `json:"avg_ttft"`
 			MinTTFT       string  `json:"min_ttft"`
 			MaxTTFT       string  `json:"max_ttft"`
+			AvgTPOT       string  `json:"avg_tpot"`
+			MinTPOT       string  `json:"min_tpot"`
+			MaxTPOT       string  `json:"max_tpot"`
 			AvgTokenCount int     `json:"avg_token_count"`
 			MinTokenCount int     `json:"min_token_count"`
 			MaxTokenCount int     `json:"max_token_count"`
@@ -178,6 +184,9 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 			AvgTTFT       string  `json:"avg_ttft"`
 			MinTTFT       string  `json:"min_ttft"`
 			MaxTTFT       string  `json:"max_ttft"`
+			AvgTPOT       string  `json:"avg_tpot"`
+			MinTPOT       string  `json:"min_tpot"`
+			MaxTPOT       string  `json:"max_tpot"`
 			AvgTokenCount int     `json:"avg_token_count"`
 			MinTokenCount int     `json:"min_token_count"`
 			MaxTokenCount int     `json:"max_token_count"`
@@ -188,6 +197,9 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 			AvgTTFT:       formatTTFT(r.ContentMetrics.AvgTTFT, r.IsStream),
 			MinTTFT:       formatTTFT(r.ContentMetrics.MinTTFT, r.IsStream),
 			MaxTTFT:       formatTTFT(r.ContentMetrics.MaxTTFT, r.IsStream),
+			AvgTPOT:       formatTPOT(r.ContentMetrics.AvgTPOT, r.IsStream),
+			MinTPOT:       formatTPOT(r.ContentMetrics.MinTPOT, r.IsStream),
+			MaxTPOT:       formatTPOT(r.ContentMetrics.MaxTPOT, r.IsStream),
 			AvgTokenCount: r.ContentMetrics.AvgTokenCount,
 			MinTokenCount: r.ContentMetrics.MinTokenCount,
 			MaxTokenCount: r.ContentMetrics.MaxTokenCount,
@@ -200,6 +212,14 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 
 // formatTTFT 格式化 TTFT 字段，非流式模式返回 "-"
 func formatTTFT(duration time.Duration, isStream bool) string {
+	if !isStream {
+		return "-"
+	}
+	return duration.String()
+}
+
+// formatTPOT 格式化 TPOT 字段，非流式模式返回 "-"
+func formatTPOT(duration time.Duration, isStream bool) string {
 	if !isStream {
 		return "-"
 	}
