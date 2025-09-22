@@ -213,13 +213,23 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	minTLSTime := firstResult.TLSHandshakeTime
 	maxTLSTime := firstResult.TLSHandshakeTime
 
-	// 计算第一个结果的 TPS
+	// 计算第一个结果的 TPS 和 TPOT
 	var firstTPS float64
 	if firstResult.TotalTime.Seconds() > 0 {
 		firstTPS = float64(firstResult.CompletionTokens) / firstResult.TotalTime.Seconds()
 	}
 	minTPS := firstTPS
 	maxTPS := firstTPS
+
+	// 计算第一个结果的 TPOT (Time Per Output Token)
+	var firstTPOT time.Duration
+	if firstResult.CompletionTokens > 1 {
+		// TPOT = (总耗时 - 首token耗时) / (总token数 - 1)
+		remainingTime := firstResult.TotalTime - firstResult.TimeToFirstToken
+		firstTPOT = remainingTime / time.Duration(firstResult.CompletionTokens-1)
+	}
+	minTPOT := firstTPOT
+	maxTPOT := firstTPOT
 
 	// 获取目标IP（使用第一个有效结果的IP）
 	var targetIP string
@@ -234,6 +244,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	var sumTTFT, sumTotalTime time.Duration
 	var sumDNSTime, sumConnectTime, sumTLSTime time.Duration
 	var sumTokens int
+	var sumTPOT time.Duration
 
 	for _, result := range validResults {
 		// TTFT 统计
@@ -252,6 +263,22 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		}
 		if result.TotalTime > maxTotalTime {
 			maxTotalTime = result.TotalTime
+		}
+
+		// TPOT 统计
+		var tpot time.Duration
+		if result.CompletionTokens > 1 {
+			// TPOT = (总耗时 - 首token耗时) / (总token数 - 1)
+			remainingTime := result.TotalTime - result.TimeToFirstToken
+			tpot = remainingTime / time.Duration(result.CompletionTokens-1)
+			sumTPOT += tpot
+			
+			if tpot < minTPOT || minTPOT == 0 {
+				minTPOT = tpot
+			}
+			if tpot > maxTPOT {
+				maxTPOT = tpot
+			}
 		}
 
 		// 网络指标统计
@@ -331,6 +358,18 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	avgConnectTime := sumConnectTime / time.Duration(validCount)
 	avgTLSTime := sumTLSTime / time.Duration(validCount)
 
+	// 计算TPOT平均值 - 只对有效的TPOT计算结果求平均
+	var avgTPOT time.Duration
+	validTPOTCount := 0
+	for _, result := range validResults {
+		if result.CompletionTokens > 1 {
+			validTPOTCount++
+		}
+	}
+	if validTPOTCount > 0 {
+		avgTPOT = sumTPOT / time.Duration(validTPOTCount)
+	}
+
 	// Token数量也可以直接用总和除以数量，因为数量是可加性的
 	avgTokens := sumTokens / validCount
 
@@ -374,6 +413,9 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	result.ContentMetrics.AvgTTFT = avgTTFT
 	result.ContentMetrics.MinTTFT = minTTFT
 	result.ContentMetrics.MaxTTFT = maxTTFT
+	result.ContentMetrics.AvgTPOT = avgTPOT
+	result.ContentMetrics.MinTPOT = minTPOT
+	result.ContentMetrics.MaxTPOT = maxTPOT
 	result.ContentMetrics.AvgTokenCount = avgTokens
 	result.ContentMetrics.MinTokenCount = minTokens
 	result.ContentMetrics.MaxTokenCount = maxTokens

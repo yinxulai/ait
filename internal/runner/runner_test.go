@@ -1021,3 +1021,178 @@ func TestStatsDataStructure(t *testing.T) {
 		t.Errorf("Expected ElapsedTime 2s, got %v", stats.ElapsedTime)
 	}
 }
+
+// TestRunner_CalculateResult_TPOT 测试 TPOT (Time Per Output Token) 指标计算
+func TestRunner_CalculateResult_TPOT(t *testing.T) {
+	input := types.Input{
+		Protocol:    "openai",
+		BaseUrl:     "https://api.openai.com",
+		ApiKey:      "test-key",
+		Model:       "gpt-3.5-turbo",
+		Concurrency: 1,
+		Count:       3,
+		Stream:      true, // 流式模式下才有TPOT
+	}
+	
+	runner := &Runner{config: input}
+	
+	// 创建具有不同token数和时间的测试结果
+	results := []*client.ResponseMetrics{
+		{
+			TotalTime:         500 * time.Millisecond,
+			TimeToFirstToken:  100 * time.Millisecond,
+			CompletionTokens:  5, // 5个token：TPOT = (500-100) / (5-1) = 400ms / 4 = 100ms
+			DNSTime:          10 * time.Millisecond,
+			ConnectTime:      50 * time.Millisecond,
+			TLSHandshakeTime: 80 * time.Millisecond,
+			TargetIP:         "8.8.8.8",
+		},
+		{
+			TotalTime:         600 * time.Millisecond,
+			TimeToFirstToken:  200 * time.Millisecond,
+			CompletionTokens:  3, // 3个token：TPOT = (600-200) / (3-1) = 400ms / 2 = 200ms
+			DNSTime:          15 * time.Millisecond,
+			ConnectTime:      60 * time.Millisecond,
+			TLSHandshakeTime: 100 * time.Millisecond,
+			TargetIP:         "8.8.8.8",
+		},
+		{
+			TotalTime:         300 * time.Millisecond,
+			TimeToFirstToken:  50 * time.Millisecond,
+			CompletionTokens:  1, // 1个token：TPOT无法计算（需要>1个token）
+			DNSTime:          8 * time.Millisecond,
+			ConnectTime:      40 * time.Millisecond,
+			TLSHandshakeTime: 60 * time.Millisecond,
+			TargetIP:         "8.8.8.8",
+		},
+	}
+	
+	totalTime := 2 * time.Second
+	
+	result := runner.calculateResult(results, totalTime)
+	
+	if result == nil {
+		t.Fatal("calculateResult should not return nil")
+	}
+	
+	// 验证TPOT计算
+	// 第1个结果：TPOT = (500-100) / (5-1) = 100ms
+	// 第2个结果：TPOT = (600-200) / (3-1) = 200ms
+	// 第3个结果：token=1，不参与TPOT计算
+	// 平均TPOT = (100 + 200) / 2 = 150ms
+	expectedAvgTPOT := 150 * time.Millisecond
+	expectedMinTPOT := 100 * time.Millisecond
+	expectedMaxTPOT := 200 * time.Millisecond
+	
+	if result.ContentMetrics.AvgTPOT != expectedAvgTPOT {
+		t.Errorf("Expected AvgTPOT %v, got %v", expectedAvgTPOT, result.ContentMetrics.AvgTPOT)
+	}
+	
+	if result.ContentMetrics.MinTPOT != expectedMinTPOT {
+		t.Errorf("Expected MinTPOT %v, got %v", expectedMinTPOT, result.ContentMetrics.MinTPOT)
+	}
+	
+	if result.ContentMetrics.MaxTPOT != expectedMaxTPOT {
+		t.Errorf("Expected MaxTPOT %v, got %v", expectedMaxTPOT, result.ContentMetrics.MaxTPOT)
+	}
+}
+
+// TestRunner_CalculateResult_TPOT_SingleToken 测试只有1个token的情况下TPOT处理
+func TestRunner_CalculateResult_TPOT_SingleToken(t *testing.T) {
+	input := types.Input{
+		Protocol:    "openai",
+		BaseUrl:     "https://api.openai.com",
+		ApiKey:      "test-key",
+		Model:       "gpt-3.5-turbo",
+		Concurrency: 1,
+		Count:       2,
+		Stream:      true,
+	}
+	
+	runner := &Runner{config: input}
+	
+	// 创建所有结果都只有1个token的情况
+	results := []*client.ResponseMetrics{
+		{
+			TotalTime:         500 * time.Millisecond,
+			TimeToFirstToken:  100 * time.Millisecond,
+			CompletionTokens:  1, // 1个token，TPOT无法计算
+			DNSTime:          10 * time.Millisecond,
+			ConnectTime:      50 * time.Millisecond,
+			TLSHandshakeTime: 80 * time.Millisecond,
+			TargetIP:         "8.8.8.8",
+		},
+		{
+			TotalTime:         400 * time.Millisecond,
+			TimeToFirstToken:  80 * time.Millisecond,
+			CompletionTokens:  1, // 1个token，TPOT无法计算
+			DNSTime:          8 * time.Millisecond,
+			ConnectTime:      40 * time.Millisecond,
+			TLSHandshakeTime: 60 * time.Millisecond,
+			TargetIP:         "8.8.8.8",
+		},
+	}
+	
+	totalTime := 1 * time.Second
+	
+	result := runner.calculateResult(results, totalTime)
+	
+	if result == nil {
+		t.Fatal("calculateResult should not return nil")
+	}
+	
+	// 所有结果都只有1个token，TPOT应该为0
+	if result.ContentMetrics.AvgTPOT != 0 {
+		t.Errorf("Expected AvgTPOT 0 for single token results, got %v", result.ContentMetrics.AvgTPOT)
+	}
+	
+	if result.ContentMetrics.MinTPOT != 0 {
+		t.Errorf("Expected MinTPOT 0 for single token results, got %v", result.ContentMetrics.MinTPOT)
+	}
+	
+	if result.ContentMetrics.MaxTPOT != 0 {
+		t.Errorf("Expected MaxTPOT 0 for single token results, got %v", result.ContentMetrics.MaxTPOT)
+	}
+}
+
+// TestRunner_CalculateResult_TPOT_NonStream 测试非流式模式下TPOT处理
+func TestRunner_CalculateResult_TPOT_NonStream(t *testing.T) {
+	input := types.Input{
+		Protocol:    "openai",
+		BaseUrl:     "https://api.openai.com",
+		ApiKey:      "test-key",
+		Model:       "gpt-3.5-turbo",
+		Concurrency: 1,
+		Count:       1,
+		Stream:      false, // 非流式模式
+	}
+	
+	runner := &Runner{config: input}
+	
+	result := &client.ResponseMetrics{
+		TotalTime:         500 * time.Millisecond,
+		TimeToFirstToken:  0, // 非流式模式下通常TTFT为0
+		CompletionTokens:  5,
+		DNSTime:          10 * time.Millisecond,
+		ConnectTime:      50 * time.Millisecond,
+		TLSHandshakeTime: 80 * time.Millisecond,
+		TargetIP:         "8.8.8.8",
+	}
+	
+	results := []*client.ResponseMetrics{result}
+	totalTime := 1 * time.Second
+	
+	calculatedResult := runner.calculateResult(results, totalTime)
+	
+	if calculatedResult == nil {
+		t.Fatal("calculateResult should not return nil")
+	}
+	
+	// 非流式模式下，TPOT也应该被计算
+	// TPOT = (500-0) / (5-1) = 500ms / 4 = 125ms
+	expectedTPOT := 125 * time.Millisecond
+	
+	if calculatedResult.ContentMetrics.AvgTPOT != expectedTPOT {
+		t.Errorf("Expected AvgTPOT %v for non-stream mode, got %v", expectedTPOT, calculatedResult.ContentMetrics.AvgTPOT)
+	}
+}

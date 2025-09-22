@@ -55,6 +55,9 @@ func NewMockRunner(config types.Input) (*MockRunner, error) {
 				AvgTTFT       time.Duration `json:"avg_ttft"`
 				MinTTFT       time.Duration `json:"min_ttft"`
 				MaxTTFT       time.Duration `json:"max_ttft"`
+				AvgTPOT       time.Duration `json:"avg_tpot"`
+				MinTPOT       time.Duration `json:"min_tpot"`
+				MaxTPOT       time.Duration `json:"max_tpot"`
 				AvgTokenCount int           `json:"avg_token_count"`
 				MinTokenCount int           `json:"min_token_count"`
 				MaxTokenCount int           `json:"max_token_count"`
@@ -65,6 +68,9 @@ func NewMockRunner(config types.Input) (*MockRunner, error) {
 				AvgTTFT:       50 * time.Millisecond,
 				MinTTFT:       30 * time.Millisecond,
 				MaxTTFT:       70 * time.Millisecond,
+				AvgTPOT:       25 * time.Millisecond,
+				MinTPOT:       20 * time.Millisecond,
+				MaxTPOT:       30 * time.Millisecond,
 				AvgTokenCount: 100,
 				MinTokenCount: 80,
 				MaxTokenCount: 120,

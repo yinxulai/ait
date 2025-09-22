@@ -39,6 +39,7 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 		"平均TLS握手时间", "最小TLS握手时间", "最大TLS握手时间",
 		// 服务性能指标
 		"平均TTFT", "最小TTFT", "最大TTFT",
+		"平均TPOT", "最小TPOT", "最大TPOT",
 		"平均Token数", "最小Token数", "最大Token数",
 		"平均TPS", "最小TPS", "最大TPS",
 		// 可靠性指标
@@ -49,10 +50,13 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 	}
 
 	for _, modelData := range data {
-		// 处理TTFT字段，非流式模式显示为"-"
+		// 处理TTFT和TPOT字段，非流式模式显示为"-"
 		avgTTFT := formatDurationForCSV(modelData.ContentMetrics.AvgTTFT, modelData.IsStream)
 		minTTFT := formatDurationForCSV(modelData.ContentMetrics.MinTTFT, modelData.IsStream)
 		maxTTFT := formatDurationForCSV(modelData.ContentMetrics.MaxTTFT, modelData.IsStream)
+		avgTPOT := formatDurationForCSV(modelData.ContentMetrics.AvgTPOT, modelData.IsStream)
+		minTPOT := formatDurationForCSV(modelData.ContentMetrics.MinTPOT, modelData.IsStream)
+		maxTPOT := formatDurationForCSV(modelData.ContentMetrics.MaxTPOT, modelData.IsStream)
 
 		record := []string{
 			// 基础信息
@@ -83,6 +87,9 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 			avgTTFT,
 			minTTFT,
 			maxTTFT,
+			avgTPOT,
+			minTPOT,
+			maxTPOT,
 			strconv.Itoa(modelData.ContentMetrics.AvgTokenCount),
 			strconv.Itoa(modelData.ContentMetrics.MinTokenCount),
 			strconv.Itoa(modelData.ContentMetrics.MaxTokenCount),
