@@ -312,6 +312,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		gotFirst := false
 		var fullContent strings.Builder
 		var completionTokens int
+		var promptTokens int
 		var streamChunks []string // 用于记录所有流式数据块
 		
 		// 记录流式响应开始日志
@@ -361,6 +362,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				
 				// 获取 token 统计信息（通常在最后一个chunk中）
 				if chunk.Usage != nil {
+					promptTokens = chunk.Usage.PromptTokens
 					completionTokens = chunk.Usage.CompletionTokens
 				}
 			}
@@ -386,6 +388,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			c.logger.LogTestEnd(c.Model, map[string]interface{}{
 				"total_time":         totalTime.String(),
 				"time_to_first_token": firstTokenTime.String(),
+				"prompt_tokens":      promptTokens,
 				"completion_tokens":  completionTokens,
 				"full_content":       fullContent.String(),
 			})
@@ -398,6 +401,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
+			PromptTokens:     promptTokens,
 			CompletionTokens: completionTokens,
 			ErrorMessage:     "",
 		}, nil
@@ -463,6 +467,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
+			PromptTokens:     chatResp.Usage.PromptTokens,
 			CompletionTokens: chatResp.Usage.CompletionTokens,
 			ErrorMessage:     "",
 		}, nil

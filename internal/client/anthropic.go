@@ -294,6 +294,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		gotFirst := false
 		var fullContent strings.Builder
 		var outputTokens int
+		var inputTokens int
 		var streamChunks []string // 用于记录所有流式数据块
 		
 		// 记录流式响应开始日志
@@ -350,6 +351,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 				
 				// 获取 token 统计信息
 				if chunk.Usage != nil {
+					inputTokens = chunk.Usage.InputTokens
 					outputTokens = chunk.Usage.OutputTokens
 				}
 			}
@@ -375,6 +377,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			c.logger.LogTestEnd(c.Model, map[string]interface{}{
 				"total_time":         totalTime.String(),
 				"time_to_first_token": firstTokenTime.String(),
+				"input_tokens":       inputTokens,
 				"output_tokens":      outputTokens,
 				"full_content":       fullContent.String(),
 			})
@@ -387,6 +390,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
+			PromptTokens:     inputTokens,
 			CompletionTokens: outputTokens,
 			ErrorMessage:     "",
 		}, nil
@@ -450,6 +454,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			ConnectTime:      connectTime,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
+			PromptTokens:     anthropicResp.Usage.InputTokens,
 			CompletionTokens: anthropicResp.Usage.OutputTokens,
 			ErrorMessage:     "",
 		}, nil
