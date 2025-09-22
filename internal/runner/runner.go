@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
+	"github.com/yinxulai/ait/internal/logger"
 	"github.com/yinxulai/ait/internal/types"
 )
 
@@ -17,7 +18,13 @@ type Runner struct {
 
 // NewRunner 创建新的性能测试执行器
 func NewRunner(config types.Input) (*Runner, error) {
-	client, err := client.NewClientWithTimeout(config.Protocol, config.BaseUrl, config.ApiKey, config.Model, config.Timeout)
+	// 创建日志记录器（如果启用）
+	var loggerInstance *logger.Logger
+	if config.LogEnabled {
+		loggerInstance = logger.New(config.LogEnabled, config.LogFilePath)
+	}
+	
+	client, err := client.NewClientWithTimeout(config.Protocol, config.BaseUrl, config.ApiKey, config.Model, config.Timeout, loggerInstance)
 	if err != nil {
 		return nil, err
 	}

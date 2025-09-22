@@ -89,7 +89,7 @@ func (td *Displayer) ShowInput(data *Input) {
 	// 测试参数
 	table.Append("📊 请求总数", strconv.Itoa(data.Count), "每个模型的请求数量")
 	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "同时发送的请求数")
-	table.Append("⏱️ 超时时间", strconv.Itoa(data.Timeout)+"秒", "每个请求的超时时间")
+	table.Append("🕐 超时时间", strconv.Itoa(data.Timeout)+"秒", "每个请求的超时时间")
 	table.Append("🌊 流式模式", strconv.FormatBool(data.Stream), "是否启用流式响应")
 	table.Append("📝 测试提示词", truncatePrompt(data.Prompt), "用于测试的提示内容")
 	table.Append("📄 生成报告", strconv.FormatBool(data.Report), "是否生成测试报告文件")

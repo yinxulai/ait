@@ -17,6 +17,8 @@ type Input struct {
 	Prompt      string
 	Report      bool // 是否生成报告文件
 	Timeout     time.Duration // 请求超时时间
+	LogEnabled  bool   // 是否开启详细日志记录
+	LogFilePath string // 日志文件路径，如果为空则自动生成
 }
 
 // StatsData 实时测试统计数据 - runner 内部使用的统计结构

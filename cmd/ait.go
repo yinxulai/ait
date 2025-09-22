@@ -147,7 +147,7 @@ func printErrorMessages(protocol string) {
 }
 
 // createRunnerConfig 创建runner配置
-func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurrency, count, timeout int, stream, report bool) types.Input {
+func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurrency, count, timeout int, stream, report, logEnabled bool, logFilePath string) types.Input {
 	return types.Input{
 		Protocol:    protocol,
 		BaseUrl:     baseUrl,
@@ -159,6 +159,8 @@ func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurr
 		Stream:      stream,
 		Report:      report,
 		Timeout:     time.Duration(timeout) * time.Second,
+		LogEnabled:  logEnabled,
+		LogFilePath: logFilePath,
 	}
 }
 
@@ -217,7 +219,12 @@ func fillResultMetadata(results []*types.ReportData, modelList []string, baseUrl
 	}
 }
 
-// convertErrorsToPointers 将错误字符串切片转换为指针切片
+// generateLogFilePath 生成日志文件路径，格式：ait-25-09-22-17-00-27.log
+func generateLogFilePath() string {
+	now := time.Now()
+	timestamp := now.Format("06-01-02-15-04-05") // yy-MM-dd-HH-mm-ss
+	return fmt.Sprintf("ait-%s.log", timestamp)
+}
 func convertErrorsToPointers(errors []string) []*string {
 	errorPtrs := make([]*string, len(errors))
 	for i := range errors {
@@ -253,7 +260,7 @@ func generateReportsIfEnabled(reportFlag bool, results []*types.ReportData) erro
 }
 
 // executeModelsTestSuite 执行多个模型的测试套件
-func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag bool, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
+func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag, logEnabled bool, logFilePath string, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
 	// 用于收集所有错误信息
 	var allErrors []string
 
@@ -269,7 +276,7 @@ func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, fin
 	completedRequests := 0
 
 	for _, modelName := range modelList {
-		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, prompt, concurrency, count, timeout, stream, reportFlag)
+		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, prompt, concurrency, count, timeout, stream, reportFlag, logEnabled, logFilePath)
 
 		result, currentModelErrors, err := processModelExecution(modelName, config, displayer, completedRequests, totalRequests)
 		if err != nil {
@@ -308,6 +315,7 @@ func main() {
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	reportFlag := flag.Bool("report", false, "是否生成报告文件")
 	timeout := flag.Int("timeout", 300, "请求超时时间(秒)")
+	logFlag := flag.Bool("log", false, "是否开启详细日志记录")
 	flag.Parse()
 
 	// 解析和验证配置
@@ -356,10 +364,16 @@ func main() {
 		Timeout:     *timeout,
 	})
 
+	// 生成日志文件路径（如果启用日志）
+	var logFilePath string
+	if *logFlag {
+		logFilePath = generateLogFilePath()
+	}
+
 	// 执行多个模型的测试套件
 	allResults, allErrors, err := executeModelsTestSuite(
 		modelList, finalProtocol, finalBaseUrl, finalApiKey, finalPrompt,
-		*concurrency, *count, *timeout, *stream, *reportFlag, displayer,
+		*concurrency, *count, *timeout, *stream, *reportFlag, *logFlag, logFilePath, displayer,
 	)
 	if err != nil {
 		fmt.Printf("执行测试套件失败: %v\n", err)

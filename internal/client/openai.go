@@ -13,6 +13,8 @@ import (
 	"net/http/httptrace"
 	"strings"
 	"time"
+
+	"github.com/yinxulai/ait/internal/logger"
 )
 
 // ChatCompletionMessage represents a message in the chat completion request
@@ -87,6 +89,7 @@ type OpenAIClient struct {
 	apiKey     string
 	Model      string
 	Provider   string
+	logger     *logger.Logger
 }
 
 // NewOpenAIClient 创建新的 OpenAI 客户端
@@ -122,11 +125,26 @@ func NewOpenAIClientWithTimeout(baseUrl, apiKey, model string, timeout time.Dura
 		apiKey:   apiKey,
 		Model:    model,
 		Provider: "openai",
+		logger:   nil,
 	}
+}
+
+// SetLogger 设置日志记录器
+func (c *OpenAIClient) SetLogger(l *logger.Logger) {
+	c.logger = l
 }
 
 // Request 发送 OpenAI 协议请求（支持流式和非流式）
 func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
+	// 记录请求开始日志
+	if c.logger != nil && c.logger.IsEnabled() {
+		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
+			"stream":     stream,
+			"protocol":   c.Provider,
+			"base_url":   c.baseURL,
+		})
+	}
+
 	reqBody := ChatCompletionRequest{
 		Model: c.Model,
 		Messages: []ChatCompletionMessage{
@@ -140,12 +158,20 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 
 	jsonData, err := json.Marshal(reqBody)
 	if err != nil {
+		// 记录错误日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.Error(c.Model, "JSON encoding failed", err)
+		}
 		return nil, err
 	}
 
 	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
 	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewBuffer(jsonData))
 	if err != nil {
+		// 记录错误日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.Error(c.Model, "Request creation failed", err)
+		}
 		// URL 格式错误或其他请求构建错误
 		return &ResponseMetrics{
 			TimeToFirstToken: 0,
@@ -161,6 +187,25 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 
 	req.Header.Set("Content-Type", "application/json")
 	req.Header.Set("Authorization", fmt.Sprintf("Bearer %s", c.apiKey))
+
+	// 记录请求日志
+	if c.logger != nil && c.logger.IsEnabled() {
+		headers := make(map[string]string)
+		for k, v := range req.Header {
+			if k == "Authorization" {
+				headers[k] = "Bearer ***" // 隐藏敏感信息
+			} else {
+				headers[k] = strings.Join(v, ", ")
+			}
+		}
+		
+		c.logger.LogRequest(c.Model, logger.RequestData{
+			Method:  req.Method,
+			URL:     req.URL.String(),
+			Headers: headers,
+			Body:    string(jsonData),
+		})
+	}
 
 	// 网络指标收集
 	var dnsStart, connectStart, tlsStart time.Time
@@ -203,6 +248,10 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		// 流式请求
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			// 记录网络错误日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Network error occurred", err)
+			}
 			// 网络错误（如地址错误、连接失败等）
 			return &ResponseMetrics{
 				TimeToFirstToken: 0,
@@ -219,6 +268,22 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 
 		if resp.StatusCode != http.StatusOK {
 			responseData, _ := io.ReadAll(resp.Body)
+			responseBody := string(responseData)
+			
+			// 记录HTTP错误响应日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				headers := make(map[string]string)
+				for k, v := range resp.Header {
+					headers[k] = strings.Join(v, ", ")
+				}
+				
+				c.logger.LogResponse(c.Model, logger.ResponseData{
+					StatusCode: resp.StatusCode,
+					Headers:    headers,
+					Body:       responseBody,
+					Error:      fmt.Sprintf("HTTP %d Error", resp.StatusCode),
+				})
+			}
 			
 			// 尝试解析 OpenAI API 的错误响应
 			var errorResp OpenAIErrorResponse
@@ -247,6 +312,20 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		gotFirst := false
 		var fullContent strings.Builder
 		var completionTokens int
+		var streamChunks []string // 用于记录所有流式数据块
+		
+		// 记录流式响应开始日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			headers := make(map[string]string)
+			for k, v := range resp.Header {
+				headers[k] = strings.Join(v, ", ")
+			}
+			
+			c.logger.Debug(c.Model, "Stream response started", map[string]interface{}{
+				"status_code": resp.StatusCode,
+				"headers":     headers,
+			})
+		}
 		
 		for scanner.Scan() {
 			line := scanner.Text()
@@ -254,6 +333,11 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				data := strings.TrimPrefix(line, "data: ")
 				if data == "[DONE]" {
 					break
+				}
+				
+				// 记录流数据块
+				if c.logger != nil && c.logger.IsEnabled() {
+					streamChunks = append(streamChunks, data)
 				}
 				
 				var chunk StreamResponseChunk
@@ -283,10 +367,29 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		}
 
 		if err := scanner.Err(); err != nil {
+			// 记录扫描错误日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Stream scanning failed", err)
+			}
 			return nil, err
 		}
 
 		totalTime := time.Since(t0)
+		
+		// 记录流式响应完成日志
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.LogResponse(c.Model, logger.ResponseData{
+				StatusCode:   resp.StatusCode,
+				StreamChunks: streamChunks,
+			})
+			
+			c.logger.LogTestEnd(c.Model, map[string]interface{}{
+				"total_time":         totalTime.String(),
+				"time_to_first_token": firstTokenTime.String(),
+				"completion_tokens":  completionTokens,
+				"full_content":       fullContent.String(),
+			})
+		}
 		
 		return &ResponseMetrics{
 			TimeToFirstToken: firstTokenTime,
