@@ -132,7 +132,7 @@ func (u *Uploader) convertResponseMetricsToUploadItem(taskID string, metrics *cl
 		Successful:           successful,
 		ProviderKey:          "", // 未知提供商
 		ProviderModelKey:     input.Model, // 使用输入的模型名称
-		InputTokenCount:      0, // ResponseMetrics中没有输入token数
+		InputTokenCount:      metrics.PromptTokens, // ResponseMetrics 中没有输入token数
 		OutputTokenCount:     metrics.CompletionTokens,
 		TotalTime:            metrics.TotalTime.Nanoseconds() / 1e6,        // 转换为毫秒
 		DNSLookupTime:        metrics.DNSTime.Nanoseconds() / 1e6,          // 转换为毫秒
