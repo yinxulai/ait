@@ -9,6 +9,13 @@ import (
 	"time"
 )
 
+// generateLogFilePath 生成日志文件路径，格式：ait-25-09-22-17-00-27.log
+func generateLogFilePath() string {
+	now := time.Now()
+	timestamp := now.Format("06-01-02-15-04-05") // yy-MM-dd-HH-mm-ss
+	return fmt.Sprintf("ait-%s.log", timestamp)
+}
+
 // Logger 详细日志记录器
 type Logger struct {
 	enabled  bool
@@ -18,13 +25,13 @@ type Logger struct {
 }
 
 // New 创建新的日志记录器
-func New(enabled bool, filePath string) *Logger {
+func New(enabled bool) *Logger {
 	logger := &Logger{
-		enabled:  enabled,
-		filePath: filePath,
+		enabled: enabled,
 	}
 
-	if enabled && filePath != "" {
+	if enabled {
+		logger.filePath = generateLogFilePath()
 		logger.init()
 	}
 

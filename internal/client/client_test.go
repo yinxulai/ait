@@ -42,7 +42,7 @@ func TestNewClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClient(tt.provider, tt.baseUrl, tt.apiKey, tt.model)
+			client, err := NewClient(tt.provider, tt.baseUrl, tt.apiKey, tt.model, nil)
 
 			if tt.wantError {
 				if err == nil {
@@ -113,7 +113,7 @@ func TestNewClientWithTimeout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClientWithTimeout(tt.provider, tt.baseUrl, tt.apiKey, tt.model, tt.timeout)
+			client, err := NewClientWithTimeout(tt.provider, tt.baseUrl, tt.apiKey, tt.model, tt.timeout, nil)
 
 			if tt.wantError {
 				if err == nil {

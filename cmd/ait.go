@@ -1,6 +1,7 @@
 package main
 
 import (
+	"crypto/rand"
 	"flag"
 	"fmt"
 	"io"
@@ -13,6 +14,18 @@ import (
 	"github.com/yinxulai/ait/internal/runner"
 	"github.com/yinxulai/ait/internal/types"
 )
+
+func generateTaskID() string {
+    bytes := make([]byte, 16)
+    rand.Read(bytes)
+    
+    // 设置版本 (4) 和变体位
+    bytes[6] = (bytes[6] & 0x0f) | 0x40 // Version 4
+    bytes[8] = (bytes[8] & 0x3f) | 0x80 // Variant 10
+    
+    return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+        bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
+}
 
 // readPromptFromStdin 从标准输入读取 prompt 内容
 func readPromptFromStdin() (string, error) {
@@ -147,7 +160,7 @@ func printErrorMessages(protocol string) {
 }
 
 // createRunnerConfig 创建runner配置
-func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurrency, count, timeout int, stream, report, logEnabled bool, logFilePath string) types.Input {
+func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurrency, count, timeout int, stream, report, log bool) types.Input {
 	return types.Input{
 		Protocol:    protocol,
 		BaseUrl:     baseUrl,
@@ -159,14 +172,13 @@ func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurr
 		Stream:      stream,
 		Report:      report,
 		Timeout:     time.Duration(timeout) * time.Second,
-		LogEnabled:  logEnabled,
-		LogFilePath: logFilePath,
+		Log:         log,
 	}
 }
 
 // processModelExecution 处理单个模型的执行逻辑
-func processModelExecution(modelName string, config types.Input, displayer *display.Displayer, completedRequests, totalRequests int) (*types.ReportData, []string, error) {
-	runnerInstance, err := runner.NewRunner(config)
+func processModelExecution(taskID string, modelName string, config types.Input, displayer *display.Displayer, completedRequests, totalRequests int) (*types.ReportData, []string, error) {
+	runnerInstance, err := runner.NewRunner(taskID, config)
 	if err != nil {
 		return nil, nil, fmt.Errorf("创建测试执行器失败: %v", err)
 	}
@@ -219,12 +231,6 @@ func fillResultMetadata(results []*types.ReportData, modelList []string, baseUrl
 	}
 }
 
-// generateLogFilePath 生成日志文件路径，格式：ait-25-09-22-17-00-27.log
-func generateLogFilePath() string {
-	now := time.Now()
-	timestamp := now.Format("06-01-02-15-04-05") // yy-MM-dd-HH-mm-ss
-	return fmt.Sprintf("ait-%s.log", timestamp)
-}
 func convertErrorsToPointers(errors []string) []*string {
 	errorPtrs := make([]*string, len(errors))
 	for i := range errors {
@@ -260,7 +266,7 @@ func generateReportsIfEnabled(reportFlag bool, results []*types.ReportData) erro
 }
 
 // executeModelsTestSuite 执行多个模型的测试套件
-func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag, logEnabled bool, logFilePath string, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
+func executeModelsTestSuite(taskID string, modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag, log bool, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
 	// 用于收集所有错误信息
 	var allErrors []string
 
@@ -276,9 +282,9 @@ func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, fin
 	completedRequests := 0
 
 	for _, modelName := range modelList {
-		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, prompt, concurrency, count, timeout, stream, reportFlag, logEnabled, logFilePath)
+		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, prompt, concurrency, count, timeout, stream, reportFlag, log)
 
-		result, currentModelErrors, err := processModelExecution(modelName, config, displayer, completedRequests, totalRequests)
+		result, currentModelErrors, err := processModelExecution(taskID, modelName, config, displayer, completedRequests, totalRequests)
 		if err != nil {
 			fmt.Printf("模型 %s 执行失败: %v\n", modelName, err)
 			continue
@@ -305,6 +311,7 @@ func executeModelsTestSuite(modelList []string, finalProtocol, finalBaseUrl, fin
 }
 
 func main() {
+	taskID := generateTaskID()
 	baseUrl := flag.String("baseUrl", "", "服务地址")
 	apiKey := flag.String("apiKey", "", "API 密钥")
 	count := flag.Int("count", 10, "请求总数")
@@ -364,16 +371,10 @@ func main() {
 		Timeout:     *timeout,
 	})
 
-	// 生成日志文件路径（如果启用日志）
-	var logFilePath string
-	if *logFlag {
-		logFilePath = generateLogFilePath()
-	}
-
 	// 执行多个模型的测试套件
 	allResults, allErrors, err := executeModelsTestSuite(
-		modelList, finalProtocol, finalBaseUrl, finalApiKey, finalPrompt,
-		*concurrency, *count, *timeout, *stream, *reportFlag, *logFlag, logFilePath, displayer,
+		taskID, modelList, finalProtocol, finalBaseUrl, finalApiKey, finalPrompt,
+		*concurrency, *count, *timeout, *stream, *reportFlag, *logFlag, displayer,
 	)
 	if err != nil {
 		fmt.Printf("执行测试套件失败: %v\n", err)
