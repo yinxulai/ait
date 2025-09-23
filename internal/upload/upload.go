@@ -7,7 +7,7 @@ import (
 	"io"
 	"net/http"
 	"net/url"
-	"path"
+	"strings"
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
@@ -18,14 +18,14 @@ import (
 // ReportUploadItem API接口所需的单个上传数据结构
 type ReportUploadItem struct {
 	TaskID               string  `json:"taskId"`
-	ModelKey             string  `json:"modelKey"`
+	ModelKey             *string `json:"modelKey,omitempty"`
 	Reporter             string  `json:"reporter"`
 	Protocol             string  `json:"protocol"`
 	Endpoint             string  `json:"endpoint"`
 	SourceIP             string  `json:"sourceIP"`
 	ServiceIP            string  `json:"serviceIP"`
 	Successful           bool    `json:"successful"`
-	ProviderKey          string  `json:"providerKey"`
+	ProviderKey          *string `json:"providerKey,omitempty"`
 	ProviderModelKey     string  `json:"providerModelKey"`
 	InputTokenCount      int     `json:"inputTokenCount"`
 	OutputTokenCount     int     `json:"outputTokenCount"`
@@ -123,15 +123,15 @@ func (u *Uploader) convertResponseMetricsToUploadItem(taskID string, metrics *cl
 
 	return ReportUploadItem{
 		TaskID:               taskID,
-		ModelKey:             "", // 未知模型
+		ModelKey:             nil, // 未知模型
 		Reporter:             u.userAgent,
-		Protocol:             input.Protocol,
+		Protocol:             strings.ToUpper(input.Protocol),
 		Endpoint:             input.BaseUrl,
 		SourceIP:             sourceIP,
 		ServiceIP:            metrics.TargetIP,
 		Successful:           successful,
-		ProviderKey:          "", // 未知提供商
-		ProviderModelKey:     input.Model, // 使用输入的模型名称
+		ProviderKey:          nil,                  // 未知提供商
+		ProviderModelKey:     input.Model,          // 使用输入的模型名称
 		InputTokenCount:      metrics.PromptTokens, // ResponseMetrics 中没有输入token数
 		OutputTokenCount:     metrics.CompletionTokens,
 		TotalTime:            metrics.TotalTime.Nanoseconds() / 1e6,        // 转换为毫秒
@@ -157,16 +157,20 @@ func (u *Uploader) UploadReport(taskId string, metrics *client.ResponseMetrics, 
 	// 序列化为JSON
 	jsonData, err := json.Marshal(uploadItems)
 	if err != nil {
-		return fmt.Errorf("JSON序列化失败: %w", err)
+		return err
 	}
 
 	// 构造完整URL
-	fullURL := path.Join(u.baseURL, "/model/perf/report/upload")
+	baseURL := u.baseURL
+	if baseURL[len(baseURL)-1] == '/' {
+		baseURL = baseURL[:len(baseURL)-1]
+	}
+	fullURL := baseURL + "/model/perf/report/upload"
 
 	// 创建请求
 	req, err := http.NewRequest("POST", fullURL, bytes.NewBuffer(jsonData))
 	if err != nil {
-		return fmt.Errorf("创建HTTP请求失败: %w", err)
+		return err
 	}
 
 	// 设置请求头
@@ -182,7 +186,7 @@ func (u *Uploader) UploadReport(taskId string, metrics *client.ResponseMetrics, 
 	resp, err := u.client.Do(req)
 	if err != nil {
 		// 静默失败，只返回错误但不打印
-		return fmt.Errorf("HTTP请求失败: %w", err)
+		return err
 	}
 
 	defer resp.Body.Close()
