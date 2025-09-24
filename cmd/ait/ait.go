@@ -51,26 +51,26 @@ func readPromptFromStdin() (string, error) {
 }
 
 // resolvePrompt 解析最终的 prompt 内容
-// 优先级：1. 用户指定的命令行参数 > 2. 管道输入 > 3. 默认值
-func resolvePrompt(userSpecified bool, flagPrompt string) (*prompt.PromptSource, error) {
-	var finalPromptString string
-	
-	// 1. 如果用户明确指定了 --prompt 参数，则优先使用
-	if userSpecified {
-		finalPromptString = flagPrompt
-	} else {
-		// 2. 检查是否有管道输入
-		stdinPrompt, err := readPromptFromStdin()
-		if err == nil && stdinPrompt != "" {
-			finalPromptString = stdinPrompt
-		} else {
-			// 3. 使用默认值
-			finalPromptString = flagPrompt
-		}
+// 优先级：1. prompt-file 参数 > 2. prompt 参数 > 3. 管道输入 > 4. 默认值
+func resolvePrompt(promptSpecified bool, flagPrompt string, promptFileSpecified bool, flagPromptFile string) (*prompt.PromptSource, error) {
+	// 1. 如果用户指定了 --prompt-file 参数，优先使用文件
+	if promptFileSpecified {
+		return prompt.LoadPromptsFromFile(flagPromptFile)
 	}
-
-	// 使用 prompt 包来解析可能的文件语法
-	return prompt.LoadPrompts(finalPromptString)
+	
+	// 2. 如果用户明确指定了 --prompt 参数，则使用它
+	if promptSpecified {
+		return prompt.LoadPrompts(flagPrompt)
+	}
+	
+	// 3. 检查是否有管道输入
+	stdinPrompt, err := readPromptFromStdin()
+	if err == nil && stdinPrompt != "" {
+		return prompt.LoadPrompts(stdinPrompt)
+	}
+	
+	// 4. 使用默认值
+	return prompt.LoadPrompts(flagPrompt)
 }
 
 // detectProviderFromEnv 根据环境变量自动检测 provider
@@ -323,7 +323,8 @@ func main() {
 	count := flag.Int("count", 10, "请求总数")
 	models := flag.String("models", "", "模型名称，支持多个模型用,(逗号)分割")
 	protocol := flag.String("protocol", "", "协议类型: openai 或 anthropic")
-	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt。支持文件路径语法 @file.txt 或通配符 @*.txt。未指定时支持管道输入")
+	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt 内容。未指定时支持管道输入")
+	promptFile := flag.String("prompt-file", "", "从文件读取 prompt。支持单文件路径或通配符 (如: prompts/*.txt)")
 	stream := flag.Bool("stream", true, "是否开启流模式")
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	reportFlag := flag.Bool("report", false, "是否生成报告文件")
@@ -348,16 +349,20 @@ func main() {
 	// 解析模型列表
 	modelList := parseModelList(*models)
 
-	// 检查用户是否明确指定了 --prompt 参数
+	// 检查用户是否明确指定了 --prompt 和 --prompt-file 参数
 	promptSpecified := false
+	promptFileSpecified := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "prompt" {
 			promptSpecified = true
 		}
+		if f.Name == "prompt-file" {
+			promptFileSpecified = true
+		}
 	})
 
-	// 解析最终的 prompt，优先级：用户指定 > 管道输入 > 默认值
-	promptSource, err := resolvePrompt(promptSpecified, *prompt)
+	// 解析最终的 prompt，优先级：prompt-file > prompt > 管道输入 > 默认值
+	promptSource, err := resolvePrompt(promptSpecified, *prompt, promptFileSpecified, *promptFile)
 	if err != nil {
 		fmt.Printf("解析 prompt 失败: %v\n", err)
 		os.Exit(1)

@@ -18,21 +18,18 @@ type PromptSource struct {
 	DisplayText string   // 用于显示的文本
 }
 
-// LoadPrompts 解析prompt参数，支持@文件路径语法
+// LoadPrompts 解析prompt参数，现在只处理字符串内容
 func LoadPrompts(promptArg string) (*PromptSource, error) {
-	// 如果不是以@开头，则视为普通字符串prompt
-	if !strings.HasPrefix(promptArg, "@") {
-		return &PromptSource{
-			IsFile:      false,
-			FilePaths:   nil,
-			Contents:    []string{promptArg},
-			DisplayText: promptArg,
-		}, nil
-	}
+	return &PromptSource{
+		IsFile:      false,
+		FilePaths:   nil,
+		Contents:    []string{promptArg},
+		DisplayText: promptArg,
+	}, nil
+}
 
-	// 移除@前缀获取文件路径模式
-	pathPattern := strings.TrimPrefix(promptArg, "@")
-	
+// LoadPromptsFromFile 从文件路径加载prompt，支持单文件和通配符
+func LoadPromptsFromFile(pathPattern string) (*PromptSource, error) {
 	// 检查是否包含通配符
 	if strings.Contains(pathPattern, "*") || strings.Contains(pathPattern, "?") || strings.Contains(pathPattern, "[") {
 		// 使用glob模式匹配多个文件

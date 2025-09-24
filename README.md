@@ -162,13 +162,14 @@ ait --models=claude-3-haiku-20240307 --count=5 --report
 
 ## 📝 管道输入和文件支持
 
-AIT 的 `-prompt` 参数支持多种输入方式，满足不同的测试需求：
+AIT 提供了灵活的 prompt 输入方式，满足不同的测试需求：
 
 ### 输入方式优先级
 
-1. **用户明确指定的 `--prompt` 参数**（最高优先级）
-2. **管道输入**（中等优先级，仅当未使用 `--prompt` 参数时生效）
-3. **默认值**（最低优先级）
+1. **用户明确指定的 `--prompt-file` 参数**（最高优先级）
+2. **用户明确指定的 `--prompt` 参数**（高优先级）
+3. **管道输入**（中等优先级，仅当未使用上述参数时生效）
+4. **默认值**（最低优先级）
 
 ### 1. 直接字符串输入
 
@@ -177,24 +178,24 @@ AIT 的 `-prompt` 参数支持多种输入方式，满足不同的测试需求�
 ait --models=gpt-4 --prompt="分析人工智能的发展前景" --count=3
 ```
 
-### 2. 文件路径语法
+### 2. 从文件读取 prompt
 
-使用 `@` 前缀指定文件路径，支持单文件和通配符：
+使用 `--prompt-file` 参数指定文件路径，支持单文件和通配符：
 
 ```bash
 # 单个文件
-ait --models=gpt-4 --prompt="@prompts/complex_prompt.txt" --count=5
+ait --models=gpt-4 --prompt-file="prompts/complex_prompt.txt" --count=5
 
 # 通配符匹配多个文件（随机选择）
-ait --models=gpt-4 --prompt="@prompts/*.txt" --count=10
+ait --models=gpt-4 --prompt-file="prompts/*.txt" --count=10
 
 # 指定模式的文件
-ait --models=claude-3-sonnet --prompt="@test_cases/scenario_*.txt" --count=5
+ait --models=claude-3-sonnet --prompt-file="test_cases/scenario_*.txt" --count=5
 ```
 
 ### 3. 管道输入
 
-当未使用 `--prompt` 参数时，支持通过管道输入：
+当未使用 `--prompt` 或 `--prompt-file` 参数时，支持通过管道输入：
 
 ```bash
 # 基本管道输入
@@ -222,6 +223,18 @@ def process_data(data):
 EOF
 ```
 
+### 4. 参数组合使用
+
+```bash
+# 同时使用多种输入方式（优先级：prompt-file > prompt > 管道）
+ait --models=gpt-4 --prompt-file="prompts/*.txt" --count=5 --report
+
+# 结合环境变量使用
+export OPENAI_API_KEY="sk-your-key"
+ait --models=gpt-4,claude-3-sonnet --prompt-file="test_cases/*.txt" --count=10
+EOF
+```
+
 ### 4. 批量测试场景
 
 ```bash
@@ -237,8 +250,7 @@ ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=20 --r
 
 ### 重要说明
 
-- **文件路径优先**：使用 `--prompt="@file.txt"` 时，即使有管道输入也会被忽略
-- **管道输入条件**：只有在未使用 `--prompt` 参数时，管道输入才会生效
+- **参数优先级**：`--prompt-file` > `--prompt` > 管道输入 > 默认值
 - **文件随机选择**：使用通配符时，每次请求会随机选择匹配的文件
 - **错误处理**：文件不存在或读取失败时会显示警告并使用默认 prompt
 
@@ -253,7 +265,8 @@ ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=20 --r
 | `--concurrency`| 并发数                                                        | `3`                       |  ❌  |
 | `--count`      | 请求总数                                                       | `10`                      |  ❌  |
 | `--timeout`    | 请求超时时间（秒）                                              | `300`                      |  ❌  |
-| `--prompt`     | 测试提示语<br/>**支持多种输入方式**：<br/>• 直接字符串：`"你的prompt"`<br/>• 单文件：`"@file.txt"`<br/>• 通配符：`"@*.txt"`<br/>• 管道输入：未使用此参数时支持管道 | `"你好，介绍一下你自己。"`     |  ❌  |
+| `--prompt`     | 测试提示语（直接输入字符串）<br/>如：`"分析人工智能的发展前景"`     | `"你好，介绍一下你自己。"`     |  ❌  |
+| `--prompt-file`| 从文件读取 prompt<br/>**支持多种模式**：<br/>• 单文件：`"prompts/test.txt"`<br/>• 通配符：`"prompts/*.txt"`<br/>• 相对/绝对路径均可 | -                         |  ❌  |
 | `--stream`     | 是否开启流模式                                                 | `true`                    |  ❌  |
 | `--report`     | 是否生成报告文件（同时生成 JSON 和 CSV）                           | `false`                   |  ❌  |
 
