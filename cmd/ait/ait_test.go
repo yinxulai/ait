@@ -59,31 +59,37 @@ func NewMockRunner(config types.Input) (*MockRunner, error) {
 				MaxTotalTime: 200 * time.Millisecond,
 			},
 			ContentMetrics: struct {
-				AvgTTFT       time.Duration `json:"avg_ttft"`
-				MinTTFT       time.Duration `json:"min_ttft"`
-				MaxTTFT       time.Duration `json:"max_ttft"`
-				AvgTPOT       time.Duration `json:"avg_tpot"`
-				MinTPOT       time.Duration `json:"min_tpot"`
-				MaxTPOT       time.Duration `json:"max_tpot"`
-				AvgTokenCount int           `json:"avg_token_count"`
-				MinTokenCount int           `json:"min_token_count"`
-				MaxTokenCount int           `json:"max_token_count"`
-				AvgTPS        float64       `json:"avg_tps"`
-				MinTPS        float64       `json:"min_tps"`
-				MaxTPS        float64       `json:"max_tps"`
+				AvgTTFT             time.Duration `json:"avg_ttft"`
+				MinTTFT             time.Duration `json:"min_ttft"`
+				MaxTTFT             time.Duration `json:"max_ttft"`
+				AvgTPOT             time.Duration `json:"avg_tpot"`
+				MinTPOT             time.Duration `json:"min_tpot"`
+				MaxTPOT             time.Duration `json:"max_tpot"`
+				AvgInputTokenCount  int           `json:"avg_input_token_count"`
+				MinInputTokenCount  int           `json:"min_input_token_count"`
+				MaxInputTokenCount  int           `json:"max_input_token_count"`
+				AvgOutputTokenCount int           `json:"avg_output_token_count"`
+				MinOutputTokenCount int           `json:"min_output_token_count"`
+				MaxOutputTokenCount int           `json:"max_output_token_count"`
+				AvgTPS              float64       `json:"avg_tps"`
+				MinTPS              float64       `json:"min_tps"`
+				MaxTPS              float64       `json:"max_tps"`
 			}{
-				AvgTTFT:       50 * time.Millisecond,
-				MinTTFT:       30 * time.Millisecond,
-				MaxTTFT:       70 * time.Millisecond,
-				AvgTPOT:       25 * time.Millisecond,
-				MinTPOT:       20 * time.Millisecond,
-				MaxTPOT:       30 * time.Millisecond,
-				AvgTokenCount: 100,
-				MinTokenCount: 80,
-				MaxTokenCount: 120,
-				AvgTPS:        200.0,
-				MinTPS:        150.0,
-				MaxTPS:        250.0,
+				AvgTTFT:             50 * time.Millisecond,
+				MinTTFT:             30 * time.Millisecond,
+				MaxTTFT:             70 * time.Millisecond,
+				AvgTPOT:             25 * time.Millisecond,
+				MinTPOT:             20 * time.Millisecond,
+				MaxTPOT:             30 * time.Millisecond,
+				AvgInputTokenCount:  50,
+				MinInputTokenCount:  40,
+				MaxInputTokenCount:  60,
+				AvgOutputTokenCount: 100,
+				MinOutputTokenCount: 80,
+				MaxOutputTokenCount: 120,
+				AvgTPS:              200.0,
+				MinTPS:              150.0,
+				MaxTPS:              250.0,
 			},
 			ReliabilityMetrics: struct {
 				ErrorRate   float64 `json:"error_rate"`

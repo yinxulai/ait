@@ -232,8 +232,10 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	maxTTFT := firstResult.TimeToFirstToken
 	minTotalTime := firstResult.TotalTime
 	maxTotalTime := firstResult.TotalTime
-	minTokens := firstResult.CompletionTokens
-	maxTokens := firstResult.CompletionTokens
+	minOutputTokens := firstResult.CompletionTokens
+	maxOutputTokens := firstResult.CompletionTokens
+	minInputTokens := firstResult.PromptTokens
+	maxInputTokens := firstResult.PromptTokens
 
 	minDNSTime := firstResult.DNSTime
 	maxDNSTime := firstResult.DNSTime
@@ -272,7 +274,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	// 累积统计
 	var sumTTFT, sumTotalTime time.Duration
 	var sumDNSTime, sumConnectTime, sumTLSTime time.Duration
-	var sumTokens int
+	var sumOutputTokens, sumInputTokens int
 	var sumTPOT time.Duration
 
 	for _, result := range validResults {
@@ -335,13 +337,22 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxTLSTime = result.TLSHandshakeTime
 		}
 
-		// Token 统计
-		sumTokens += result.CompletionTokens
-		if result.CompletionTokens < minTokens {
-			minTokens = result.CompletionTokens
+		// Output Token 统计
+		sumOutputTokens += result.CompletionTokens
+		if result.CompletionTokens < minOutputTokens {
+			minOutputTokens = result.CompletionTokens
 		}
-		if result.CompletionTokens > maxTokens {
-			maxTokens = result.CompletionTokens
+		if result.CompletionTokens > maxOutputTokens {
+			maxOutputTokens = result.CompletionTokens
+		}
+
+		// Input Token 统计
+		sumInputTokens += result.PromptTokens
+		if result.PromptTokens < minInputTokens {
+			minInputTokens = result.PromptTokens
+		}
+		if result.PromptTokens > maxInputTokens {
+			maxInputTokens = result.PromptTokens
 		}
 
 		// TPS 统计
@@ -399,8 +410,9 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		avgTPOT = sumTPOT / time.Duration(validTPOTCount)
 	}
 
-	// Token数量也可以直接用总和除以数量，因为数量是可加性的
-	avgTokens := sumTokens / validCount
+	// Token数量计算
+	avgOutputTokens := sumOutputTokens / validCount
+	avgInputTokens := sumInputTokens / validCount
 
 	// TPS是比率指标，需要特殊处理：
 	// 错误方式：float64(sumTokens) / sumTotalTime.Seconds() - 这相当于计算总体批处理的TPS
@@ -445,9 +457,12 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	result.ContentMetrics.AvgTPOT = avgTPOT
 	result.ContentMetrics.MinTPOT = minTPOT
 	result.ContentMetrics.MaxTPOT = maxTPOT
-	result.ContentMetrics.AvgTokenCount = avgTokens
-	result.ContentMetrics.MinTokenCount = minTokens
-	result.ContentMetrics.MaxTokenCount = maxTokens
+	result.ContentMetrics.AvgInputTokenCount = avgInputTokens
+	result.ContentMetrics.MinInputTokenCount = minInputTokens
+	result.ContentMetrics.MaxInputTokenCount = maxInputTokens
+	result.ContentMetrics.AvgOutputTokenCount = avgOutputTokens
+	result.ContentMetrics.MinOutputTokenCount = minOutputTokens
+	result.ContentMetrics.MaxOutputTokenCount = maxOutputTokens
 	result.ContentMetrics.AvgTPS = avgTPS
 	result.ContentMetrics.MinTPS = minTPS
 	result.ContentMetrics.MaxTPS = maxTPS

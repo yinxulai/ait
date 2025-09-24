@@ -95,18 +95,21 @@ type ReportData struct {
 
 	// 服务性能指标 - 统计结果
 	ContentMetrics struct {
-		AvgTTFT       time.Duration `json:"avg_ttft"`        // 平均首个token响应时间
-		MinTTFT       time.Duration `json:"min_ttft"`        // 最小首个token响应时间
-		MaxTTFT       time.Duration `json:"max_ttft"`        // 最大首个token响应时间
-		AvgTPOT       time.Duration `json:"avg_tpot"`        // 平均每个输出token的耗时（除首token外）
-		MinTPOT       time.Duration `json:"min_tpot"`        // 最小每个输出token的耗时
-		MaxTPOT       time.Duration `json:"max_tpot"`        // 最大每个输出token的耗时
-		AvgTokenCount int           `json:"avg_token_count"` // 平均token数量
-		MinTokenCount int           `json:"min_token_count"` // 最小token数量
-		MaxTokenCount int           `json:"max_token_count"` // 最大token数量
-		AvgTPS        float64       `json:"avg_tps"`         // 平均每秒token数 (Tokens Per Second)
-		MinTPS        float64       `json:"min_tps"`         // 最小每秒token数
-		MaxTPS        float64       `json:"max_tps"`         // 最大每秒token数
+		AvgTTFT             time.Duration `json:"avg_ttft"`              // 平均首个token响应时间
+		MinTTFT             time.Duration `json:"min_ttft"`              // 最小首个token响应时间
+		MaxTTFT             time.Duration `json:"max_ttft"`              // 最大首个token响应时间
+		AvgTPOT             time.Duration `json:"avg_tpot"`              // 平均每个输出token的耗时（除首token外）
+		MinTPOT             time.Duration `json:"min_tpot"`              // 最小每个输出token的耗时
+		MaxTPOT             time.Duration `json:"max_tpot"`              // 最大每个输出token的耗时
+		AvgInputTokenCount  int           `json:"avg_input_token_count"`  // 平均输入token数量
+		MinInputTokenCount  int           `json:"min_input_token_count"`  // 最小输入token数量
+		MaxInputTokenCount  int           `json:"max_input_token_count"`  // 最大输入token数量
+		AvgOutputTokenCount int           `json:"avg_output_token_count"` // 平均输出token数量
+		MinOutputTokenCount int           `json:"min_output_token_count"` // 最小输出token数量
+		MaxOutputTokenCount int           `json:"max_output_token_count"` // 最大输出token数量
+		AvgTPS              float64       `json:"avg_tps"`               // 平均每秒token数 (Tokens Per Second)
+		MinTPS              float64       `json:"min_tps"`               // 最小每秒token数
+		MaxTPS              float64       `json:"max_tps"`               // 最大每秒token数
 	} `json:"content_metrics"`
 
 	// 可靠性指标 - 统计结果
@@ -140,18 +143,21 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 			TargetIP            string `json:"target_ip"`
 		} `json:"network_metrics"`
 		ContentMetrics struct {
-			AvgTTFT       string  `json:"avg_ttft"`
-			MinTTFT       string  `json:"min_ttft"`
-			MaxTTFT       string  `json:"max_ttft"`
-			AvgTPOT       string  `json:"avg_tpot"`
-			MinTPOT       string  `json:"min_tpot"`
-			MaxTPOT       string  `json:"max_tpot"`
-			AvgTokenCount int     `json:"avg_token_count"`
-			MinTokenCount int     `json:"min_token_count"`
-			MaxTokenCount int     `json:"max_token_count"`
-			AvgTPS        float64 `json:"avg_tps"`
-			MinTPS        float64 `json:"min_tps"`
-			MaxTPS        float64 `json:"max_tps"`
+			AvgTTFT             string  `json:"avg_ttft"`
+			MinTTFT             string  `json:"min_ttft"`
+			MaxTTFT             string  `json:"max_ttft"`
+			AvgTPOT             string  `json:"avg_tpot"`
+			MinTPOT             string  `json:"min_tpot"`
+			MaxTPOT             string  `json:"max_tpot"`
+			AvgInputTokenCount  int     `json:"avg_input_token_count"`
+			MinInputTokenCount  int     `json:"min_input_token_count"`
+			MaxInputTokenCount  int     `json:"max_input_token_count"`
+			AvgOutputTokenCount int     `json:"avg_output_token_count"`
+			MinOutputTokenCount int     `json:"min_output_token_count"`
+			MaxOutputTokenCount int     `json:"max_output_token_count"`
+			AvgTPS              float64 `json:"avg_tps"`
+			MinTPS              float64 `json:"min_tps"`
+			MaxTPS              float64 `json:"max_tps"`
 		} `json:"content_metrics"`
 	}{
 		Alias:     (*Alias)(r),
@@ -189,31 +195,37 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 			TargetIP:            r.NetworkMetrics.TargetIP,
 		},
 		ContentMetrics: struct {
-			AvgTTFT       string  `json:"avg_ttft"`
-			MinTTFT       string  `json:"min_ttft"`
-			MaxTTFT       string  `json:"max_ttft"`
-			AvgTPOT       string  `json:"avg_tpot"`
-			MinTPOT       string  `json:"min_tpot"`
-			MaxTPOT       string  `json:"max_tpot"`
-			AvgTokenCount int     `json:"avg_token_count"`
-			MinTokenCount int     `json:"min_token_count"`
-			MaxTokenCount int     `json:"max_token_count"`
-			AvgTPS        float64 `json:"avg_tps"`
-			MinTPS        float64 `json:"min_tps"`
-			MaxTPS        float64 `json:"max_tps"`
+			AvgTTFT             string  `json:"avg_ttft"`
+			MinTTFT             string  `json:"min_ttft"`
+			MaxTTFT             string  `json:"max_ttft"`
+			AvgTPOT             string  `json:"avg_tpot"`
+			MinTPOT             string  `json:"min_tpot"`
+			MaxTPOT             string  `json:"max_tpot"`
+			AvgInputTokenCount  int     `json:"avg_input_token_count"`
+			MinInputTokenCount  int     `json:"min_input_token_count"`
+			MaxInputTokenCount  int     `json:"max_input_token_count"`
+			AvgOutputTokenCount int     `json:"avg_output_token_count"`
+			MinOutputTokenCount int     `json:"min_output_token_count"`
+			MaxOutputTokenCount int     `json:"max_output_token_count"`
+			AvgTPS              float64 `json:"avg_tps"`
+			MinTPS              float64 `json:"min_tps"`
+			MaxTPS              float64 `json:"max_tps"`
 		}{
-			AvgTTFT:       formatTTFT(r.ContentMetrics.AvgTTFT, r.IsStream),
-			MinTTFT:       formatTTFT(r.ContentMetrics.MinTTFT, r.IsStream),
-			MaxTTFT:       formatTTFT(r.ContentMetrics.MaxTTFT, r.IsStream),
-			AvgTPOT:       formatTPOT(r.ContentMetrics.AvgTPOT, r.IsStream),
-			MinTPOT:       formatTPOT(r.ContentMetrics.MinTPOT, r.IsStream),
-			MaxTPOT:       formatTPOT(r.ContentMetrics.MaxTPOT, r.IsStream),
-			AvgTokenCount: r.ContentMetrics.AvgTokenCount,
-			MinTokenCount: r.ContentMetrics.MinTokenCount,
-			MaxTokenCount: r.ContentMetrics.MaxTokenCount,
-			AvgTPS:        r.ContentMetrics.AvgTPS,
-			MinTPS:        r.ContentMetrics.MinTPS,
-			MaxTPS:        r.ContentMetrics.MaxTPS,
+			AvgTTFT:             formatTTFT(r.ContentMetrics.AvgTTFT, r.IsStream),
+			MinTTFT:             formatTTFT(r.ContentMetrics.MinTTFT, r.IsStream),
+			MaxTTFT:             formatTTFT(r.ContentMetrics.MaxTTFT, r.IsStream),
+			AvgTPOT:             formatTPOT(r.ContentMetrics.AvgTPOT, r.IsStream),
+			MinTPOT:             formatTPOT(r.ContentMetrics.MinTPOT, r.IsStream),
+			MaxTPOT:             formatTPOT(r.ContentMetrics.MaxTPOT, r.IsStream),
+			AvgInputTokenCount:  r.ContentMetrics.AvgInputTokenCount,
+			MinInputTokenCount:  r.ContentMetrics.MinInputTokenCount,
+			MaxInputTokenCount:  r.ContentMetrics.MaxInputTokenCount,
+			AvgOutputTokenCount: r.ContentMetrics.AvgOutputTokenCount,
+			MinOutputTokenCount: r.ContentMetrics.MinOutputTokenCount,
+			MaxOutputTokenCount: r.ContentMetrics.MaxOutputTokenCount,
+			AvgTPS:              r.ContentMetrics.AvgTPS,
+			MinTPS:              r.ContentMetrics.MinTPS,
+			MaxTPS:              r.ContentMetrics.MaxTPS,
 		},
 	})
 }

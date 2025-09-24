@@ -259,8 +259,8 @@ func TestRunner_Run_Success(t *testing.T) {
 	}
 	
 	// 验证性能指标
-	if result.ContentMetrics.AvgTokenCount != 100 {
-		t.Errorf("Expected AvgTokenCount 100, got %d", result.ContentMetrics.AvgTokenCount)
+	if result.ContentMetrics.AvgOutputTokenCount != 100 {
+		t.Errorf("Expected AvgOutputTokenCount 100, got %d", result.ContentMetrics.AvgOutputTokenCount)
 	}
 	
 	// 验证总时间有合理值
@@ -758,8 +758,8 @@ func TestRunner_CalculateResult_AllNilResults(t *testing.T) {
 	}
 	
 	// 应该返回基础结果，所有指标应该是零值
-	if result.ContentMetrics.AvgTokenCount != 0 {
-		t.Errorf("Expected AvgTokenCount 0, got %d", result.ContentMetrics.AvgTokenCount)
+	if result.ContentMetrics.AvgOutputTokenCount != 0 {
+		t.Errorf("Expected AvgOutputTokenCount 0, got %d", result.ContentMetrics.AvgOutputTokenCount)
 	}
 }
 
@@ -845,16 +845,16 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 	
 	// 验证token指标计算
 	expectedAvgTokens := (150 + 200) / 2
-	if result.ContentMetrics.AvgTokenCount != expectedAvgTokens {
-		t.Errorf("Expected AvgTokenCount %d, got %d", expectedAvgTokens, result.ContentMetrics.AvgTokenCount)
+	if result.ContentMetrics.AvgOutputTokenCount != expectedAvgTokens {
+		t.Errorf("Expected AvgOutputTokenCount %d, got %d", expectedAvgTokens, result.ContentMetrics.AvgOutputTokenCount)
 	}
 	
-	if result.ContentMetrics.MinTokenCount != 150 {
-		t.Errorf("Expected MinTokenCount %d, got %d", 150, result.ContentMetrics.MinTokenCount)
+	if result.ContentMetrics.MinOutputTokenCount != 150 {
+		t.Errorf("Expected MinOutputTokenCount %d, got %d", 150, result.ContentMetrics.MinOutputTokenCount)
 	}
 	
-	if result.ContentMetrics.MaxTokenCount != 200 {
-		t.Errorf("Expected MaxTokenCount %d, got %d", 200, result.ContentMetrics.MaxTokenCount)
+	if result.ContentMetrics.MaxOutputTokenCount != 200 {
+		t.Errorf("Expected MaxOutputTokenCount %d, got %d", 200, result.ContentMetrics.MaxOutputTokenCount)
 	}
 	
 	// 验证TPS计算

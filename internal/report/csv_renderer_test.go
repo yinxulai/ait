@@ -344,9 +344,12 @@ func createTestReportDataForCSV() types.ReportData {
 	data.ContentMetrics.AvgTTFT = 200 * time.Millisecond
 	data.ContentMetrics.MinTTFT = 100 * time.Millisecond
 	data.ContentMetrics.MaxTTFT = 300 * time.Millisecond
-	data.ContentMetrics.AvgTokenCount = 150
-	data.ContentMetrics.MinTokenCount = 100
-	data.ContentMetrics.MaxTokenCount = 200
+	data.ContentMetrics.AvgInputTokenCount = 50
+	data.ContentMetrics.MinInputTokenCount = 40
+	data.ContentMetrics.MaxInputTokenCount = 60
+	data.ContentMetrics.AvgOutputTokenCount = 150
+	data.ContentMetrics.MinOutputTokenCount = 100
+	data.ContentMetrics.MaxOutputTokenCount = 200
 	data.ContentMetrics.AvgTPS = 300.0
 	data.ContentMetrics.MinTPS = 250.0
 	data.ContentMetrics.MaxTPS = 350.0
