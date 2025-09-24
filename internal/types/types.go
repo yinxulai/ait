@@ -5,19 +5,26 @@ import (
 	"time"
 )
 
+// PromptSource 需要前向声明，实际定义在 prompt 包中
+type PromptSource interface {
+	GetRandomContent() string
+	GetContentByIndex(index int) string
+	Count() int
+}
+
 // Input 测试配置信息 - 统一的配置结构
 type Input struct {
-	Protocol    string
-	BaseUrl     string
-	ApiKey      string
-	Model      string // 多个模型列表
-	Concurrency int
-	Count       int
-	Stream      bool
-	Prompt      string
-	Report      bool // 是否生成报告文件
-	Timeout     time.Duration // 请求超时时间
-	Log         bool   // 是否开启详细日志记录
+	Protocol     string
+	BaseUrl      string
+	ApiKey       string
+	Model        string // 多个模型列表
+	Concurrency  int
+	Count        int
+	Stream       bool
+	PromptSource PromptSource  // 改为使用PromptSource而不是简单字符串
+	Report       bool          // 是否生成报告文件
+	Timeout      time.Duration // 请求超时时间
+	Log          bool          // 是否开启详细日志记录
 }
 
 // StatsData 实时测试统计数据 - runner 内部使用的统计结构

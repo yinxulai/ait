@@ -10,6 +10,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/display"
+	"github.com/yinxulai/ait/internal/prompt"
 	"github.com/yinxulai/ait/internal/report"
 	"github.com/yinxulai/ait/internal/runner"
 	"github.com/yinxulai/ait/internal/types"
@@ -51,20 +52,25 @@ func readPromptFromStdin() (string, error) {
 
 // resolvePrompt 解析最终的 prompt 内容
 // 优先级：1. 用户指定的命令行参数 > 2. 管道输入 > 3. 默认值
-func resolvePrompt(userSpecified bool, flagPrompt string) string {
+func resolvePrompt(userSpecified bool, flagPrompt string) (*prompt.PromptSource, error) {
+	var finalPromptString string
+	
 	// 1. 如果用户明确指定了 --prompt 参数，则优先使用
 	if userSpecified {
-		return flagPrompt
+		finalPromptString = flagPrompt
+	} else {
+		// 2. 检查是否有管道输入
+		stdinPrompt, err := readPromptFromStdin()
+		if err == nil && stdinPrompt != "" {
+			finalPromptString = stdinPrompt
+		} else {
+			// 3. 使用默认值
+			finalPromptString = flagPrompt
+		}
 	}
 
-	// 2. 检查是否有管道输入
-	stdinPrompt, err := readPromptFromStdin()
-	if err == nil && stdinPrompt != "" {
-		return stdinPrompt
-	}
-
-	// 3. 使用默认值
-	return flagPrompt
+	// 使用 prompt 包来解析可能的文件语法
+	return prompt.LoadPrompts(finalPromptString)
 }
 
 // detectProviderFromEnv 根据环境变量自动检测 provider
@@ -160,19 +166,19 @@ func printErrorMessages(protocol string) {
 }
 
 // createRunnerConfig 创建runner配置
-func createRunnerConfig(protocol, baseUrl, apiKey, model, prompt string, concurrency, count, timeout int, stream, report, log bool) types.Input {
+func createRunnerConfig(protocol, baseUrl, apiKey, model string, promptSource *prompt.PromptSource, concurrency, count, timeout int, stream, report, log bool) types.Input {
 	return types.Input{
-		Protocol:    protocol,
-		BaseUrl:     baseUrl,
-		ApiKey:      apiKey,
-		Model:       model,
-		Concurrency: concurrency,
-		Count:       count,
-		Prompt:      prompt,
-		Stream:      stream,
-		Report:      report,
-		Timeout:     time.Duration(timeout) * time.Second,
-		Log:         log,
+		Protocol:     protocol,
+		BaseUrl:      baseUrl,
+		ApiKey:       apiKey,
+		Model:        model,
+		Concurrency:  concurrency,
+		Count:        count,
+		PromptSource: promptSource,
+		Stream:       stream,
+		Report:       report,
+		Timeout:      time.Duration(timeout) * time.Second,
+		Log:          log,
 	}
 }
 
@@ -266,7 +272,7 @@ func generateReportsIfEnabled(reportFlag bool, results []*types.ReportData) erro
 }
 
 // executeModelsTestSuite 执行多个模型的测试套件
-func executeModelsTestSuite(taskID string, modelList []string, finalProtocol, finalBaseUrl, finalApiKey, prompt string, concurrency, count, timeout int, stream, reportFlag, log bool, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
+func executeModelsTestSuite(taskID string, modelList []string, finalProtocol, finalBaseUrl, finalApiKey string, promptSource *prompt.PromptSource, concurrency, count, timeout int, stream, reportFlag, log bool, displayer *display.Displayer) ([]*types.ReportData, []string, error) {
 	// 用于收集所有错误信息
 	var allErrors []string
 
@@ -282,7 +288,7 @@ func executeModelsTestSuite(taskID string, modelList []string, finalProtocol, fi
 	completedRequests := 0
 
 	for _, modelName := range modelList {
-		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, prompt, concurrency, count, timeout, stream, reportFlag, log)
+		config := createRunnerConfig(finalProtocol, finalBaseUrl, finalApiKey, modelName, promptSource, concurrency, count, timeout, stream, reportFlag, log)
 
 		result, currentModelErrors, err := processModelExecution(taskID, modelName, config, displayer, completedRequests, totalRequests)
 		if err != nil {
@@ -351,7 +357,11 @@ func main() {
 	})
 
 	// 解析最终的 prompt，优先级：用户指定 > 管道输入 > 默认值
-	finalPrompt := resolvePrompt(promptSpecified, *prompt)
+	promptSource, err := resolvePrompt(promptSpecified, *prompt)
+	if err != nil {
+		fmt.Printf("解析 prompt 失败: %v\n", err)
+		os.Exit(1)
+	}
 
 	displayer := display.New()
 
@@ -366,14 +376,14 @@ func main() {
 		Concurrency: *concurrency,
 		Count:       *count,
 		Stream:      *stream,
-		Prompt:      finalPrompt,
+		PromptText:  promptSource.DisplayText,
 		Report:      *reportFlag,
 		Timeout:     *timeout,
 	})
 
 	// 执行多个模型的测试套件
 	allResults, allErrors, err := executeModelsTestSuite(
-		taskID, modelList, finalProtocol, finalBaseUrl, finalApiKey, finalPrompt,
+		taskID, modelList, finalProtocol, finalBaseUrl, finalApiKey, promptSource,
 		*concurrency, *count, *timeout, *stream, *reportFlag, *logFlag, displayer,
 	)
 	if err != nil {

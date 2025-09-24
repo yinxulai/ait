@@ -57,7 +57,10 @@ func (r *Runner) Run() (*types.ReportData, error) {
 			defer wg.Done()
 			defer func() { <-ch }()
 
-			metrics, err := r.client.Request(r.input.Prompt, r.input.Stream)
+			// 获取当前请求使用的prompt
+			currentPrompt := r.input.PromptSource.GetRandomContent()
+			
+			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
 			if err != nil {
 				atomic.AddInt64(&failed, 1)
 				return
@@ -143,7 +146,10 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			defer wg.Done()
 			defer func() { <-ch }()
 
-			metrics, err := r.client.Request(r.input.Prompt, r.input.Stream)
+			// 获取当前请求使用的prompt
+			currentPrompt := r.input.PromptSource.GetRandomContent()
+			
+			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
 			if err != nil {
 				ttftsMutex.Lock()
 				errorMessages = append(errorMessages, err.Error())

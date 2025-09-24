@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 
 	"github.com/olekukonko/tablewriter"
@@ -25,16 +26,16 @@ const (
 )
 
 type Input struct {
-	Protocol    string
-	BaseUrl     string
-	ApiKey      string
-	Models      []string // 多个模型列表
-	Concurrency int
-	Count       int
-	Stream      bool
-	Prompt      string
-	Report      bool // 是否生成报告文件
-	Timeout     int  // 请求超时时间(秒)
+	Protocol     string
+	BaseUrl      string
+	ApiKey       string
+	Models       []string // 多个模型列表
+	Concurrency  int
+	Count        int
+	Stream       bool
+	PromptText   string   // 用于显示的prompt文本
+	Report       bool     // 是否生成报告文件
+	Timeout      int      // 请求超时时间(秒)
 }
 
 // Displayer 测试显示器
@@ -91,7 +92,16 @@ func (td *Displayer) ShowInput(data *Input) {
 	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "同时发送的请求数")
 	table.Append("🕐 超时时间", strconv.Itoa(data.Timeout)+"秒", "每个请求的超时时间")
 	table.Append("🌊 流式模式", strconv.FormatBool(data.Stream), "是否启用流式响应")
-	table.Append("📝 测试提示词", truncatePrompt(data.Prompt), "用于测试的提示内容")
+	
+	// 对于文件类型的 prompt，直接显示，不进行截断处理
+	var promptDisplay string
+	if strings.HasPrefix(data.PromptText, "文件:") {
+		promptDisplay = data.PromptText
+	} else {
+		promptDisplay = truncatePrompt(data.PromptText)
+	}
+	table.Append("📝 测试提示词", promptDisplay, "用于测试的提示内容")
+	
 	table.Append("📄 生成报告", strconv.FormatBool(data.Report), "是否生成测试报告文件")
 
 	table.Render()
