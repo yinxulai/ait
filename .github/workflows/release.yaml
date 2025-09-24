@@ -65,20 +65,24 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
-          go build \
-            -ldflags "-w -s \
-              -X main.version=${{ github.ref_name }} \
-              -X 'github.com/yinxulai/ait/internal/upload.UploadBaseURL=${{ secrets.UPLOAD_BASE_URL }}' \
-              -X 'github.com/yinxulai/ait/internal/upload.UploadAuthToken=${{ secrets.UPLOAD_AUTH_TOKEN }}' \
-              -X 'github.com/yinxulai/ait/internal/upload.UploadUserAgent=${{ github.repository }}(${{ github.ref_name }})'" \
-            -o dist/ait-${{ matrix.suffix }}${{ matrix.extension }} \
-            ./cmd/
+          # 构建 ait 和 tpg 两个命令
+          for binary in ait tpg; do
+            echo "构建 $binary for ${{ matrix.goos }}/${{ matrix.goarch }}..."
+            go build \
+              -ldflags "-w -s \
+                -X main.version=${{ github.ref_name }} \
+                -X 'github.com/yinxulai/ait/internal/upload.UploadBaseURL=${{ secrets.UPLOAD_BASE_URL }}' \
+                -X 'github.com/yinxulai/ait/internal/upload.UploadAuthToken=${{ secrets.UPLOAD_AUTH_TOKEN }}' \
+                -X 'github.com/yinxulai/ait/internal/upload.UploadUserAgent=${{ github.repository }}(${{ github.ref_name }})'" \
+              -o dist/$binary-${{ matrix.suffix }}${{ matrix.extension }} \
+              ./cmd/$binary/
+          done
 
       - name: 上传构建产物
         uses: actions/upload-artifact@v4
         with:
-          name: ait-${{ matrix.suffix }}
-          path: dist/ait-${{ matrix.suffix }}${{ matrix.extension }}
+          name: binaries-${{ matrix.suffix }}
+          path: dist/*
 
   # 上传二进制文件到 Release
   upload-release:
@@ -96,7 +100,7 @@ jobs:
       - name: 准备发布文件
         run: |
           mkdir -p release-files
-          find dist -type f -name "ait-*" | xargs -I {} cp {} release-files/
+          find dist -type f \( -name "ait-*" -o -name "tpg-*" \) | xargs -I {} cp {} release-files/
           ls -la release-files/
 
       - name: 上传到发布页面

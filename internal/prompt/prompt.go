@@ -14,7 +14,7 @@ import (
 type PromptSource struct {
 	IsFile      bool     // 是否来自文件
 	FilePaths   []string // 文件路径列表
-	Contents    []string // prompt内容列表（对应文件或单个字符串）
+	Contents    []string // prompt内容列表（仅用于非文件内容）
 	DisplayText string   // 用于显示的文本
 }
 
@@ -50,16 +50,10 @@ func loadSingleFile(filePath string) (*PromptSource, error) {
 		return nil, fmt.Errorf("文件不存在: %s", filePath)
 	}
 
-	// 读取文件内容
-	content, err := os.ReadFile(filePath)
-	if err != nil {
-		return nil, fmt.Errorf("读取文件失败 %s: %v", filePath, err)
-	}
-
 	return &PromptSource{
 		IsFile:      true,
 		FilePaths:   []string{filePath},
-		Contents:    []string{string(content)},
+		Contents:    nil, // 不预加载内容
 		DisplayText: fmt.Sprintf("文件: %s (1个)", filePath),
 	}, nil
 }
@@ -76,7 +70,6 @@ func loadMultipleFiles(pattern string) (*PromptSource, error) {
 	}
 
 	var filePaths []string
-	var contents []string
 
 	for _, match := range matches {
 		// 检查是否为文件（跳过目录）
@@ -88,15 +81,7 @@ func loadMultipleFiles(pattern string) (*PromptSource, error) {
 			continue
 		}
 
-		// 读取文件内容
-		content, err := os.ReadFile(match)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "警告: 读取文件失败 %s: %v\n", match, err)
-			continue
-		}
-
 		filePaths = append(filePaths, match)
-		contents = append(contents, string(content))
 	}
 
 	if len(filePaths) == 0 {
@@ -106,43 +91,89 @@ func loadMultipleFiles(pattern string) (*PromptSource, error) {
 	return &PromptSource{
 		IsFile:      true,
 		FilePaths:   filePaths,
-		Contents:    contents,
+		Contents:    nil, // 不预加载内容
 		DisplayText: fmt.Sprintf("文件: %s (%d个)", pattern, len(filePaths)),
 	}, nil
 }
 
 // GetRandomContent 随机获取一个prompt内容
 func (ps *PromptSource) GetRandomContent() string {
-	if len(ps.Contents) == 0 {
+	// 如果不是文件源，直接返回内容
+	if !ps.IsFile {
+		if len(ps.Contents) == 0 {
+			return ""
+		}
+		if len(ps.Contents) == 1 {
+			return ps.Contents[0]
+		}
+		
+		// 使用当前时间和进程ID作为种子的随机数生成器
+		r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(os.Getpid())))
+		index := r.Intn(len(ps.Contents))
+		return ps.Contents[index]
+	}
+
+	// 文件源：随机选择一个文件路径并读取内容
+	if len(ps.FilePaths) == 0 {
 		return ""
 	}
-	if len(ps.Contents) == 1 {
-		return ps.Contents[0]
+	
+	var filePath string
+	if len(ps.FilePaths) == 1 {
+		filePath = ps.FilePaths[0]
+	} else {
+		// 使用当前时间和进程ID作为种子的随机数生成器
+		r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(os.Getpid())))
+		index := r.Intn(len(ps.FilePaths))
+		filePath = ps.FilePaths[index]
 	}
 	
-	// 使用当前时间和进程ID作为种子的随机数生成器
-	r := rand.New(rand.NewSource(time.Now().UnixNano() + int64(os.Getpid())))
-	index := r.Intn(len(ps.Contents))
-	return ps.Contents[index]
+	// 读取文件内容
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 读取文件失败 %s: %v\n", filePath, err)
+		return ""
+	}
+	
+	return string(content)
 }
 
 // GetContentByIndex 根据索引获取prompt内容
 func (ps *PromptSource) GetContentByIndex(index int) string {
-	if index < 0 || index >= len(ps.Contents) {
+	// 如果不是文件源，直接返回内容
+	if !ps.IsFile {
+		if index < 0 || index >= len(ps.Contents) {
+			return ps.GetRandomContent()
+		}
+		return ps.Contents[index]
+	}
+
+	// 文件源：根据索引读取对应文件
+	if index < 0 || index >= len(ps.FilePaths) {
 		return ps.GetRandomContent()
 	}
-	return ps.Contents[index]
+	
+	filePath := ps.FilePaths[index]
+	content, err := os.ReadFile(filePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "警告: 读取文件失败 %s: %v\n", filePath, err)
+		return ps.GetRandomContent()
+	}
+	
+	return string(content)
 }
 
 // Count 返回prompt内容的数量
 func (ps *PromptSource) Count() int {
+	if ps.IsFile {
+		return len(ps.FilePaths)
+	}
 	return len(ps.Contents)
 }
 
 // LoadPromptsFromPattern 递归加载目录下匹配模式的文件
 func LoadPromptsFromPattern(pattern string) (*PromptSource, error) {
 	var filePaths []string
-	var contents []string
 
 	err := filepath.WalkDir(".", func(path string, d fs.DirEntry, err error) error {
 		if err != nil {
@@ -161,14 +192,7 @@ func LoadPromptsFromPattern(pattern string) (*PromptSource, error) {
 		}
 
 		if matched {
-			content, err := os.ReadFile(path)
-			if err != nil {
-				fmt.Fprintf(os.Stderr, "警告: 读取文件失败 %s: %v\n", path, err)
-				return nil
-			}
-
 			filePaths = append(filePaths, path)
-			contents = append(contents, string(content))
 		}
 
 		return nil
@@ -185,7 +209,7 @@ func LoadPromptsFromPattern(pattern string) (*PromptSource, error) {
 	return &PromptSource{
 		IsFile:      true,
 		FilePaths:   filePaths,
-		Contents:    contents,
+		Contents:    nil, // 不预加载内容
 		DisplayText: fmt.Sprintf("文件: %s (%d个)", pattern, len(filePaths)),
 	}, nil
 }

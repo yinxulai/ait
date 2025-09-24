@@ -1,5 +1,5 @@
 # 项目配置
-BINARY_NAME=ait
+BINARIES=ait tpg
 BIN_DIR=bin
 
 # Go 相关变量
@@ -19,12 +19,15 @@ help:
 	@echo 'Usage:'
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
 
-## build: 构建二进制文件
+## build: 构建所有二进制文件
 .PHONY: build
 build:
-	@echo "正在构建 $(BINARY_NAME)..."
+	@echo "正在构建所有二进制文件..."
 	@mkdir -p $(BIN_DIR)
-	$(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY_NAME) ./cmd/
+	@for binary in $(BINARIES); do \
+		echo "构建 $$binary..."; \
+		$(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$$binary ./cmd/$$binary/; \
+	done
 
 ## test: 运行所有测试
 .PHONY: test
