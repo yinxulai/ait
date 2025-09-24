@@ -18,7 +18,7 @@ type PromptSource struct {
 	DisplayText string   // 用于显示的文本
 }
 
-// LoadPrompts 解析prompt参数，现在只处理字符串内容
+// LoadPrompts 解析prompt参数，只处理字符串内容
 func LoadPrompts(promptArg string) (*PromptSource, error) {
 	return &PromptSource{
 		IsFile:      false,
