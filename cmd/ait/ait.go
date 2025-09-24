@@ -323,7 +323,7 @@ func main() {
 	count := flag.Int("count", 10, "请求总数")
 	models := flag.String("models", "", "模型名称，支持多个模型用,(逗号)分割")
 	protocol := flag.String("protocol", "", "协议类型: openai 或 anthropic")
-	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt")
+	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt。支持文件路径语法 @file.txt 或通配符 @*.txt。未指定时支持管道输入")
 	stream := flag.Bool("stream", true, "是否开启流模式")
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	reportFlag := flag.Bool("report", false, "是否生成报告文件")

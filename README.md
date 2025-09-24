@@ -160,34 +160,50 @@ export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 ait --models=claude-3-haiku-20240307 --count=5 --report
 ```
 
-## 📝 管道输入支持
+## 📝 管道输入和文件支持
 
-AIT 支持通过管道（pipe）方式输入测试提示语，这对于测试复杂的多行 prompt 或从文件读取内容非常有用。
+AIT 的 `-prompt` 参数支持多种输入方式，满足不同的测试需求：
 
-**优先级规则**：
+### 输入方式优先级
 
 1. **用户明确指定的 `--prompt` 参数**（最高优先级）
 2. **管道输入**（中等优先级，仅当未使用 `--prompt` 参数时生效）
 3. **默认值**（最低优先级）
 
-### 基本管道输入
+### 1. 直接字符串输入
 
 ```bash
-# 直接通过管道输入（未使用 --prompt 参数时生效）
+# 直接指定 prompt 内容
+ait --models=gpt-4 --prompt="分析人工智能的发展前景" --count=3
+```
+
+### 2. 文件路径语法
+
+使用 `@` 前缀指定文件路径，支持单文件和通配符：
+
+```bash
+# 单个文件
+ait --models=gpt-4 --prompt="@prompts/complex_prompt.txt" --count=5
+
+# 通配符匹配多个文件（随机选择）
+ait --models=gpt-4 --prompt="@prompts/*.txt" --count=10
+
+# 指定模式的文件
+ait --models=claude-3-sonnet --prompt="@test_cases/scenario_*.txt" --count=5
+```
+
+### 3. 管道输入
+
+当未使用 `--prompt` 参数时，支持通过管道输入：
+
+```bash
+# 基本管道输入
 echo "请分析这段代码的性能优化建议" | ait --models=gpt-4 --count=3
 
 # 从文件输入
 cat complex_prompt.txt | ait --models=claude-3-sonnet --count=5
 
-# 用户明确使用 --prompt 参数时，管道输入不会生效（无论内容是否为默认值）
-echo "这个不会生效" | ait --models=gpt-3.5-turbo --prompt="用户明确指定"
-echo "这个也不会生效" | ait --models=gpt-3.5-turbo --prompt="你好，介绍一下你自己。"
-```
-
-### 多行 prompt 测试
-
-```bash
-# 创建复杂的测试 prompt
+# 多行复杂 prompt
 cat << EOF | ait --models=gpt-4,claude-3-sonnet --count=3 --report
 请分析以下代码，并提供：
 1. 性能优化建议
@@ -206,6 +222,26 @@ def process_data(data):
 EOF
 ```
 
+### 4. 批量测试场景
+
+```bash
+# 创建多个测试场景文件
+mkdir -p test_prompts
+echo "请解释机器学习的基本概念" > test_prompts/ml_basic.txt
+echo "分析深度学习的应用场景" > test_prompts/dl_applications.txt
+echo "比较不同优化算法的特点" > test_prompts/optimization.txt
+
+# 使用通配符随机测试多个场景
+ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=20 --report
+```
+
+### 重要说明
+
+- **文件路径优先**：使用 `--prompt="@file.txt"` 时，即使有管道输入也会被忽略
+- **管道输入条件**：只有在未使用 `--prompt` 参数时，管道输入才会生效
+- **文件随机选择**：使用通配符时，每次请求会随机选择匹配的文件
+- **错误处理**：文件不存在或读取失败时会显示警告并使用默认 prompt
+
 ## 📋 命令行参数
 
 | 参数            | 描述                                                          | 默认值                    | 必填 |
@@ -217,7 +253,7 @@ EOF
 | `--concurrency`| 并发数                                                        | `3`                       |  ❌  |
 | `--count`      | 请求总数                                                       | `10`                      |  ❌  |
 | `--timeout`    | 请求超时时间（秒）                                              | `300`                      |  ❌  |
-| `--prompt`     | 测试提示语<br/>**支持管道输入**：当未使用此参数时，可通过管道输入内容 | `"你好，介绍一下你自己。"`     |  ❌  |
+| `--prompt`     | 测试提示语<br/>**支持多种输入方式**：<br/>• 直接字符串：`"你的prompt"`<br/>• 单文件：`"@file.txt"`<br/>• 通配符：`"@*.txt"`<br/>• 管道输入：未使用此参数时支持管道 | `"你好，介绍一下你自己。"`     |  ❌  |
 | `--stream`     | 是否开启流模式                                                 | `true`                    |  ❌  |
 | `--report`     | 是否生成报告文件（同时生成 JSON 和 CSV）                           | `false`                   |  ❌  |
 
@@ -278,6 +314,39 @@ EOF
 - **性能报告**: 生成详细的 JSON 和 CSV 报告用于数据分析和存档
 
 ## 📝 使用示例
+
+### Prompt 输入方式演示
+
+```bash
+# 1. 直接字符串
+ait --models=gpt-4 --prompt="分析人工智能的发展前景" --count=5
+
+# 2. 单个文件
+echo "请解释机器学习的基本概念和应用场景" > ml_prompt.txt
+ait --models=claude-3-sonnet --prompt="@ml_prompt.txt" --count=3
+
+# 3. 多文件通配符（随机选择）
+mkdir test_prompts
+echo "分析深度学习的优缺点" > test_prompts/dl.txt
+echo "比较不同 NLP 模型的特点" > test_prompts/nlp.txt
+echo "解释计算机视觉的应用" > test_prompts/cv.txt
+ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=10 --report
+
+# 4. 管道输入（未使用 --prompt 参数时生效）
+echo "请分析以下代码的性能" | ait --models=gpt-3.5-turbo --count=2
+
+# 5. 复杂多行 prompt 通过管道输入
+cat << 'EOF' | ait --models=gpt-4 --count=1 --report
+请作为一个资深软件架构师，分析以下系统设计：
+
+1. 微服务架构的优势和挑战
+2. 数据一致性解决方案
+3. 服务间通信最佳实践
+4. 性能优化建议
+
+请提供详细的分析和具体的解决方案。
+EOF
+```
 
 ### 最新模型测试
 
