@@ -382,6 +382,7 @@ func main() {
 		Count:       *count,
 		Stream:      *stream,
 		PromptText:  promptSource.DisplayText,
+		IsFile:      promptSource.IsFile,
 		Report:      *reportFlag,
 		Timeout:     *timeout,
 	})

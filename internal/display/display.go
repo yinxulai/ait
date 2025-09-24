@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"os"
 	"strconv"
-	"strings"
 	"sync"
 
 	"github.com/olekukonko/tablewriter"
@@ -34,6 +33,7 @@ type Input struct {
 	Count        int
 	Stream       bool
 	PromptText   string   // 用于显示的prompt文本
+	IsFile       bool     // 是否为文件类型输入
 	Report       bool     // 是否生成报告文件
 	Timeout      int      // 请求超时时间(秒)
 }
@@ -95,11 +95,12 @@ func (td *Displayer) ShowInput(data *Input) {
 	
 	// 对于文件类型的 prompt，直接显示，不进行截断处理
 	var promptDisplay string
-	if strings.HasPrefix(data.PromptText, "文件:") {
+	if data.IsFile {
 		promptDisplay = data.PromptText
 	} else {
 		promptDisplay = truncatePrompt(data.PromptText)
 	}
+
 	table.Append("📝 测试提示词", promptDisplay, "用于测试的提示内容")
 	
 	table.Append("📄 生成报告", strconv.FormatBool(data.Report), "是否生成测试报告文件")

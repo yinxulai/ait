@@ -55,7 +55,7 @@ func TestCSVRenderer_Render_EmptyData(t *testing.T) {
 	
 	// 验证头部存在
 	headers := strings.Split(lines[0], ",")
-	expectedHeaderCount := 35 // 基于CSV渲染器中的实际头部数量 (原32个 + 3个TPOT字段)
+	expectedHeaderCount := 38 // 基于CSV渲染器中的实际头部数量 (原32个 + 3个TPOT字段 + 3个输入token字段)
 	if len(headers) != expectedHeaderCount {
 		t.Errorf("Expected %d headers, got %d", expectedHeaderCount, len(headers))
 	}
@@ -122,7 +122,7 @@ func TestCSVRenderer_Render_SingleModel(t *testing.T) {
 	
 	// 验证头部
 	headers := records[0]
-	expectedHeaderCount := 35 // 原32个 + 3个TPOT字段
+	expectedHeaderCount := 38 // 原32个 + 3个TPOT字段 + 3个输入token字段
 	if len(headers) != expectedHeaderCount {
 		t.Errorf("Expected %d headers, got %d", expectedHeaderCount, len(headers))
 	}
