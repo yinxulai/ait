@@ -9,8 +9,15 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/display"
+	"github.com/yinxulai/ait/internal/prompt"
 	"github.com/yinxulai/ait/internal/types"
 )
+
+// createTestPromptSource 创建测试用的 PromptSource
+func createTestPromptSource(promptText string) *prompt.PromptSource {
+	source, _ := prompt.LoadPrompts(promptText)
+	return source
+}
 
 // MockRunner 模拟 runner 以便测试 main 函数逻辑
 type MockRunner struct {
@@ -456,16 +463,16 @@ func TestInputConfig(t *testing.T) {
 			apiKey:   "test-openai-key",
 			model:    "gpt-3.5-turbo",
 			input: types.Input{
-				Protocol:    "openai",
-				BaseUrl:     "https://api.openai.com",
-				ApiKey:      "test-openai-key",
-				Model:       "gpt-3.5-turbo",
-				Concurrency: 3,
-				Count:       10,
-				Prompt:      "你好，介绍一下你自己。",
-				Stream:      true,
-				Report:      false,
-				Timeout:     30 * time.Second,
+				Protocol:     "openai",
+				BaseUrl:      "https://api.openai.com",
+				ApiKey:       "test-openai-key",
+				Model:        "gpt-3.5-turbo",
+				Concurrency:  3,
+				Count:        10,
+				PromptSource: createTestPromptSource("你好，介绍一下你自己。"),
+				Stream:       true,
+				Report:       false,
+				Timeout:      30 * time.Second,
 			},
 		},
 		{
@@ -475,16 +482,16 @@ func TestInputConfig(t *testing.T) {
 			apiKey:   "test-anthropic-key",
 			model:    "claude-3",
 			input: types.Input{
-				Protocol:    "anthropic",
-				BaseUrl:     "https://api.anthropic.com",
-				ApiKey:      "test-anthropic-key",
-				Model:       "claude-3",
-				Concurrency: 5,
-				Count:       20,
-				Prompt:      "Test prompt",
-				Stream:      false,
-				Report:      true,
-				Timeout:     60 * time.Second,
+				Protocol:     "anthropic",
+				BaseUrl:      "https://api.anthropic.com",
+				ApiKey:       "test-anthropic-key",
+				Model:        "claude-3",
+				Concurrency:  5,
+				Count:        20,
+				PromptSource: createTestPromptSource("Test prompt"),
+				Stream:       false,
+				Report:       true,
+				Timeout:      60 * time.Second,
 			},
 		},
 	}
@@ -495,14 +502,14 @@ func TestInputConfig(t *testing.T) {
 			input := types.Input{
 				Protocol:    tt.protocol,
 				BaseUrl:     tt.baseUrl,
-				ApiKey:      tt.apiKey,
-				Model:       tt.model,
-				Concurrency: tt.input.Concurrency,
-				Count:       tt.input.Count,
-				Prompt:      tt.input.Prompt,
-				Stream:      tt.input.Stream,
-				Report:      tt.input.Report,
-				Timeout:     tt.input.Timeout,
+				ApiKey:       tt.apiKey,
+				Model:        tt.model,
+				Concurrency:  tt.input.Concurrency,
+				Count:        tt.input.Count,
+				PromptSource: tt.input.PromptSource,
+				Stream:       tt.input.Stream,
+				Report:       tt.input.Report,
+				Timeout:      tt.input.Timeout,
 			}
 
 			// 验证配置字段
@@ -825,16 +832,16 @@ func TestConfigCreation(t *testing.T) {
 				timeout:     30,
 			},
 			expected: types.Input{
-				Protocol:    "openai",
-				BaseUrl:     "https://api.openai.com/v1",
-				ApiKey:      "sk-test123",
-				Model:       "gpt-3.5-turbo",
-				Concurrency: 5,
-				Count:       20,
-				Prompt:      "Hello, world!",
-				Stream:      true,
-				Report:      false,
-				Timeout:     30 * time.Second,
+				Protocol:     "openai",
+				BaseUrl:      "https://api.openai.com/v1",
+				ApiKey:       "sk-test123",
+				Model:        "gpt-3.5-turbo",
+				Concurrency:  5,
+				Count:        20,
+				PromptSource: createTestPromptSource("Hello, world!"),
+				Stream:       true,
+				Report:       false,
+				Timeout:      30 * time.Second,
 			},
 		},
 	}
@@ -843,16 +850,16 @@ func TestConfigCreation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 模拟 main 函数中创建配置的过程
 			input := types.Input{
-				Protocol:    tt.input.protocol,
-				BaseUrl:     tt.input.baseUrl,
-				ApiKey:      tt.input.apiKey,
-				Model:       tt.input.model,
-				Concurrency: tt.input.concurrency,
-				Count:       tt.input.count,
-				Prompt:      tt.input.prompt,
-				Stream:      tt.input.stream,
-				Report:      tt.input.report,
-				Timeout:     time.Duration(tt.input.timeout) * time.Second,
+				Protocol:     tt.input.protocol,
+				BaseUrl:      tt.input.baseUrl,
+				ApiKey:       tt.input.apiKey,
+				Model:        tt.input.model,
+				Concurrency:  tt.input.concurrency,
+				Count:        tt.input.count,
+				PromptSource: createTestPromptSource(tt.input.prompt),
+				Stream:       tt.input.stream,
+				Report:       tt.input.report,
+				Timeout:      time.Duration(tt.input.timeout) * time.Second,
 			}
 
 			// 验证所有字段
@@ -1338,16 +1345,16 @@ func TestCreateRunnerConfig(t *testing.T) {
 			stream:      true,
 			report:      false,
 			expected: types.Input{
-				Protocol:    "openai",
-				BaseUrl:     "https://api.openai.com",
-				ApiKey:      "sk-test123",
-				Model:       "gpt-3.5-turbo",
-				Prompt:      "Hello world",
-				Concurrency: 5,
-				Count:       20,
-				Timeout:     30 * time.Second,
-				Stream:      true,
-				Report:      false,
+				Protocol:     "openai",
+				BaseUrl:      "https://api.openai.com",
+				ApiKey:       "sk-test123",
+				Model:        "gpt-3.5-turbo",
+				PromptSource: createTestPromptSource("Hello world"),
+				Concurrency:  5,
+				Count:        20,
+				Timeout:      30 * time.Second,
+				Stream:       true,
+				Report:       false,
 			},
 		},
 		{
@@ -1363,16 +1370,16 @@ func TestCreateRunnerConfig(t *testing.T) {
 			stream:      false,
 			report:      true,
 			expected: types.Input{
-				Protocol:    "anthropic",
-				BaseUrl:     "https://api.anthropic.com",
-				ApiKey:      "ant-test456",
-				Model:       "claude-3",
-				Prompt:      "Test prompt",
-				Concurrency: 3,
-				Count:       10,
-				Timeout:     60 * time.Second,
-				Stream:      false,
-				Report:      true,
+				Protocol:     "anthropic",
+				BaseUrl:      "https://api.anthropic.com",
+				ApiKey:       "ant-test456",
+				Model:        "claude-3",
+				PromptSource: createTestPromptSource("Test prompt"),
+				Concurrency:  3,
+				Count:        10,
+				Timeout:      60 * time.Second,
+				Stream:       false,
+				Report:       true,
 			},
 		},
 	}
@@ -1380,7 +1387,7 @@ func TestCreateRunnerConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 		result := createRunnerConfig(
-			tt.protocol, tt.baseUrl, tt.apiKey, tt.model, tt.prompt,
+			tt.protocol, tt.baseUrl, tt.apiKey, tt.model, createTestPromptSource(tt.prompt),
 			tt.concurrency, tt.count, tt.timeout, tt.stream, tt.report,
 			false,
 		)
@@ -1397,8 +1404,8 @@ func TestCreateRunnerConfig(t *testing.T) {
 			if result.Model != tt.expected.Model {
 				t.Errorf("Model: expected %s, got %s", tt.expected.Model, result.Model)
 			}
-			if result.Prompt != tt.expected.Prompt {
-				t.Errorf("Prompt: expected %s, got %s", tt.expected.Prompt, result.Prompt)
+			if result.PromptSource.GetRandomContent() != tt.expected.PromptSource.GetRandomContent() {
+				t.Errorf("PromptSource content: expected %s, got %s", tt.expected.PromptSource.GetRandomContent(), result.PromptSource.GetRandomContent())
 			}
 			if result.Concurrency != tt.expected.Concurrency {
 				t.Errorf("Concurrency: expected %d, got %d", tt.expected.Concurrency, result.Concurrency)
@@ -1631,13 +1638,13 @@ func TestProcessModelExecution(t *testing.T) {
 			name:      "Successful execution",
 			modelName: "gpt-3.5-turbo",
 			input: types.Input{
-				Prompt:      "test prompt",
-				Protocol:    "openai",
-				BaseUrl:     "https://api.openai.com",
-				ApiKey:      "test-key",
-				Timeout:     30,
-				Count:       1,
-				Concurrency: 1,
+				PromptSource: createTestPromptSource("test prompt"),
+				Protocol:     "openai",
+				BaseUrl:      "https://api.openai.com",
+				ApiKey:       "test-key",
+				Timeout:      30,
+				Count:        1,
+				Concurrency:  1,
 			},
 			displayer:         display.New(),
 			completedRequests: 0,
@@ -1648,13 +1655,13 @@ func TestProcessModelExecution(t *testing.T) {
 			name:      "Another model execution",
 			modelName: "gpt-4",
 			input: types.Input{
-				Prompt:      "test prompt",
-				Protocol:    "openai",
-				BaseUrl:     "https://api.openai.com",
-				ApiKey:      "test-key",
-				Timeout:     30,
-				Count:       1,
-				Concurrency: 1,
+				PromptSource: createTestPromptSource("test prompt"),
+				Protocol:     "openai",
+				BaseUrl:      "https://api.openai.com",
+				ApiKey:       "test-key",
+				Timeout:      30,
+				Count:        1,
+				Concurrency:  1,
 			},
 			displayer:         display.New(),
 			completedRequests: 0,
@@ -1769,7 +1776,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 				tt.protocol,
 				tt.baseUrl,
 				tt.apiKey,
-				tt.prompt,
+				createTestPromptSource(tt.prompt),
 				tt.concurrency,
 				tt.count,
 				tt.timeout,

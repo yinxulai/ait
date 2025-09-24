@@ -8,9 +8,16 @@ import (
 
 	"github.com/yinxulai/ait/internal/client"
 	"github.com/yinxulai/ait/internal/logger"
+	"github.com/yinxulai/ait/internal/prompt"
 	"github.com/yinxulai/ait/internal/types"
 	"github.com/yinxulai/ait/internal/upload"
 )
+
+// createTestPromptSource 创建测试用的 PromptSource
+func createTestPromptSource(promptText string) *prompt.PromptSource {
+	source, _ := prompt.LoadPrompts(promptText)
+	return source
+}
 
 // MockClient 用于测试的模拟客户端
 type MockClient struct {
@@ -106,14 +113,14 @@ func TestNewRunner(t *testing.T) {
 		{
 			name: "valid openai config",
 			input: types.Input{
-				Protocol:    "openai",
-				BaseUrl:     "https://api.openai.com",
-				ApiKey:      "test-key",
-				Model:       "gpt-3.5-turbo",
-				Concurrency: 1,
-				Count:       10,
-				Prompt:      "test prompt",
-				Stream:      false,
+				Protocol:     "openai",
+				BaseUrl:      "https://api.openai.com",
+				ApiKey:       "test-key",
+				Model:        "gpt-3.5-turbo",
+				Concurrency:  1,
+				Count:        10,
+				PromptSource: createTestPromptSource("test prompt"),
+				Stream:       false,
 			},
 			wantError: false,
 		},
@@ -126,7 +133,7 @@ func TestNewRunner(t *testing.T) {
 				Model:       "claude-3-sonnet-20240229",
 				Concurrency: 2,
 				Count:       5,
-				Prompt:      "test prompt",
+				PromptSource: createTestPromptSource("test prompt"),
 				Stream:      true,
 			},
 			wantError: false,
@@ -140,7 +147,7 @@ func TestNewRunner(t *testing.T) {
 				Model:       "test-model",
 				Concurrency: 1,
 				Count:       10,
-				Prompt:      "test prompt",
+				PromptSource: createTestPromptSource("test prompt"),
 				Stream:      false,
 			},
 			wantError: true,
@@ -192,7 +199,7 @@ func TestRunner_Run_Success(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 2,
 		Count:       5,
-		Prompt:      "test prompt",
+		PromptSource: createTestPromptSource("test prompt"),
 		Stream:      true,
 	}
 	
@@ -270,7 +277,7 @@ func TestRunner_Run_PartialFailures(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 3,
 		Count:       10,
-		Prompt:      "test prompt",
+		PromptSource: createTestPromptSource("test prompt"),
 		Stream:      false,
 	}
 	
@@ -334,7 +341,7 @@ func TestRunner_Run_AllFailures(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 1,
 		Count:       3,
-		Prompt:      "test prompt",
+		PromptSource: createTestPromptSource("test prompt"),
 		Stream:      false,
 	}
 	
@@ -390,7 +397,7 @@ func TestRunner_Run_ConcurrencyControl(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 2, // 限制并发为2
 		Count:       6,
-		Prompt:      "test prompt",
+		PromptSource: createTestPromptSource("test prompt"),
 		Stream:      true,
 	}
 	
@@ -450,7 +457,7 @@ func TestRunner_RunWithProgress_Success(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 2,
 		Count:       5,
-		Prompt:      "test prompt",
+		PromptSource: createTestPromptSource("test prompt"),
 		Stream:      true,
 	}
 	
@@ -539,7 +546,7 @@ func TestRunner_RunWithProgress_WithFailures(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 1,
 		Count:       4,
-		Prompt:      "test prompt",
+		PromptSource: createTestPromptSource("test prompt"),
 		Stream:      false,
 	}
 	
@@ -618,7 +625,7 @@ func TestRunner_RunWithProgress_ProgressTiming(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 1,
 		Count:       3,
-		Prompt:      "test prompt",
+		PromptSource: createTestPromptSource("test prompt"),
 		Stream:      true,
 	}
 	
@@ -973,7 +980,7 @@ func TestRunner_RunWithProgress_BasicFunctionality(t *testing.T) {
 		Model:       "gpt-3.5-turbo",
 		Concurrency: 1,
 		Count:       2,
-		Prompt:      "test",
+		PromptSource: createTestPromptSource("test"),
 		Stream:      true,
 	}
 	
