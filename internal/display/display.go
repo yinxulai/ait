@@ -25,17 +25,18 @@ const (
 )
 
 type Input struct {
-	Protocol     string
-	BaseUrl      string
-	ApiKey       string
-	Models       []string // 多个模型列表
-	Concurrency  int
-	Count        int
-	Stream       bool
-	PromptText   string   // 用于显示的prompt文本
-	IsFile       bool     // 是否为文件类型输入
-	Report       bool     // 是否生成报告文件
-	Timeout      int      // 请求超时时间(秒)
+	TaskId      string // 任务 ID，随机生成的唯一标识符
+	Protocol    string
+	BaseUrl     string
+	ApiKey      string
+	Models      []string // 多个模型列表
+	Concurrency int
+	Count       int
+	Stream      bool
+	PromptText  string // 用于显示的prompt文本
+	IsFile      bool   // 是否为文件类型输入
+	Report      bool   // 是否生成报告文件
+	Timeout     int    // 请求超时时间(秒)
 }
 
 // Displayer 测试显示器
@@ -92,7 +93,7 @@ func (td *Displayer) ShowInput(data *Input) {
 	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "同时发送的请求数")
 	table.Append("🕐 超时时间", strconv.Itoa(data.Timeout)+"秒", "每个请求的超时时间")
 	table.Append("🌊 流式模式", strconv.FormatBool(data.Stream), "是否启用流式响应")
-	
+
 	// 对于文件类型的 prompt，直接显示，不进行截断处理
 	var promptDisplay string
 	if data.IsFile {
@@ -102,8 +103,11 @@ func (td *Displayer) ShowInput(data *Input) {
 	}
 
 	table.Append("📝 测试提示词", promptDisplay, "用于测试的提示内容")
-	
+
 	table.Append("📄 生成报告", strconv.FormatBool(data.Report), "是否生成测试报告文件")
+
+	// 任务信息
+	table.Append("🆔 任务 ID", data.TaskId, "本次测试的唯一标识符")
 
 	table.Render()
 }
@@ -232,7 +236,7 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	table.Append("🔍 DNS 时间", data.NetworkMetrics.MinDNSTime.String(), data.NetworkMetrics.AvgDNSTime.String(), data.NetworkMetrics.MaxDNSTime.String(), "时间", "域名解析耗时 (httptrace)")
 	table.Append("🔒 TLS 时间", data.NetworkMetrics.MinTLSHandshakeTime.String(), data.NetworkMetrics.AvgTLSHandshakeTime.String(), data.NetworkMetrics.MaxTLSHandshakeTime.String(), "时间", "TLS 握手耗时 (httptrace)")
 	table.Append("🔌 TCP 连接时间", data.NetworkMetrics.MinConnectTime.String(), data.NetworkMetrics.AvgConnectTime.String(), data.NetworkMetrics.MaxConnectTime.String(), "时间", "TCP 连接建立耗时 (httptrace)")
-	
+
 	// Token 数指标
 	table.Append("📥 输入 Token 数", strconv.Itoa(data.ContentMetrics.MinInputTokenCount), strconv.Itoa(data.ContentMetrics.AvgInputTokenCount), strconv.Itoa(data.ContentMetrics.MaxInputTokenCount), "个", "API 请求的 prompt tokens")
 	table.Append("🎲 生成 Token 数", strconv.Itoa(data.ContentMetrics.MinOutputTokenCount), strconv.Itoa(data.ContentMetrics.AvgOutputTokenCount), strconv.Itoa(data.ContentMetrics.MaxOutputTokenCount), "个", "API 返回的 completion tokens")

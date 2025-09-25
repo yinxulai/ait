@@ -17,15 +17,15 @@ import (
 )
 
 func generateTaskID() string {
-    bytes := make([]byte, 16)
-    rand.Read(bytes)
-    
-    // 设置版本 (4) 和变体位
-    bytes[6] = (bytes[6] & 0x0f) | 0x40 // Version 4
-    bytes[8] = (bytes[8] & 0x3f) | 0x80 // Variant 10
-    
-    return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
-        bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
+	bytes := make([]byte, 16)
+	rand.Read(bytes)
+
+	// 设置版本 (4) 和变体位
+	bytes[6] = (bytes[6] & 0x0f) | 0x40 // Version 4
+	bytes[8] = (bytes[8] & 0x3f) | 0x80 // Variant 10
+
+	return fmt.Sprintf("%08x-%04x-%04x-%04x-%012x",
+		bytes[0:4], bytes[4:6], bytes[6:8], bytes[8:10], bytes[10:16])
 }
 
 // readPromptFromStdin 从标准输入读取 prompt 内容
@@ -57,18 +57,18 @@ func resolvePrompt(promptSpecified bool, flagPrompt string, promptFileSpecified 
 	if promptFileSpecified {
 		return prompt.LoadPromptsFromFile(flagPromptFile)
 	}
-	
+
 	// 2. 如果用户明确指定了 --prompt 参数，则使用它
 	if promptSpecified {
 		return prompt.LoadPrompts(flagPrompt)
 	}
-	
+
 	// 3. 检查是否有管道输入
 	stdinPrompt, err := readPromptFromStdin()
 	if err == nil && stdinPrompt != "" {
 		return prompt.LoadPrompts(stdinPrompt)
 	}
-	
+
 	// 4. 使用默认值
 	return prompt.LoadPrompts(flagPrompt)
 }
@@ -374,6 +374,7 @@ func main() {
 	displayer.ShowWelcome()
 
 	displayer.ShowInput(&display.Input{
+		TaskId:      taskID,
 		Protocol:    finalProtocol,
 		BaseUrl:     finalBaseUrl,
 		ApiKey:      finalApiKey,
