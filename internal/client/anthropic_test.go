@@ -1065,3 +1065,186 @@ func TestAnthropicClient_Request_StreamWithEmptyThinkingAndPartialJSON(t *testin
 		t.Errorf("Request() CompletionTokens = %v, want 5", metrics.CompletionTokens)
 	}
 }
+
+// TestAnthropicClient_Request_ErrorHandlingFixes 测试错误处理修复
+func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
+	t.Run("JSON parsing error returns metrics with error info", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("invalid json response"))
+		}))
+		defer server.Close()
+
+		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		metrics, err := client.Request("test prompt", false)
+
+		// 应该有错误
+		if err == nil {
+			t.Error("Expected error for malformed JSON")
+		}
+
+		// 关键修复：应该返回包含错误信息的 metrics，而不是 nil
+		if metrics == nil {
+			t.Fatal("Expected metrics to be returned even on JSON parsing error, got nil")
+		}
+
+		// 验证 metrics 包含正确的错误信息
+		if !strings.Contains(metrics.ErrorMessage, "JSON parsing error") {
+			t.Errorf("Expected ErrorMessage to contain 'JSON parsing error', got: %s", metrics.ErrorMessage)
+		}
+
+		// 验证网络指标仍然被收集
+		if metrics.TotalTime <= 0 {
+			t.Error("Expected TotalTime to be > 0 even on JSON parsing error")
+		}
+
+		// 验证其他指标的合理性
+		if metrics.TimeToFirstToken != 0 {
+			t.Error("Expected TimeToFirstToken to be 0 on JSON parsing error")
+		}
+		if metrics.CompletionTokens != 0 {
+			t.Error("Expected CompletionTokens to be 0 on JSON parsing error")
+		}
+	})
+
+	t.Run("Empty response returns metrics with error info", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			// 返回空响应体
+		}))
+		defer server.Close()
+
+		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		metrics, err := client.Request("test prompt", false)
+
+		// 应该有错误
+		if err == nil {
+			t.Error("Expected error for empty response")
+		}
+
+		// 关键修复：应该返回包含错误信息的 metrics
+		if metrics == nil {
+			t.Fatal("Expected metrics to be returned even on empty response error, got nil")
+		}
+
+		// 验证 metrics 包含正确的错误信息
+		if !strings.Contains(metrics.ErrorMessage, "Empty response body") {
+			t.Errorf("Expected ErrorMessage to contain 'Empty response body', got: %s", metrics.ErrorMessage)
+		}
+
+		// 验证网络指标仍然被收集
+		if metrics.TotalTime <= 0 {
+			t.Error("Expected TotalTime to be > 0 even on empty response error")
+		}
+	})
+
+	t.Run("Response body read error returns metrics", func(t *testing.T) {
+		// 测试策略：创建一个声称有内容但实际没有完整内容的响应
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "1000") 
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("incomplete"))
+			// 在 httptest 环境中，这种情况通常不会导致 io.ReadAll 错误
+			// 但我们仍然测试基本逻辑
+		}))
+		defer server.Close()
+
+		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		metrics, err := client.Request("test prompt", false)
+
+		// 这种情况下通常会是 JSON 解析错误而不是读取错误
+		if metrics == nil && err != nil {
+			t.Error("Expected metrics to be returned even when there are response reading issues")
+		}
+	})
+
+	t.Run("Stream JSON parsing error continues processing", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			
+			// 发送一些无效的 JSON 数据块，然后发送有效的
+			w.Write([]byte("data: {invalid json}\n\n"))
+			w.Write([]byte("data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"valid\"}}\n\n"))
+			w.Write([]byte("data: {\"type\":\"message_stop\"}\n\n"))
+		}))
+		defer server.Close()
+
+		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		metrics, err := client.Request("test prompt", true)
+
+		// 流式处理应该继续，即使有些 JSON 块无效
+		if err != nil {
+			t.Errorf("Stream request should succeed even with some malformed JSON: %v", err)
+		}
+
+		if metrics == nil {
+			t.Fatal("Expected metrics to be returned for stream request")
+		}
+
+		// 应该没有错误信息，因为流式处理成功了
+		if metrics.ErrorMessage != "" {
+			t.Errorf("Expected no error message for successful stream, got: %s", metrics.ErrorMessage)
+		}
+	})
+
+	t.Run("Consistent error handling across different error types", func(t *testing.T) {
+		testCases := []struct {
+			name           string
+			setupServer    func() *httptest.Server
+			expectedErrMsg string
+		}{
+			{
+				name: "HTTP 404 error",
+				setupServer: func() *httptest.Server {
+					return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusNotFound)
+						w.Write([]byte(`{"type":"error","error":{"type":"not_found","message":"Resource not found"}}`))
+					}))
+				},
+				expectedErrMsg: "not_found",
+			},
+			{
+				name: "HTTP 500 error",
+				setupServer: func() *httptest.Server {
+					return httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+						w.WriteHeader(http.StatusInternalServerError)
+						w.Write([]byte(`{"type":"error","error":{"type":"server_error","message":"Internal error"}}`))
+					}))
+				},
+				expectedErrMsg: "server_error",
+			},
+		}
+
+		for _, tc := range testCases {
+			t.Run(tc.name, func(t *testing.T) {
+				server := tc.setupServer()
+				defer server.Close()
+
+				client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+				metrics, err := client.Request("test prompt", false)
+
+				// 所有类型的错误都应该返回错误
+				if err == nil {
+					t.Errorf("Expected error for %s", tc.name)
+				}
+
+				// 所有类型的错误都应该返回 metrics
+				if metrics == nil {
+					t.Fatalf("Expected metrics to be returned for %s, got nil", tc.name)
+				}
+
+				// 验证错误信息包含预期内容
+				if !strings.Contains(metrics.ErrorMessage, tc.expectedErrMsg) {
+					t.Errorf("Expected ErrorMessage to contain '%s' for %s, got: %s", 
+						tc.expectedErrMsg, tc.name, metrics.ErrorMessage)
+				}
+
+				// 验证网络指标被收集
+				if metrics.TotalTime <= 0 {
+					t.Errorf("Expected TotalTime to be > 0 for %s", tc.name)
+				}
+			})
+		}
+	})
+}

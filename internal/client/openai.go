@@ -450,14 +450,57 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 
 		responseData, err := io.ReadAll(resp.Body)
 		if err != nil {
-			return nil, err
+			// 记录读取响应错误日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Failed to read response body", err)
+			}
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        time.Since(t0),
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     fmt.Sprintf("Response body read error: %s", err.Error()),
+			}, err
 		}
 
 		totalTime := time.Since(t0)
 		
+		// 检查空响应
+		if len(responseData) == 0 {
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Empty response body", nil)
+			}
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        totalTime,
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     "Empty response body",
+			}, fmt.Errorf("empty response body")
+		}
+		
 		var chatResp ChatCompletionResponse
 		if err := json.Unmarshal(responseData, &chatResp); err != nil {
-			return nil, err
+			// 记录JSON解析错误日志
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Failed to parse response JSON", err)
+			}
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        totalTime,
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     fmt.Sprintf("JSON parsing error: %s", err.Error()),
+			}, err
 		}
 
 		return &ResponseMetrics{

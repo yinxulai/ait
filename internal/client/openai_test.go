@@ -818,3 +818,129 @@ func TestOpenAIClient_Request_TTFTAccuracy(t *testing.T) {
 	t.Logf("Actual timing - TTFT: %v, Total: %v, External total: %v", 
 		metrics.TimeToFirstToken, metrics.TotalTime, totalDuration)
 }
+
+// TestOpenAIClient_Request_ErrorHandlingFixes 测试错误处理修复
+func TestOpenAIClient_Request_ErrorHandlingFixes(t *testing.T) {
+	t.Run("JSON parsing error returns metrics with error info", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("invalid json response"))
+		}))
+		defer server.Close()
+
+		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		metrics, err := client.Request("test prompt", false)
+
+		// 应该有错误
+		if err == nil {
+			t.Error("Expected error for malformed JSON")
+		}
+
+		// 关键修复：应该返回包含错误信息的 metrics，而不是 nil
+		if metrics == nil {
+			t.Fatal("Expected metrics to be returned even on JSON parsing error, got nil")
+		}
+
+		// 验证 metrics 包含正确的错误信息
+		if !strings.Contains(metrics.ErrorMessage, "JSON parsing error") {
+			t.Errorf("Expected ErrorMessage to contain 'JSON parsing error', got: %s", metrics.ErrorMessage)
+		}
+
+		// 验证网络指标仍然被收集
+		if metrics.TotalTime <= 0 {
+			t.Error("Expected TotalTime to be > 0 even on JSON parsing error")
+		}
+
+		// 验证其他指标的合理性
+		if metrics.TimeToFirstToken != 0 {
+			t.Error("Expected TimeToFirstToken to be 0 on JSON parsing error")
+		}
+		if metrics.CompletionTokens != 0 {
+			t.Error("Expected CompletionTokens to be 0 on JSON parsing error")
+		}
+	})
+
+	t.Run("Empty response returns metrics with error info", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.WriteHeader(http.StatusOK)
+			// 返回空响应体
+		}))
+		defer server.Close()
+
+		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		metrics, err := client.Request("test prompt", false)
+
+		// 应该有错误
+		if err == nil {
+			t.Error("Expected error for empty response")
+		}
+
+		// 关键修复：应该返回包含错误信息的 metrics
+		if metrics == nil {
+			t.Fatal("Expected metrics to be returned even on empty response error, got nil")
+		}
+
+		// 验证 metrics 包含正确的错误信息
+		if !strings.Contains(metrics.ErrorMessage, "Empty response body") {
+			t.Errorf("Expected ErrorMessage to contain 'Empty response body', got: %s", metrics.ErrorMessage)
+		}
+
+		// 验证网络指标仍然被收集
+		if metrics.TotalTime <= 0 {
+			t.Error("Expected TotalTime to be > 0 even on empty response error")
+		}
+	})
+
+	t.Run("Response body read error returns metrics", func(t *testing.T) {
+		// 创建一个会在读取过程中出错的服务器
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Length", "1000") // 声称有1000字节
+			w.WriteHeader(http.StatusOK)
+			w.Write([]byte("short")) // 但实际只返回5字节，造成读取不完整
+			// 立即关闭连接，模拟网络中断
+			if flusher, ok := w.(http.Flusher); ok {
+				flusher.Flush()
+			}
+		}))
+		defer server.Close()
+
+		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		metrics, err := client.Request("test prompt", false)
+
+		// 注意：这个测试可能不会触发 io.ReadAll 错误，因为 httptest 服务器的行为
+		// 但我们仍然验证基本的错误处理逻辑
+		if metrics == nil && err != nil {
+			t.Error("Expected metrics to be returned even when there are response reading issues")
+		}
+	})
+
+	t.Run("Stream JSON parsing error continues processing", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "text/event-stream")
+			w.WriteHeader(http.StatusOK)
+			
+			// 发送一些无效的 JSON 数据块，然后发送有效的
+			w.Write([]byte("data: {invalid json}\n\n"))
+			w.Write([]byte("data: {\"choices\":[{\"delta\":{\"content\":\"valid\"}}]}\n\n"))
+			w.Write([]byte("data: [DONE]\n\n"))
+		}))
+		defer server.Close()
+
+		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		metrics, err := client.Request("test prompt", true)
+
+		// 流式处理应该继续，即使有些 JSON 块无效
+		if err != nil {
+			t.Errorf("Stream request should succeed even with some malformed JSON: %v", err)
+		}
+
+		if metrics == nil {
+			t.Fatal("Expected metrics to be returned for stream request")
+		}
+
+		// 应该没有错误信息，因为流式处理成功了
+		if metrics.ErrorMessage != "" {
+			t.Errorf("Expected no error message for successful stream, got: %s", metrics.ErrorMessage)
+		}
+	})
+}

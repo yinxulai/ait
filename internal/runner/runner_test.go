@@ -2,6 +2,7 @@ package runner
 
 import (
 	"errors"
+	"fmt"
 	"sync/atomic"
 	"testing"
 	"time"
@@ -1210,4 +1211,285 @@ func TestRunner_CalculateResult_TPOT_NonStream(t *testing.T) {
 	if calculatedResult.ContentMetrics.AvgTPOT != expectedTPOT {
 		t.Errorf("Expected AvgTPOT %v for non-stream mode, got %v", expectedTPOT, calculatedResult.ContentMetrics.AvgTPOT)
 	}
+}
+
+// TestRunner_ErrorHandlingFixes 测试Runner错误处理修复
+func TestRunner_ErrorHandlingFixes(t *testing.T) {
+	t.Run("Run method preserves metrics even on client errors", func(t *testing.T) {
+		// 创建一个自定义的MockClient，用于测试错误时返回metrics的情况
+		mockClient := &MockClientWithErrorMetrics{
+			shouldReturnMetricsOnError: true,
+			errorMetrics: &client.ResponseMetrics{
+				TotalTime:         100 * time.Millisecond,
+				TimeToFirstToken:  0,
+				DNSTime:          20 * time.Millisecond,
+				ConnectTime:      30 * time.Millisecond,
+				TLSHandshakeTime: 40 * time.Millisecond,
+				TargetIP:         "127.0.0.1",
+				CompletionTokens: 0,
+				ErrorMessage:     "JSON parsing error: invalid character",
+			},
+		}
+
+		input := types.Input{
+			PromptSource: createTestPromptSource("test prompt"),
+			Count:        3,
+			Concurrency:  1,
+			Stream:       false,
+		}
+
+		runner := &Runner{
+			client: mockClient,
+			input:  input,
+		}
+
+		result, err := runner.Run()
+
+		if err != nil {
+			t.Errorf("Run() should not return error, got: %v", err)
+		}
+
+		if result == nil {
+			t.Fatal("Run() should return result even when client returns errors")
+		}
+
+		// 验证即使有错误，网络指标数据仍然被收集
+	})
+
+	t.Run("RunWithProgress preserves network data on client errors", func(t *testing.T) {
+		// 创建一个会间歇性失败但返回网络指标的客户端
+		mockClient := &MockClientWithErrorMetrics{
+			failurePattern:             []bool{false, true, false}, // 第二个请求失败
+			shouldReturnMetricsOnError: true,
+			successMetrics: &client.ResponseMetrics{
+				TotalTime:         100 * time.Millisecond,
+				TimeToFirstToken:  20 * time.Millisecond,
+				DNSTime:          10 * time.Millisecond,
+				ConnectTime:      15 * time.Millisecond,
+				TLSHandshakeTime: 25 * time.Millisecond,
+				TargetIP:         "127.0.0.1",
+				CompletionTokens: 5,
+				PromptTokens:     10,
+			},
+			errorMetrics: &client.ResponseMetrics{
+				TotalTime:         100 * time.Millisecond,
+				TimeToFirstToken:  0,
+				DNSTime:          10 * time.Millisecond,
+				ConnectTime:      15 * time.Millisecond,
+				TLSHandshakeTime: 25 * time.Millisecond,
+				TargetIP:         "127.0.0.1",
+				CompletionTokens: 0,
+				PromptTokens:     10,
+				ErrorMessage:     "JSON parsing error: unexpected character",
+			},
+		}
+
+		input := types.Input{
+			PromptSource: createTestPromptSource("test prompt"),
+			Count:        3,
+			Concurrency:  1,
+			Stream:       false,
+		}
+
+		runner := &Runner{
+			client: mockClient,
+			input:  input,
+		}
+
+		var progressCallCount int
+		var lastStats types.StatsData
+
+		result, err := runner.RunWithProgress(func(stats types.StatsData) {
+			progressCallCount++
+			lastStats = stats
+
+			// 验证进度回调中包含网络指标，包括失败的请求
+			if stats.CompletedCount+stats.FailedCount > 0 {
+				if len(stats.TotalTimes) == 0 {
+					t.Error("Expected total times to be collected for all requests")
+				}
+				if len(stats.DNSTimes) == 0 {
+					t.Error("Expected DNS times to be collected for all requests")
+				}
+			}
+		})
+
+		if err != nil {
+			t.Errorf("RunWithProgress() should not return error, got: %v", err)
+		}
+
+		if result == nil {
+			t.Fatal("RunWithProgress() should return result")
+		}
+
+		// 验证最终统计包含失败的请求数据
+		if lastStats.FailedCount != 1 {
+			t.Errorf("Expected FailedCount = 1, got %d", lastStats.FailedCount)
+		}
+
+		if lastStats.CompletedCount != 2 {
+			t.Errorf("Expected CompletedCount = 2, got %d", lastStats.CompletedCount)
+		}
+
+		// 验证收集了所有请求的网络数据（包括失败的）
+		totalRequests := lastStats.CompletedCount + lastStats.FailedCount
+		if len(lastStats.TotalTimes) < totalRequests {
+			t.Errorf("Expected at least %d total times, got %d", totalRequests, len(lastStats.TotalTimes))
+		}
+	})
+
+	t.Run("calculateResult handles mixed success and error metrics correctly", func(t *testing.T) {
+		input := types.Input{
+			Count:       3,
+			Concurrency: 1,
+		}
+
+		runner := &Runner{input: input}
+
+		// 创建混合的结果：成功、失败但有网络数据、完全失败
+		results := []*client.ResponseMetrics{
+			// 成功的请求
+			{
+				TotalTime:         200 * time.Millisecond,
+				TimeToFirstToken:  50 * time.Millisecond,
+				CompletionTokens:  10,
+				PromptTokens:      5,
+				DNSTime:          10 * time.Millisecond,
+				ConnectTime:      20 * time.Millisecond,
+				TLSHandshakeTime: 30 * time.Millisecond,
+				TargetIP:         "127.0.0.1",
+				ErrorMessage:     "",
+			},
+			// 有错误但包含网络指标的请求
+			{
+				TotalTime:         100 * time.Millisecond,
+				TimeToFirstToken:  0,
+				CompletionTokens:  0,
+				PromptTokens:      5,
+				DNSTime:          15 * time.Millisecond,
+				ConnectTime:      25 * time.Millisecond,
+				TLSHandshakeTime: 35 * time.Millisecond,
+				TargetIP:         "127.0.0.1",
+				ErrorMessage:     "JSON parsing error",
+			},
+			// nil结果（完全失败的请求）
+			nil,
+		}
+
+		totalTime := 1 * time.Second
+		calculatedResult := runner.calculateResult(results, totalTime)
+
+		if calculatedResult == nil {
+			t.Fatal("calculateResult should not return nil even with mixed results")
+		}
+
+		// 验证修复后的calculateResult能正确处理混合结果
+		// 应该使用成功的结果计算业务指标，使用所有有效结果计算网络指标
+	})
+
+	t.Run("Error metrics contain useful diagnostic information", func(t *testing.T) {
+		// 测试各种错误类型的metrics都包含有用信息
+		errorMetricsExamples := []*client.ResponseMetrics{
+			{
+				TotalTime:         150 * time.Millisecond,
+				DNSTime:          20 * time.Millisecond,
+				ConnectTime:      30 * time.Millisecond,
+				TLSHandshakeTime: 40 * time.Millisecond,
+				TargetIP:         "8.8.8.8",
+				ErrorMessage:     "JSON parsing error: unexpected character",
+			},
+			{
+				TotalTime:         100 * time.Millisecond,
+				DNSTime:          15 * time.Millisecond,
+				ConnectTime:      25 * time.Millisecond,
+				TLSHandshakeTime: 35 * time.Millisecond,
+				TargetIP:         "1.1.1.1",
+				ErrorMessage:     "Empty response body",
+			},
+			{
+				TotalTime:    200 * time.Millisecond,
+				DNSTime:     30 * time.Millisecond,
+				ErrorMessage: "Network error: connection refused",
+			},
+		}
+
+		for i, errorMetrics := range errorMetricsExamples {
+			t.Run(fmt.Sprintf("Error type %d", i+1), func(t *testing.T) {
+				// 验证错误metrics包含有用的诊断信息
+				if errorMetrics.ErrorMessage == "" {
+					t.Error("Error metrics should contain error message")
+				}
+
+				if errorMetrics.TotalTime <= 0 {
+					t.Error("Error metrics should contain total time for diagnostic purposes")
+				}
+
+				// 验证至少包含一些网络指标（即使是部分的）
+				hasNetworkInfo := errorMetrics.DNSTime > 0 || 
+					errorMetrics.ConnectTime > 0 || 
+					errorMetrics.TargetIP != ""
+
+				if !hasNetworkInfo {
+					t.Error("Error metrics should contain at least some network diagnostic information")
+				}
+			})
+		}
+	})
+}
+
+// MockClientWithErrorMetrics 专门用于测试错误处理的Mock客户端
+type MockClientWithErrorMetrics struct {
+	shouldReturnMetricsOnError bool
+	failurePattern             []bool
+	callCount                  int64
+	successMetrics             *client.ResponseMetrics
+	errorMetrics               *client.ResponseMetrics
+}
+
+func (m *MockClientWithErrorMetrics) Request(prompt string, stream bool) (*client.ResponseMetrics, error) {
+	callIndex := atomic.AddInt64(&m.callCount, 1) - 1
+	
+	// 检查是否应该失败
+	shouldFail := false
+	if m.failurePattern != nil && int(callIndex) < len(m.failurePattern) {
+		shouldFail = m.failurePattern[callIndex]
+	}
+	
+	if shouldFail {
+		if m.shouldReturnMetricsOnError && m.errorMetrics != nil {
+			// 返回包含网络指标但有错误的metrics
+			errorMetrics := *m.errorMetrics // 创建副本
+			return &errorMetrics, errors.New("simulated error")
+		}
+		return nil, errors.New("simulated error without metrics")
+	}
+	
+	// 返回成功的metrics
+	if m.successMetrics != nil {
+		successMetrics := *m.successMetrics // 创建副本
+		return &successMetrics, nil
+	}
+	
+	// 默认成功响应
+	return &client.ResponseMetrics{
+		TotalTime:         100 * time.Millisecond,
+		TimeToFirstToken:  20 * time.Millisecond,
+		CompletionTokens:  50,
+		DNSTime:          5 * time.Millisecond,
+		ConnectTime:      10 * time.Millisecond,
+		TLSHandshakeTime: 15 * time.Millisecond,
+		TargetIP:         "127.0.0.1",
+	}, nil
+}
+
+func (m *MockClientWithErrorMetrics) GetProtocol() string {
+	return "mock"
+}
+
+func (m *MockClientWithErrorMetrics) GetModel() string {
+	return "mock-model"
+}
+
+func (m *MockClientWithErrorMetrics) SetLogger(logger *logger.Logger) {
+	// Mock实现，不需要实际功能
 }

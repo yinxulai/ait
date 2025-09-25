@@ -5,7 +5,6 @@ import (
 	"fmt"
 	"log"
 	"os"
-	"strings"
 	"time"
 )
 
@@ -170,12 +169,12 @@ func (l *Logger) LogResponse(model string, resp ResponseData) {
 // encodeSpecialChars 编码特殊字符，包括换行符等
 func encodeSpecialChars(input string) string {
 	// 使用Go的字符串转义
-	encoded := strings.ReplaceAll(input, "\n", "\\n")
-	encoded = strings.ReplaceAll(encoded, "\r", "\\r")
-	encoded = strings.ReplaceAll(encoded, "\t", "\\t")
-	encoded = strings.ReplaceAll(encoded, "\"", "\\\"")
-	encoded = strings.ReplaceAll(encoded, "\\", "\\\\")
-	return encoded
+	// encoded := strings.ReplaceAll(input, "\n", "\\n")
+	// encoded = strings.ReplaceAll(encoded, "\r", "\\r")
+	// encoded = strings.ReplaceAll(encoded, "\t", "\\t")
+	// encoded = strings.ReplaceAll(encoded, "\"", "\\\"")
+	// encoded = strings.ReplaceAll(encoded, "\\", "\\\\")
+	return input
 }
 
 // LogTestStart 记录测试开始

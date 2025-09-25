@@ -402,7 +402,16 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			if c.logger != nil && c.logger.IsEnabled() {
 				c.logger.Error(c.Model, "Failed to read response body", err)
 			}
-			return nil, err
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        time.Since(t0),
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     fmt.Sprintf("Response body read error: %s", err.Error()),
+			}, err
 		}
 
 		totalTime := time.Since(t0)
@@ -422,13 +431,39 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			})
 		}
 		
+		// 检查空响应
+		if len(responseData) == 0 {
+			if c.logger != nil && c.logger.IsEnabled() {
+				c.logger.Error(c.Model, "Empty response body", nil)
+			}
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        totalTime,
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     "Empty response body",
+			}, fmt.Errorf("empty response body")
+		}
+		
 		var anthropicResp AnthropicResponse
 		if err := json.Unmarshal(responseData, &anthropicResp); err != nil {
 			// 记录JSON解析错误日志
 			if c.logger != nil && c.logger.IsEnabled() {
 				c.logger.Error(c.Model, "Failed to parse response JSON", err)
 			}
-			return nil, err
+			return &ResponseMetrics{
+				TimeToFirstToken: 0,
+				TotalTime:        totalTime,
+				DNSTime:          dnsTime,
+				ConnectTime:      connectTime,
+				TLSHandshakeTime: tlsTime,
+				TargetIP:         targetIP,
+				CompletionTokens: 0,
+				ErrorMessage:     fmt.Sprintf("JSON parsing error: %s", err.Error()),
+			}, err
 		}
 
 		// 记录测试完成日志

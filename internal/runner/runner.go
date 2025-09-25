@@ -63,6 +63,10 @@ func (r *Runner) Run() (*types.ReportData, error) {
 			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
 			if err != nil {
 				atomic.AddInt64(&failed, 1)
+				// 即使有错误，也尝试保存 metrics（如果有的话）
+				if metrics != nil {
+					results[idx] = metrics
+				}
 				return
 			}
 
@@ -155,6 +159,19 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 				errorMessages = append(errorMessages, err.Error())
 				ttftsMutex.Unlock()
 				atomic.AddInt64(&failed, 1)
+				// 即使有错误，也尝试保存 metrics（如果有的话）
+				if metrics != nil {
+					results[idx] = metrics
+					// 仍然收集网络性能指标，即使请求失败
+					ttftsMutex.Lock()
+					ttfts = append(ttfts, metrics.TimeToFirstToken)
+					totalTimes = append(totalTimes, metrics.TotalTime)
+					dnsTimes = append(dnsTimes, metrics.DNSTime)
+					connectTimes = append(connectTimes, metrics.ConnectTime)
+					tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
+					tokenCounts = append(tokenCounts, metrics.CompletionTokens)
+					ttftsMutex.Unlock()
+				}
 				return
 			}
 
@@ -215,15 +232,39 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		return &types.ReportData{}
 	}
 
-	validResults := make([]*client.ResponseMetrics, 0)
+	// 分别收集所有结果和成功结果
+	allResults := make([]*client.ResponseMetrics, 0)
+	successResults := make([]*client.ResponseMetrics, 0)
+	
 	for _, result := range results {
-		if result != nil && result.CompletionTokens > 0 {
-			validResults = append(validResults, result)
+		if result != nil {
+			allResults = append(allResults, result)
+			// 只有没有错误且有token输出的才算成功
+			if result.ErrorMessage == "" && result.CompletionTokens > 0 {
+				successResults = append(successResults, result)
+			}
 		}
 	}
 
-	if len(validResults) == 0 {
+	// 如果完全没有数据，返回空结果
+	if len(allResults) == 0 {
 		return &types.ReportData{}
+	}
+
+	// 使用成功结果计算业务指标，使用所有结果计算网络指标
+	validResults := successResults
+	if len(validResults) == 0 {
+		// 如果没有成功的结果，至少尝试使用有部分数据的结果
+		for _, result := range allResults {
+			if result.TotalTime > 0 {
+				validResults = append(validResults, result)
+			}
+		}
+		
+		// 如果仍然没有可用数据
+		if len(validResults) == 0 {
+			return &types.ReportData{}
+		}
 	}
 
 	// 初始化最小值和最大值
