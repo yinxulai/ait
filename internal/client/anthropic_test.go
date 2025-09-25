@@ -8,7 +8,21 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yinxulai/ait/internal/types"
 )
+
+// createTestConfig 创建用于测试的标准配置
+func createTestConfig(baseUrl, apiKey, model string, timeout time.Duration, thinking bool) types.Input {
+	return types.Input{
+		Protocol: "anthropic",
+		BaseUrl:  baseUrl,
+		ApiKey:   apiKey,
+		Model:    model,
+		Timeout:  timeout,
+		Thinking: thinking,
+	}
+}
 
 // createMockAnthropicServer 创建用于测试 Anthropic API 的模拟 HTTP 服务器
 func createMockAnthropicServer(responseDelay time.Duration, stream bool, statusCode int) *httptest.Server {
@@ -94,29 +108,33 @@ func createMockAnthropicServer(responseDelay time.Duration, stream bool, statusC
 
 func TestNewAnthropicClient(t *testing.T) {
 	tests := []struct {
-		name    string
-		baseUrl string
-		apiKey  string
-		model   string
-		want    *AnthropicClient
+		name   string
+		config types.Input
+		want   *AnthropicClient
 	}{
 		{
-			name:    "valid anthropic client",
-			baseUrl: "https://api.anthropic.com",
-			apiKey:  "test-key",
-			model:   "claude-3-sonnet-20240229",
+			name: "valid anthropic client",
+			config: types.Input{
+				Protocol: "anthropic",
+				BaseUrl:  "https://api.anthropic.com",
+				ApiKey:   "test-key",
+				Model:    "claude-3-sonnet-20240229",
+				Timeout:  30 * time.Second,
+				Thinking: false,
+			},
 			want: &AnthropicClient{
 				BaseUrl:  "https://api.anthropic.com",
 				ApiKey:   "test-key",
 				Model:    "claude-3-sonnet-20240229",
 				Provider: "anthropic",
+				Thinking: false,
 			},
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewAnthropicClient(tt.baseUrl, tt.apiKey, tt.model)
+			got := NewAnthropicClient(tt.config)
 
 			if got.BaseUrl != tt.want.BaseUrl {
 				t.Errorf("NewAnthropicClient().BaseUrl = %v, want %v", got.BaseUrl, tt.want.BaseUrl)
@@ -133,12 +151,16 @@ func TestNewAnthropicClient(t *testing.T) {
 			if got.Provider != tt.want.Provider {
 				t.Errorf("NewAnthropicClient().Provider = %v, want %v", got.Provider, tt.want.Provider)
 			}
+
+			if got.Thinking != tt.want.Thinking {
+				t.Errorf("NewAnthropicClient().Thinking = %v, want %v", got.Thinking, tt.want.Thinking)
+			}
 		})
 	}
 }
 
 func TestAnthropicClient_GetProtocol(t *testing.T) {
-	client := NewAnthropicClient("https://api.anthropic.com", "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	if got := client.GetProtocol(); got != "anthropic" {
 		t.Errorf("AnthropicClient.GetProtocol() = %v, want %v", got, "anthropic")
@@ -147,7 +169,7 @@ func TestAnthropicClient_GetProtocol(t *testing.T) {
 
 func TestAnthropicClient_GetModel(t *testing.T) {
 	model := "claude-3-sonnet-20240229"
-	client := NewAnthropicClient("https://api.anthropic.com", "test-key", model)
+	client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", model, 30*time.Second, false))
 
 	if got := client.GetModel(); got != model {
 		t.Errorf("AnthropicClient.GetModel() = %v, want %v", got, model)
@@ -158,7 +180,7 @@ func TestAnthropicClient_Request_NonStream(t *testing.T) {
 	server := createMockAnthropicServer(100*time.Millisecond, false, http.StatusOK)
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	start := time.Now()
 	metrics, err := client.Request("test prompt", false)
@@ -195,7 +217,7 @@ func TestAnthropicClient_Request_Stream(t *testing.T) {
 	server := createMockAnthropicServer(50*time.Millisecond, true, http.StatusOK)
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	start := time.Now()
 	metrics, err := client.Request("test prompt", true)
@@ -228,7 +250,7 @@ func TestAnthropicClient_Request_ServerError(t *testing.T) {
 	server := createMockAnthropicServer(0, false, http.StatusInternalServerError)
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	metrics, err := client.Request("test prompt", false)
 
@@ -269,7 +291,7 @@ func TestAnthropicClient_Request_InvalidEndpoint(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	// 这应该成功，因为我们使用的是正确的端点
 	_, err := client.Request("test prompt", false)
@@ -301,7 +323,7 @@ func TestAnthropicClient_Request_MissingHeaders(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	// 这应该成功，因为我们的客户端发送了正确的请求头
 	_, err := client.Request("test prompt", false)
@@ -312,7 +334,7 @@ func TestAnthropicClient_Request_MissingHeaders(t *testing.T) {
 
 func TestAnthropicClient_Request_NetworkError(t *testing.T) {
 	// 使用一个无效的地址来模拟网络错误
-	client := NewAnthropicClient("http://invalid-host-that-does-not-exist.example", "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig("http://invalid-host-that-does-not-exist.example", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	metrics, err := client.Request("test prompt", false)
 
@@ -343,7 +365,7 @@ func TestAnthropicClient_Request_NetworkError(t *testing.T) {
 
 func TestAnthropicClient_Request_InvalidURL(t *testing.T) {
 	// 使用一个格式错误的 URL
-	client := NewAnthropicClient("://invalid-url", "test-key", "claude-3-sonnet-20240229")
+	client := NewAnthropicClient(createTestConfig("://invalid-url", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	metrics, err := client.Request("test prompt", false)
 
@@ -364,52 +386,61 @@ func TestAnthropicClient_Request_InvalidURL(t *testing.T) {
 	}
 }
 
-func TestNewAnthropicClientWithTimeout(t *testing.T) {
+func TestNewAnthropicClientTimeout(t *testing.T) {
 	tests := []struct {
 		name        string
-		baseUrl     string
-		apiKey      string
-		model       string
-		timeout     time.Duration
+		config      types.Input
 		wantTimeout time.Duration
 	}{
 		{
-			name:        "with custom timeout",
-			baseUrl:     "https://api.anthropic.com",
-			apiKey:      "test-key", 
-			model:       "claude-3-sonnet",
-			timeout:     10 * time.Second,
+			name: "with custom timeout",
+			config: types.Input{
+				Protocol: "anthropic",
+				BaseUrl:  "https://api.anthropic.com",
+				ApiKey:   "test-key",
+				Model:    "claude-3-sonnet",
+				Timeout:  10 * time.Second,
+				Thinking: false,
+			},
 			wantTimeout: 10 * time.Second,
 		},
 		{
-			name:        "with zero timeout",
-			baseUrl:     "https://api.anthropic.com",
-			apiKey:      "test-key",
-			model:       "claude-3-opus",
-			timeout:     0,
+			name: "with zero timeout",
+			config: types.Input{
+				Protocol: "anthropic",
+				BaseUrl:  "https://api.anthropic.com",
+				ApiKey:   "test-key",
+				Model:    "claude-3-opus",
+				Timeout:  0,
+				Thinking: false,
+			},
 			wantTimeout: 0,
 		},
 		{
-			name:        "with long timeout",
-			baseUrl:     "https://custom.api.com",
-			apiKey:      "test-key",
-			model:       "claude-3-haiku",
-			timeout:     60 * time.Second,
+			name: "with long timeout",
+			config: types.Input{
+				Protocol: "anthropic",
+				BaseUrl:  "https://custom.api.com",
+				ApiKey:   "test-key",
+				Model:    "claude-3-haiku",
+				Timeout:  60 * time.Second,
+				Thinking: false,
+			},
 			wantTimeout: 60 * time.Second,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewAnthropicClientWithTimeout(tt.baseUrl, tt.apiKey, tt.model, tt.timeout)
+			got := NewAnthropicClient(tt.config)
 
 			if got.httpClient == nil {
-				t.Error("NewAnthropicClientWithTimeout().httpClient should not be nil")
+				t.Error("NewAnthropicClient().httpClient should not be nil")
 				return
 			}
 
 			if got.httpClient.Timeout != tt.wantTimeout {
-				t.Errorf("NewAnthropicClientWithTimeout().httpClient.Timeout = %v, want %v", got.httpClient.Timeout, tt.wantTimeout)
+				t.Errorf("NewAnthropicClient().httpClient.Timeout = %v, want %v", got.httpClient.Timeout, tt.wantTimeout)
 			}
 
 			// 验证 Transport 设置
@@ -451,7 +482,7 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 验证客户端确实禁用了连接复用
 	transport, ok := client.httpClient.Transport.(*http.Transport)
@@ -496,7 +527,7 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 // TestAnthropicClient_NoConnectionReuse 专门测试连接不复用的行为
 func TestAnthropicClient_NoConnectionReuse(t *testing.T) {
 	// 验证客户端的 Transport 配置确实禁用了连接复用
-	client := NewAnthropicClient("https://api.anthropic.com", "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", "claude-3-sonnet", 30*time.Second, false))
 	
 	transport, ok := client.httpClient.Transport.(*http.Transport)
 	if !ok {
@@ -515,7 +546,7 @@ func TestAnthropicClient_NoConnectionReuse(t *testing.T) {
 }
 
 func TestAnthropicClient_TransportConfiguration(t *testing.T) {
-	client := NewAnthropicClient("https://api.anthropic.com", "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	if client.httpClient == nil {
 		t.Error("Expected client to have httpClient")
@@ -576,7 +607,7 @@ func TestAnthropicClient_Request_MalformedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 测试非流式请求的 JSON 解析错误
 	t.Run("non-stream malformed JSON", func(t *testing.T) {
@@ -616,7 +647,7 @@ func TestAnthropicClient_Request_BodyReadError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	_, err := client.Request("test prompt", false)
 	if err == nil {
@@ -637,7 +668,7 @@ func TestAnthropicClient_Request_ScannerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 这个测试可能会因为 scanner 的缓冲区限制而失败
 	metrics, err := client.Request("test prompt", true)
@@ -692,7 +723,7 @@ func TestAnthropicClient_Request_EdgeCases(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+			client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 			_, err := client.Request("test", tt.stream)
 
 			if tt.expectError && err == nil {
@@ -717,7 +748,7 @@ func TestAnthropicClient_ConcurrentRequests(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 	
 	// 并发执行多个请求
 	numRequests := 10
@@ -770,7 +801,7 @@ func TestAnthropicClient_Request_TimeoutHandling(t *testing.T) {
 	defer server.Close()
 
 	// 创建一个超时时间很短的客户端
-	client := NewAnthropicClientWithTimeout(server.URL, "test-key", "claude-3-sonnet", 100*time.Millisecond)
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 100*time.Millisecond, false))
 	
 	_, err := client.Request("timeout test", false)
 	if err == nil {
@@ -801,7 +832,7 @@ func TestAnthropicClient_Request_EmptyContentArray(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 测试非流式请求
 	metrics, err := client.Request("test", false)
@@ -854,7 +885,7 @@ func TestAnthropicClient_Request_StreamWithThinking(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 	
 	start := time.Now()
 	metrics, err := client.Request("test prompt", true)
@@ -909,7 +940,7 @@ func TestAnthropicClient_Request_StreamWithPartialJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 	
 	start := time.Now()
 	metrics, err := client.Request("test prompt", true)
@@ -970,7 +1001,7 @@ func TestAnthropicClient_Request_StreamWithMixedContent(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 	
 	start := time.Now()
 	metrics, err := client.Request("test prompt", true)
@@ -1037,7 +1068,7 @@ func TestAnthropicClient_Request_StreamWithEmptyThinkingAndPartialJSON(t *testin
 	}))
 	defer server.Close()
 
-	client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 	
 	start := time.Now()
 	metrics, err := client.Request("test prompt", true)
@@ -1075,7 +1106,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 		metrics, err := client.Request("test prompt", false)
 
 		// 应该有错误
@@ -1114,7 +1145,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 		metrics, err := client.Request("test prompt", false)
 
 		// 应该有错误
@@ -1149,7 +1180,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 		metrics, err := client.Request("test prompt", false)
 
 		// 这种情况下通常会是 JSON 解析错误而不是读取错误
@@ -1170,7 +1201,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 		metrics, err := client.Request("test prompt", true)
 
 		// 流式处理应该继续，即使有些 JSON 块无效
@@ -1221,7 +1252,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 				server := tc.setupServer()
 				defer server.Close()
 
-				client := NewAnthropicClient(server.URL, "test-key", "claude-3-sonnet")
+				client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 				metrics, err := client.Request("test prompt", false)
 
 				// 所有类型的错误都应该返回错误
@@ -1247,4 +1278,47 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 			})
 		}
 	})
+}
+
+func TestAnthropicClientWithConfig(t *testing.T) {
+	tests := []struct {
+		name        string
+		thinking    bool
+		expectField bool
+	}{
+		{
+			name:        "thinking enabled",
+			thinking:    true,
+			expectField: true,
+		},
+		{
+			name:        "thinking disabled",
+			thinking:    false,
+			expectField: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", "claude-3-sonnet", 30*time.Second, tt.thinking))
+			
+			// 验证 thinking 字段设置正确
+			if client.Thinking != tt.thinking {
+				t.Errorf("Expected Thinking = %v, got %v", tt.thinking, client.Thinking)
+			}
+			
+			// 验证其他基本字段
+			if client.BaseUrl != "https://api.anthropic.com" {
+				t.Errorf("Expected BaseUrl = https://api.anthropic.com, got %s", client.BaseUrl)
+			}
+			
+			if client.Model != "claude-3-sonnet" {
+				t.Errorf("Expected Model = claude-3-sonnet, got %s", client.Model)
+			}
+			
+			if client.Provider != "anthropic" {
+				t.Errorf("Expected Provider = anthropic, got %s", client.Provider)
+			}
+		})
+	}
 }

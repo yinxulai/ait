@@ -21,6 +21,7 @@ type Input struct {
 	Concurrency  int
 	Count        int
 	Stream       bool
+	Thinking     bool          // 是否开启 thinking 模式（仅支持 OpenAI 协议）
 	PromptSource PromptSource  // 改为使用PromptSource而不是简单字符串
 	Report       bool          // 是否生成报告文件
 	Timeout      time.Duration // 请求超时时间

@@ -1395,7 +1395,7 @@ func TestCreateRunnerConfig(t *testing.T) {
 		result := createRunnerConfig(
 			tt.protocol, tt.baseUrl, tt.apiKey, tt.model, createTestPromptSource(tt.prompt),
 			tt.concurrency, tt.count, tt.timeout, tt.stream, tt.report,
-			false,
+			false, false,
 		)
 
 		if result.Protocol != tt.expected.Protocol {
@@ -1788,6 +1788,7 @@ func TestExecuteModelsTestSuite(t *testing.T) {
 				tt.timeout,
 				tt.stream,
 				tt.reportFlag,
+				false,
 				false,
 				tt.displayer,
 			)

@@ -7,7 +7,21 @@ import (
 	"strings"
 	"testing"
 	"time"
+
+	"github.com/yinxulai/ait/internal/types"
 )
+
+// 创建用于集成测试的配置
+func createIntegrationTestConfig(baseUrl, apiKey, model string) types.Input {
+	return types.Input{
+		Protocol: "openai",
+		BaseUrl:  baseUrl,
+		ApiKey:   apiKey,
+		Model:    model,
+		Timeout:  0,
+		Thinking: false,
+	}
+}
 
 // MockServer 创建用于测试的模拟 HTTP 服务器
 func createMockServer(responseDelay time.Duration, stream bool) *httptest.Server {
@@ -63,7 +77,7 @@ func TestOpenAIClient_Request_NonStream(t *testing.T) {
 	server := createMockServer(100*time.Millisecond, false)
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createIntegrationTestConfig(server.URL, "test-key", "gpt-3.5-turbo"))
 
 	start := time.Now()
 	metrics, err := client.Request("test prompt", false)
@@ -87,7 +101,7 @@ func TestOpenAIClient_Request_Stream(t *testing.T) {
 	server := createMockServer(50*time.Millisecond, true)
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createIntegrationTestConfig(server.URL, "test-key", "gpt-3.5-turbo"))
 
 	start := time.Now()
 	metrics, err := client.Request("test prompt", true)
@@ -113,7 +127,7 @@ func TestOpenAIClient_Request_ServerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createIntegrationTestConfig(server.URL, "test-key", "gpt-3.5-turbo"))
 
 	_, err := client.Request("test prompt", false)
 
@@ -124,7 +138,7 @@ func TestOpenAIClient_Request_ServerError(t *testing.T) {
 
 func TestOpenAIClient_Request_NetworkError(t *testing.T) {
 	// 使用一个无效的地址来模拟网络错误
-	client := NewOpenAIClient("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createIntegrationTestConfig("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo"))
 
 	metrics, err := client.Request("test prompt", false)
 
@@ -155,7 +169,7 @@ func TestOpenAIClient_Request_NetworkError(t *testing.T) {
 
 func TestOpenAIClient_Request_StreamNetworkError(t *testing.T) {
 	// 测试流式模式下的网络错误
-	client := NewOpenAIClient("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createIntegrationTestConfig("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo"))
 
 	metrics, err := client.Request("test prompt", true)
 
@@ -178,7 +192,7 @@ func TestOpenAIClient_Request_StreamNetworkError(t *testing.T) {
 
 func TestOpenAIClient_Request_InvalidURL(t *testing.T) {
 	// 使用一个格式错误的 URL
-	client := NewOpenAIClient("://invalid-url", "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createIntegrationTestConfig("://invalid-url", "test-key", "gpt-3.5-turbo"))
 
 	metrics, err := client.Request("test prompt", false)
 

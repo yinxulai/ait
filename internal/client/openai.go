@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/logger"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // ChatCompletionMessage represents a message in the chat completion request
@@ -28,12 +29,18 @@ type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
 
+// ReasoningOptions represents reasoning options for chat completion
+type ReasoningOptions struct {
+	Type string `json:"type"`
+}
+
 // ChatCompletionRequest represents the request payload for chat completion
 type ChatCompletionRequest struct {
 	Model         string                  `json:"model"`
 	Messages      []ChatCompletionMessage `json:"messages"`
 	Stream        bool                    `json:"stream,omitempty"`
 	StreamOptions *StreamOptions          `json:"stream_options,omitempty"`
+	Reasoning     *ReasoningOptions       `json:"reasoning,omitempty"`
 }
 
 // ChatCompletionResponse represents the response from chat completion
@@ -95,15 +102,11 @@ type OpenAIClient struct {
 	apiKey     string
 	Model      string
 	Provider   string
+	Thinking   bool // 是否开启 thinking 模式
 	logger     *logger.Logger
 }
 
-// NewOpenAIClient 创建新的 OpenAI 客户端
-func NewOpenAIClient(baseUrl, apiKey, model string) *OpenAIClient {
-	return NewOpenAIClientWithTimeout(baseUrl, apiKey, model, 30*time.Second)
-}
-
-// NewOpenAIClientWithTimeout 创建新的带超时配置的 OpenAI 客户端
+// NewOpenAIClient 根据配置创建 OpenAI 客户端
 // 
 // 重要配置说明：
 // - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
@@ -111,7 +114,8 @@ func NewOpenAIClient(baseUrl, apiKey, model string) *OpenAIClient {
 //   导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
 //   网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
 // - DisableCompression=false: 启用压缩以节省带宽
-func NewOpenAIClientWithTimeout(baseUrl, apiKey, model string, timeout time.Duration) *OpenAIClient {
+func NewOpenAIClient(config types.Input) *OpenAIClient {
+	baseUrl := config.BaseUrl
 	if baseUrl == "" {
 		baseUrl = "https://api.openai.com"
 	}
@@ -125,12 +129,13 @@ func NewOpenAIClientWithTimeout(baseUrl, apiKey, model string, timeout time.Dura
 	return &OpenAIClient{
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   timeout,
+			Timeout:   config.Timeout,
 		},
 		baseURL:  baseUrl,
-		apiKey:   apiKey,
-		Model:    model,
+		apiKey:   config.ApiKey,
+		Model:    config.Model,
 		Provider: "openai",
+		Thinking: config.Thinking,
 		logger:   nil,
 	}
 }
@@ -166,6 +171,13 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 	if stream {
 		reqBody.StreamOptions = &StreamOptions{
 			IncludeUsage: true,
+		}
+	}
+
+	// 当启用 thinking 模式时，添加 reasoning 参数
+	if c.Thinking {
+		reqBody.Reasoning = &ReasoningOptions{
+			Type: "enabled",
 		}
 	}
 

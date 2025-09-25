@@ -9,7 +9,33 @@ import (
 	"sync"
 	"testing"
 	"time"
+
+	"github.com/yinxulai/ait/internal/types"
 )
+
+// createOpenAITestConfig 创建用于测试的标准 OpenAI 配置
+func createOpenAITestConfig(baseUrl, apiKey, model string, timeout time.Duration, thinking bool) types.Input {
+	return types.Input{
+		Protocol: "openai",
+		BaseUrl:  baseUrl,
+		ApiKey:   apiKey,
+		Model:    model,
+		Timeout:  timeout,
+		Thinking: thinking,
+	}
+}
+
+// createOpenAITestConfigWithDefaultTimeout 创建带默认超时的测试配置
+func createOpenAITestConfigWithDefaultTimeout(baseUrl, apiKey, model string) types.Input {
+	return types.Input{
+		Protocol: "openai",
+		BaseUrl:  baseUrl,
+		ApiKey:   apiKey,
+		Model:    model,
+		Timeout:  30 * time.Second, // 使用原始构造函数的默认 30 秒超时
+		Thinking: false,
+	}
+}
 
 func TestNewOpenAIClient(t *testing.T) {
 	tests := []struct {
@@ -47,7 +73,7 @@ func TestNewOpenAIClient(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewOpenAIClient(tt.baseUrl, tt.apiKey, tt.model)
+			got := NewOpenAIClient(createOpenAITestConfigWithDefaultTimeout(tt.baseUrl, tt.apiKey, tt.model))
 
 			if got.baseURL != tt.want.baseURL {
 				t.Errorf("NewOpenAIClient().baseURL = %v, want %v", got.baseURL, tt.want.baseURL)
@@ -113,7 +139,7 @@ func TestNewOpenAIClientWithTimeout(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			got := NewOpenAIClientWithTimeout(tt.baseUrl, tt.apiKey, tt.model, tt.timeout)
+			got := NewOpenAIClient(createOpenAITestConfig(tt.baseUrl, tt.apiKey, tt.model, tt.timeout, false))
 
 			if got.httpClient == nil {
 				t.Error("NewOpenAIClientWithTimeout().httpClient should not be nil")
@@ -163,7 +189,7 @@ func TestOpenAIClient_ConnectionReuse(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 
 	// 验证客户端确实禁用了连接复用
 	transport, ok := client.httpClient.Transport.(*http.Transport)
@@ -208,7 +234,7 @@ func TestOpenAIClient_ConnectionReuse(t *testing.T) {
 // TestOpenAIClient_NoConnectionReuse 专门测试连接不复用的行为
 func TestOpenAIClient_NoConnectionReuse(t *testing.T) {
 	// 验证客户端的 Transport 配置确实禁用了连接复用
-	client := NewOpenAIClient("https://api.openai.com", "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig("https://api.openai.com", "test-key", "test-model", 0, false))
 	
 	transport, ok := client.httpClient.Transport.(*http.Transport)
 	if !ok {
@@ -311,7 +337,7 @@ func TestOpenAIClient_ConnectionReuseImpactOnTiming(t *testing.T) {
 }
 
 func TestOpenAIClient_GetProtocol(t *testing.T) {
-	client := NewOpenAIClient("https://api.openai.com", "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createOpenAITestConfig("https://api.openai.com", "test-key", "gpt-3.5-turbo", 0, false))
 
 	if got := client.GetProtocol(); got != "openai" {
 		t.Errorf("OpenAIClient.GetProtocol() = %v, want %v", got, "openai")
@@ -320,7 +346,7 @@ func TestOpenAIClient_GetProtocol(t *testing.T) {
 
 func TestOpenAIClient_GetModel(t *testing.T) {
 	model := "gpt-4"
-	client := NewOpenAIClient("https://api.openai.com", "test-key", model)
+	client := NewOpenAIClient(createOpenAITestConfig("https://api.openai.com", "test-key", model, 0, false))
 
 	if got := client.GetModel(); got != model {
 		t.Errorf("OpenAIClient.GetModel() = %v, want %v", got, model)
@@ -328,7 +354,7 @@ func TestOpenAIClient_GetModel(t *testing.T) {
 }
 
 func TestOpenAIClient_TransportConfiguration(t *testing.T) {
-	client := NewOpenAIClient("https://api.openai.com", "test-key", "gpt-3.5-turbo")
+	client := NewOpenAIClient(createOpenAITestConfig("https://api.openai.com", "test-key", "gpt-3.5-turbo", 0, false))
 
 	transport, ok := client.httpClient.Transport.(*http.Transport)
 	if !ok {
@@ -382,7 +408,7 @@ func TestOpenAIClient_Request_MalformedJSON(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 
 	// 测试非流式请求的 JSON 解析错误
 	t.Run("non-stream malformed JSON", func(t *testing.T) {
@@ -422,7 +448,7 @@ func TestOpenAIClient_Request_BodyReadError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 
 	_, err := client.Request("test prompt", false)
 	if err == nil {
@@ -443,7 +469,7 @@ func TestOpenAIClient_Request_ScannerError(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 
 	// 这个测试可能会因为 scanner 的缓冲区限制而失败
 	metrics, err := client.Request("test prompt", true)
@@ -498,7 +524,7 @@ func TestOpenAIClient_Request_EdgeCases(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewOpenAIClient(server.URL, "test-key", "test-model")
+			client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 			_, err := client.Request("test", tt.stream)
 
 			if tt.expectError && err == nil {
@@ -523,7 +549,7 @@ func TestOpenAIClient_ConcurrentRequests(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 	
 	// 并发执行多个请求
 	numRequests := 10
@@ -576,7 +602,7 @@ func TestOpenAIClient_Request_TimeoutHandling(t *testing.T) {
 	defer server.Close()
 
 	// 创建一个超时时间很短的客户端
-	client := NewOpenAIClientWithTimeout(server.URL, "test-key", "test-model", 100*time.Millisecond)
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 100*time.Millisecond, false))
 	
 	_, err := client.Request("timeout test", false)
 	if err == nil {
@@ -605,7 +631,7 @@ func TestOpenAIClient_Request_EmptyChoicesArray(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 
 	// 测试非流式请求
 	metrics, err := client.Request("test", false)
@@ -724,7 +750,7 @@ func TestOpenAIClient_Request_ReasoningContent(t *testing.T) {
 			}))
 			defer server.Close()
 
-			client := NewOpenAIClient(server.URL, "test-key", "test-model")
+			client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 			
 			metrics, err := client.Request("test prompt", true)
 			if err != nil {
@@ -783,7 +809,7 @@ func TestOpenAIClient_Request_TTFTAccuracy(t *testing.T) {
 	}))
 	defer server.Close()
 
-	client := NewOpenAIClient(server.URL, "test-key", "test-model")
+	client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 	
 	start := time.Now()
 	metrics, err := client.Request("test prompt", true)
@@ -828,7 +854,7 @@ func TestOpenAIClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 		metrics, err := client.Request("test prompt", false)
 
 		// 应该有错误
@@ -867,7 +893,7 @@ func TestOpenAIClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 		metrics, err := client.Request("test prompt", false)
 
 		// 应该有错误
@@ -904,7 +930,7 @@ func TestOpenAIClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 		metrics, err := client.Request("test prompt", false)
 
 		// 注意：这个测试可能不会触发 io.ReadAll 错误，因为 httptest 服务器的行为
@@ -926,7 +952,7 @@ func TestOpenAIClient_Request_ErrorHandlingFixes(t *testing.T) {
 		}))
 		defer server.Close()
 
-		client := NewOpenAIClient(server.URL, "test-key", "test-model")
+		client := NewOpenAIClient(createOpenAITestConfig(server.URL, "test-key", "test-model", 0, false))
 		metrics, err := client.Request("test prompt", true)
 
 		// 流式处理应该继续，即使有些 JSON 块无效

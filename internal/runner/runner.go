@@ -27,7 +27,7 @@ func NewRunner(taskID string, config types.Input) (*Runner, error) {
 		loggerInstance = logger.New(config.Log)
 	}
 
-	client, err := client.NewClientWithTimeout(config.Protocol, config.BaseUrl, config.ApiKey, config.Model, config.Timeout, loggerInstance)
+	client, err := client.NewClient(config, loggerInstance)
 	if err != nil {
 		return nil, err
 	}

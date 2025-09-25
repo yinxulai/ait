@@ -14,6 +14,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/logger"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // AnthropicResponse Anthropic 非流式响应结构
@@ -63,17 +64,12 @@ type AnthropicClient struct {
 	ApiKey     string
 	Model      string
 	Provider   string
+	Thinking   bool
 	httpClient *http.Client
 	logger     *logger.Logger
 }
 
-// NewAnthropicClient 创建新的 Anthropic 客户端
-func NewAnthropicClient(baseUrl, apiKey, model string) *AnthropicClient {
-	return NewAnthropicClientWithTimeout(baseUrl, apiKey, model, 30*time.Second)
-}
-
-// NewAnthropicClientWithTimeout 创建新的带超时配置的 Anthropic 客户端
-// NewAnthropicClientWithTimeout 创建新的带超时配置的 Anthropic 客户端
+// NewAnthropicClient 根据配置创建 Anthropic 客户端
 //
 // 重要配置说明：
 // - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
@@ -81,7 +77,7 @@ func NewAnthropicClient(baseUrl, apiKey, model string) *AnthropicClient {
 //   导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
 //   网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
 // - DisableCompression=false: 启用压缩以节省带宽
-func NewAnthropicClientWithTimeout(baseUrl, apiKey, model string, timeout time.Duration) *AnthropicClient {
+func NewAnthropicClient(config types.Input) *AnthropicClient {
 	// 禁用连接复用以确保每个请求都是独立的
 	transport := &http.Transport{
 		DisableKeepAlives:  true,
@@ -89,13 +85,14 @@ func NewAnthropicClientWithTimeout(baseUrl, apiKey, model string, timeout time.D
 	}
 
 	return &AnthropicClient{
-		BaseUrl:  baseUrl,
-		ApiKey:   apiKey,
-		Model:    model,
+		BaseUrl:  config.BaseUrl,
+		ApiKey:   config.ApiKey,
+		Model:    config.Model,
 		Provider: "anthropic",
+		Thinking: config.Thinking,
 		httpClient: &http.Client{
 			Transport: transport,
-			Timeout:   timeout,
+			Timeout:   config.Timeout,
 		},
 		logger: nil,
 	}
@@ -127,6 +124,14 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			},
 		},
 		"stream": stream,
+	}
+
+	// 如果启用了 thinking 模式，添加 thinking 配置
+	if c.Thinking {
+		requestBody["thinking"] = map[string]interface{}{
+			"type":          "enabled",
+			"budget_tokens": 1024,
+		}
 	}
 
 	reqBodyBytes, err := json.Marshal(requestBody)

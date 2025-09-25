@@ -5,6 +5,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/logger"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // ResponseMetrics 响应指标数据
@@ -35,23 +36,18 @@ type ModelClient interface {
 	SetLogger(logger *logger.Logger) // 设置日志记录器
 }
 
-// NewClient 根据 protocol 类型创建客户端
-func NewClient(protocol, baseUrl, apiKey, model string, logger *logger.Logger) (ModelClient, error) {
-	return NewClientWithTimeout(protocol, baseUrl, apiKey, model, 30*time.Second, logger)
-}
-
-// NewClientWithTimeout 根据 protocol 类型创建带超时配置的客户端
-func NewClientWithTimeout(protocol, baseUrl, apiKey, model string, timeout time.Duration, logger *logger.Logger) (ModelClient, error) {
-	switch protocol {
+// NewClient 根据配置创建客户端
+func NewClient(config types.Input, logger *logger.Logger) (ModelClient, error) {
+	switch config.Protocol {
 	case "openai":
-		client := NewOpenAIClientWithTimeout(baseUrl, apiKey, model, timeout)
+		client := NewOpenAIClient(config)
 		client.SetLogger(logger)
 		return client, nil
 	case "anthropic":
-		client := NewAnthropicClientWithTimeout(baseUrl, apiKey, model, timeout)
+		client := NewAnthropicClient(config)
 		client.SetLogger(logger)
 		return client, nil
 	default:
-		return nil, fmt.Errorf("不支持的 protocol 类型: %s", protocol)
+		return nil, fmt.Errorf("不支持的 protocol 类型: %s", config.Protocol)
 	}
 }

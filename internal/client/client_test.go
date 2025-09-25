@@ -3,46 +3,54 @@ package client
 import (
 	"testing"
 	"time"
+
+	"github.com/yinxulai/ait/internal/types"
 )
 
 func TestNewClient(t *testing.T) {
 	tests := []struct {
 		name      string
-		provider  string
-		baseUrl   string
-		apiKey    string
-		model     string
+		config    types.Input
 		wantError bool
 	}{
 		{
-			name:      "valid openai client",
-			provider:  "openai",
-			baseUrl:   "https://api.openai.com",
-			apiKey:    "test-key",
-			model:     "gpt-3.5-turbo",
+			name: "valid openai client",
+			config: types.Input{
+				Protocol: "openai",
+				BaseUrl:  "https://api.openai.com",
+				ApiKey:   "test-key",
+				Model:    "gpt-3.5-turbo",
+				Timeout:  30 * time.Second,
+			},
 			wantError: false,
 		},
 		{
-			name:      "valid anthropic client",
-			provider:  "anthropic",
-			baseUrl:   "https://api.anthropic.com",
-			apiKey:    "test-key",
-			model:     "claude-3-sonnet-20240229",
+			name: "valid anthropic client",
+			config: types.Input{
+				Protocol: "anthropic",
+				BaseUrl:  "https://api.anthropic.com",
+				ApiKey:   "test-key",
+				Model:    "claude-3-sonnet-20240229",
+				Timeout:  30 * time.Second,
+			},
 			wantError: false,
 		},
 		{
-			name:      "invalid provider",
-			provider:  "invalid",
-			baseUrl:   "https://api.test.com",
-			apiKey:    "test-key",
-			model:     "test-model",
+			name: "invalid provider",
+			config: types.Input{
+				Protocol: "invalid",
+				BaseUrl:  "https://api.test.com",
+				ApiKey:   "test-key",
+				Model:    "test-model",
+				Timeout:  30 * time.Second,
+			},
 			wantError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClient(tt.provider, tt.baseUrl, tt.apiKey, tt.model, nil)
+			client, err := NewClient(tt.config, nil)
 
 			if tt.wantError {
 				if err == nil {
@@ -61,12 +69,12 @@ func TestNewClient(t *testing.T) {
 				return
 			}
 
-			if client.GetProtocol() != tt.provider {
-				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.provider)
+			if client.GetProtocol() != tt.config.Protocol {
+				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.config.Protocol)
 			}
 
-			if client.GetModel() != tt.model {
-				t.Errorf("NewClient().GetModel() = %v, want %v", client.GetModel(), tt.model)
+			if client.GetModel() != tt.config.Model {
+				t.Errorf("NewClient().GetModel() = %v, want %v", client.GetModel(), tt.config.Model)
 			}
 		})
 	}
@@ -75,69 +83,71 @@ func TestNewClient(t *testing.T) {
 func TestNewClientWithTimeout(t *testing.T) {
 	tests := []struct {
 		name      string
-		provider  string
-		baseUrl   string
-		apiKey    string
-		model     string
-		timeout   time.Duration
+		config    types.Input
 		wantError bool
 	}{
 		{
-			name:      "valid openai client with timeout",
-			provider:  "openai",
-			baseUrl:   "https://api.openai.com",
-			apiKey:    "test-key",
-			model:     "gpt-3.5-turbo",
-			timeout:   10 * time.Second,
+			name: "valid openai client with timeout",
+			config: types.Input{
+				Protocol: "openai",
+				BaseUrl:  "https://api.openai.com",
+				ApiKey:   "test-key",
+				Model:    "gpt-3.5-turbo",
+				Timeout:  10 * time.Second,
+			},
 			wantError: false,
 		},
 		{
-			name:      "valid anthropic client with timeout",
-			provider:  "anthropic",
-			baseUrl:   "https://api.anthropic.com",
-			apiKey:    "test-key",
-			model:     "claude-3-sonnet",
-			timeout:   30 * time.Second,
+			name: "valid anthropic client with timeout",
+			config: types.Input{
+				Protocol: "anthropic",
+				BaseUrl:  "https://api.anthropic.com",
+				ApiKey:   "test-key",
+				Model:    "claude-3-sonnet",
+				Timeout:  30 * time.Second,
+			},
 			wantError: false,
 		},
 		{
-			name:      "invalid provider with timeout",
-			provider:  "invalid",
-			baseUrl:   "https://api.test.com",
-			apiKey:    "test-key",
-			model:     "test-model",
-			timeout:   5 * time.Second,
+			name: "invalid provider with timeout",
+			config: types.Input{
+				Protocol: "invalid",
+				BaseUrl:  "https://api.test.com",
+				ApiKey:   "test-key",
+				Model:    "test-model",
+				Timeout:  5 * time.Second,
+			},
 			wantError: true,
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			client, err := NewClientWithTimeout(tt.provider, tt.baseUrl, tt.apiKey, tt.model, tt.timeout, nil)
+			client, err := NewClient(tt.config, nil)
 
 			if tt.wantError {
 				if err == nil {
-					t.Errorf("NewClientWithTimeout() error = nil, wantError %v", tt.wantError)
+					t.Errorf("NewClient() error = nil, wantError %v", tt.wantError)
 				}
 				return
 			}
 
 			if err != nil {
-				t.Errorf("NewClientWithTimeout() error = %v, wantError %v", err, tt.wantError)
+				t.Errorf("NewClient() error = %v, wantError %v", err, tt.wantError)
 				return
 			}
 
 			if client == nil {
-				t.Error("NewClientWithTimeout() returned nil client")
+				t.Error("NewClient() returned nil client")
 				return
 			}
 
-			if client.GetProtocol() != tt.provider {
-				t.Errorf("NewClientWithTimeout().GetProtocol() = %v, want %v", client.GetProtocol(), tt.provider)
+			if client.GetProtocol() != tt.config.Protocol {
+				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.config.Protocol)
 			}
 
-			if client.GetModel() != tt.model {
-				t.Errorf("NewClientWithTimeout().GetModel() = %v, want %v", client.GetModel(), tt.model)
+			if client.GetModel() != tt.config.Model {
+				t.Errorf("NewClient().GetModel() = %v, want %v", client.GetModel(), tt.config.Model)
 			}
 		})
 	}
