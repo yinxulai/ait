@@ -29,8 +29,8 @@ type StreamOptions struct {
 	IncludeUsage bool `json:"include_usage"`
 }
 
-// ReasoningOptions represents reasoning options for chat completion
-type ReasoningOptions struct {
+// ThinkingOptions represents reasoning options for chat completion
+type ThinkingOptions struct {
 	Type string `json:"type"`
 }
 
@@ -40,7 +40,7 @@ type ChatCompletionRequest struct {
 	Messages      []ChatCompletionMessage `json:"messages"`
 	Stream        bool                    `json:"stream,omitempty"`
 	StreamOptions *StreamOptions          `json:"stream_options,omitempty"`
-	Reasoning     *ReasoningOptions       `json:"reasoning,omitempty"`
+	Thinking      *ThinkingOptions        `json:"thinking,omitempty"`
 }
 
 // ChatCompletionResponse represents the response from chat completion
@@ -83,8 +83,8 @@ type StreamResponseChunk struct {
 	Choices []struct {
 		Index int `json:"index"`
 		Delta struct {
-			ReasoningContent *string `json:"reasoning_content,omitempty"`
-			Content string `json:"content"`
+			ThinkingContent *string `json:"reasoning_content,omitempty"`
+			Content         string  `json:"content"`
 		} `json:"delta"`
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
@@ -107,25 +107,25 @@ type OpenAIClient struct {
 }
 
 // NewOpenAIClient 根据配置创建 OpenAI 客户端
-// 
+//
 // 重要配置说明：
-// - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
-//   这对于准确的性能测量至关重要，因为连接复用会跳过 DNS 解析和 TCP 连接建立时间，
-//   导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
-//   网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
-// - DisableCompression=false: 启用压缩以节省带宽
+//   - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
+//     这对于准确的性能测量至关重要，因为连接复用会跳过 DNS 解析和 TCP 连接建立时间，
+//     导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
+//     网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
+//   - DisableCompression=false: 启用压缩以节省带宽
 func NewOpenAIClient(config types.Input) *OpenAIClient {
 	baseUrl := config.BaseUrl
 	if baseUrl == "" {
 		baseUrl = "https://api.openai.com"
 	}
-	
+
 	// 禁用连接复用以确保每个请求都是独立的
 	transport := &http.Transport{
-		DisableKeepAlives: true,
+		DisableKeepAlives:  true,
 		DisableCompression: false,
 	}
-	
+
 	return &OpenAIClient{
 		httpClient: &http.Client{
 			Transport: transport,
@@ -150,9 +150,9 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 	// 记录请求开始日志
 	if c.logger != nil && c.logger.IsEnabled() {
 		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
-			"stream":     stream,
-			"protocol":   c.Provider,
-			"base_url":   c.baseURL,
+			"stream":   stream,
+			"protocol": c.Provider,
+			"base_url": c.baseURL,
 		})
 	}
 
@@ -176,7 +176,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 
 	// 当启用 thinking 模式时，添加 reasoning 参数
 	if c.Thinking {
-		reqBody.Reasoning = &ReasoningOptions{
+		reqBody.Thinking = &ThinkingOptions{
 			Type: "enabled",
 		}
 	}
@@ -223,7 +223,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				headers[k] = strings.Join(v, ", ")
 			}
 		}
-		
+
 		c.logger.LogRequest(c.Model, logger.RequestData{
 			Method:  req.Method,
 			URL:     req.URL.String(),
@@ -236,7 +236,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 	var dnsStart, connectStart, tlsStart time.Time
 	var dnsTime, connectTime, tlsTime time.Duration
 	var targetIP string
-	
+
 	trace := &httptrace.ClientTrace{
 		DNSStart: func(info httptrace.DNSStartInfo) {
 			dnsStart = time.Now()
@@ -265,7 +265,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			tlsTime = time.Since(tlsStart)
 		},
 	}
-	
+
 	req = req.WithContext(httptrace.WithClientTrace(req.Context(), trace))
 	t0 := time.Now()
 
@@ -294,14 +294,14 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		if resp.StatusCode != http.StatusOK {
 			responseData, _ := io.ReadAll(resp.Body)
 			responseBody := string(responseData)
-			
+
 			// 记录HTTP错误响应日志
 			if c.logger != nil && c.logger.IsEnabled() {
 				headers := make(map[string]string)
 				for k, v := range resp.Header {
 					headers[k] = strings.Join(v, ", ")
 				}
-				
+
 				c.logger.LogResponse(c.Model, logger.ResponseData{
 					StatusCode: resp.StatusCode,
 					Headers:    headers,
@@ -309,17 +309,17 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 					Error:      fmt.Sprintf("HTTP %d Error", resp.StatusCode),
 				})
 			}
-			
+
 			// 尝试解析 OpenAI API 的错误响应
 			var errorResp OpenAIErrorResponse
 			errorMessage := fmt.Sprintf("HTTP %d", resp.StatusCode)
-			
+
 			if err := json.Unmarshal(responseData, &errorResp); err == nil && errorResp.Error.Message != "" {
 				// 成功解析错误响应，使用业务返回的详细错误信息
-				errorMessage = fmt.Sprintf("[%s] %s", 
+				errorMessage = fmt.Sprintf("[%s] %s",
 					errorResp.Error.Type, errorResp.Error.Message)
 			}
-			
+
 			return &ResponseMetrics{
 				TimeToFirstToken: 0,
 				TotalTime:        time.Since(t0),
@@ -339,20 +339,20 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		var completionTokens int
 		var promptTokens int
 		var streamChunks []string // 用于记录所有流式数据块
-		
+
 		// 记录流式响应开始日志
 		if c.logger != nil && c.logger.IsEnabled() {
 			headers := make(map[string]string)
 			for k, v := range resp.Header {
 				headers[k] = strings.Join(v, ", ")
 			}
-			
+
 			c.logger.Debug(c.Model, "Stream response started", map[string]interface{}{
 				"status_code": resp.StatusCode,
 				"headers":     headers,
 			})
 		}
-		
+
 		for scanner.Scan() {
 			line := scanner.Text()
 			if strings.HasPrefix(line, "data: ") {
@@ -360,31 +360,31 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				if data == "[DONE]" {
 					break
 				}
-				
+
 				// 记录流数据块
 				if c.logger != nil && c.logger.IsEnabled() {
 					streamChunks = append(streamChunks, data)
 				}
-				
+
 				var chunk StreamResponseChunk
 				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 					continue // 跳过无法解析的行
 				}
-				
+
 				if !gotFirst && len(chunk.Choices) > 0 {
 					delta := chunk.Choices[0].Delta
-					// 检查是否有 ReasoningContent 或 Content，任一不为空都算作第一个 token
-					if delta.Content != "" || (delta.ReasoningContent != nil && *delta.ReasoningContent != "") {
+					// 检查是否有 ThinkingContent 或 Content，任一不为空都算作第一个 token
+					if delta.Content != "" || (delta.ThinkingContent != nil && *delta.ThinkingContent != "") {
 						firstTokenTime = time.Since(t0)
 						gotFirst = true
 					}
 				}
-				
+
 				// 累积内容
 				if len(chunk.Choices) > 0 {
 					fullContent.WriteString(chunk.Choices[0].Delta.Content)
 				}
-				
+
 				// 获取 token 统计信息（通常在最后一个chunk中）
 				if chunk.Usage != nil {
 					promptTokens = chunk.Usage.PromptTokens
@@ -402,23 +402,23 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		}
 
 		totalTime := time.Since(t0)
-		
+
 		// 记录流式响应完成日志
 		if c.logger != nil && c.logger.IsEnabled() {
 			c.logger.LogResponse(c.Model, logger.ResponseData{
 				StatusCode:   resp.StatusCode,
 				StreamChunks: streamChunks,
 			})
-			
+
 			c.logger.LogTestEnd(c.Model, map[string]interface{}{
-				"total_time":         totalTime.String(),
+				"total_time":          totalTime.String(),
 				"time_to_first_token": firstTokenTime.String(),
-				"prompt_tokens":      promptTokens,
-				"completion_tokens":  completionTokens,
-				"full_content":       fullContent.String(),
+				"prompt_tokens":       promptTokens,
+				"completion_tokens":   completionTokens,
+				"full_content":        fullContent.String(),
 			})
 		}
-		
+
 		return &ResponseMetrics{
 			TimeToFirstToken: firstTokenTime,
 			TotalTime:        totalTime,
@@ -450,17 +450,17 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 
 		if resp.StatusCode != http.StatusOK {
 			responseData, _ := io.ReadAll(resp.Body)
-			
+
 			// 尝试解析 OpenAI API 的错误响应
 			var errorResp OpenAIErrorResponse
 			errorMessage := fmt.Sprintf("HTTP %d", resp.StatusCode)
-			
+
 			if err := json.Unmarshal(responseData, &errorResp); err == nil && errorResp.Error.Message != "" {
 				// 成功解析错误响应，使用业务返回的详细错误信息
-				errorMessage = fmt.Sprintf("[%s] %s", 
+				errorMessage = fmt.Sprintf("[%s] %s",
 					errorResp.Error.Type, errorResp.Error.Message)
 			}
-			
+
 			return &ResponseMetrics{
 				TimeToFirstToken: 0,
 				TotalTime:        time.Since(t0),
@@ -492,7 +492,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		}
 
 		totalTime := time.Since(t0)
-		
+
 		// 检查空响应
 		if len(responseData) == 0 {
 			if c.logger != nil && c.logger.IsEnabled() {
@@ -509,7 +509,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				ErrorMessage:     "Empty response body",
 			}, fmt.Errorf("empty response body")
 		}
-		
+
 		var chatResp ChatCompletionResponse
 		if err := json.Unmarshal(responseData, &chatResp); err != nil {
 			// 记录JSON解析错误日志

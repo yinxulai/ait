@@ -652,8 +652,8 @@ func TestOpenAIClient_Request_EmptyChoicesArray(t *testing.T) {
 	}
 }
 
-// TestOpenAIClient_Request_ReasoningContent 测试 ReasoningContent 字段对 TTFT 统计的影响
-func TestOpenAIClient_Request_ReasoningContent(t *testing.T) {
+// TestOpenAIClient_Request_ThinkingContent 测试 ThinkingContent 字段对 TTFT 统计的影响
+func TestOpenAIClient_Request_ThinkingContent(t *testing.T) {
 	tests := []struct {
 		name               string
 		streamResponses    []string
