@@ -23,11 +23,17 @@ type ChatCompletionMessage struct {
 	Content string `json:"content"`
 }
 
+// StreamOptions represents stream options for chat completion
+type StreamOptions struct {
+	IncludeUsage bool `json:"include_usage"`
+}
+
 // ChatCompletionRequest represents the request payload for chat completion
 type ChatCompletionRequest struct {
-	Model    string                  `json:"model"`
-	Messages []ChatCompletionMessage `json:"messages"`
-	Stream   bool                    `json:"stream,omitempty"`
+	Model         string                  `json:"model"`
+	Messages      []ChatCompletionMessage `json:"messages"`
+	Stream        bool                    `json:"stream,omitempty"`
+	StreamOptions *StreamOptions          `json:"stream_options,omitempty"`
 }
 
 // ChatCompletionResponse represents the response from chat completion
@@ -154,6 +160,13 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			},
 		},
 		Stream: stream,
+	}
+
+	// 当启用流模式时，添加 stream_options 参数
+	if stream {
+		reqBody.StreamOptions = &StreamOptions{
+			IncludeUsage: true,
+		}
 	}
 
 	jsonData, err := json.Marshal(reqBody)
