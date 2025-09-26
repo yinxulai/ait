@@ -33,6 +33,7 @@ type Input struct {
 	Concurrency int
 	Count       int
 	Stream      bool
+	Thinking    bool   // 是否开启思考模式
 	PromptText  string // 用于显示的prompt文本
 	IsFile      bool   // 是否为文件类型输入
 	Report      bool   // 是否生成报告文件
@@ -93,6 +94,7 @@ func (td *Displayer) ShowInput(data *Input) {
 	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "同时发送的请求数")
 	table.Append("🕐 超时时间", strconv.Itoa(data.Timeout)+"秒", "每个请求的超时时间")
 	table.Append("🌊 流式模式", strconv.FormatBool(data.Stream), "是否启用流式响应")
+	table.Append("🧠 思考模式", strconv.FormatBool(data.Thinking), "是否启用思考模式（仅OpenAI协议支持）")
 
 	// 对于文件类型的 prompt，直接显示，不进行截断处理
 	var promptDisplay string
@@ -264,7 +266,7 @@ func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
 
 	table.Header("🤖 模型", "🎯 目标 IP", "📊 请求数", "⚡ 并发", "✅ 成功率",
 		"🕐 平均总耗时", "⚡ 平均 TTFT", "⏰ 平均 TPOT", "🚀 平均 TPS", "🎲 平均 Token 数",
-		"🔍 平均 DNS 时间", "🔌 平均 TCP 连接时间", "🔒 平均 TLS 时间")
+		"🌊 流式模式", "🧠 思考模式", "🔍 平均 DNS 时间", "🔌 平均 TCP 连接时间", "🔒 平均 TLS 时间")
 
 	for _, report := range data {
 		// TTFT 和 TPOT 处理（流式模式才显示）
@@ -286,6 +288,7 @@ func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
 			tpotStr,
 			fmt.Sprintf("%.2f", report.ContentMetrics.AvgTPS),
 			strconv.Itoa(report.ContentMetrics.AvgOutputTokenCount),
+			strconv.FormatBool(report.IsStream),
 			report.NetworkMetrics.AvgDNSTime.String(),
 			report.NetworkMetrics.AvgConnectTime.String(),
 			report.NetworkMetrics.AvgTLSHandshakeTime.String(),

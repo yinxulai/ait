@@ -384,6 +384,7 @@ func main() {
 		Concurrency: *concurrency,
 		Count:       *count,
 		Stream:      *stream,
+		Thinking:    *thinking,
 		PromptText:  promptSource.DisplayText,
 		IsFile:      promptSource.IsFile,
 		Report:      *reportFlag,
