@@ -100,7 +100,8 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 	var dnsTimes []time.Duration
 	var connectTimes []time.Duration
 	var tlsHandshakeTimes []time.Duration
-	var tokenCounts []int
+	var outputTokenCounts []int
+	var inputTokenCounts []int
 	var errorMessages []string
 	var ttftsMutex sync.Mutex
 
@@ -122,7 +123,8 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 					DNSTimes:          make([]time.Duration, len(dnsTimes)),
 					ConnectTimes:      make([]time.Duration, len(connectTimes)),
 					TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
-					TokenCounts:       make([]int, len(tokenCounts)),
+					InputTokenCounts:  make([]int, len(inputTokenCounts)),
+					OutputTokenCounts: make([]int, len(outputTokenCounts)),
 					ErrorMessages:     make([]string, len(errorMessages)),
 					StartTime:         start,
 					ElapsedTime:       time.Since(start),
@@ -132,7 +134,8 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 				copy(stats.DNSTimes, dnsTimes)
 				copy(stats.ConnectTimes, connectTimes)
 				copy(stats.TLSHandshakeTimes, tlsHandshakeTimes)
-				copy(stats.TokenCounts, tokenCounts)
+				copy(stats.InputTokenCounts, inputTokenCounts)
+				copy(stats.OutputTokenCounts, outputTokenCounts)
 				copy(stats.ErrorMessages, errorMessages)
 				ttftsMutex.Unlock()
 
@@ -164,12 +167,13 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 					results[idx] = metrics
 					// 仍然收集网络性能指标，即使请求失败
 					ttftsMutex.Lock()
-					ttfts = append(ttfts, metrics.TimeToFirstToken)
-					totalTimes = append(totalTimes, metrics.TotalTime)
-					dnsTimes = append(dnsTimes, metrics.DNSTime)
-					connectTimes = append(connectTimes, metrics.ConnectTime)
-					tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
-					tokenCounts = append(tokenCounts, metrics.CompletionTokens)
+						ttfts = append(ttfts, metrics.TimeToFirstToken)
+						totalTimes = append(totalTimes, metrics.TotalTime)
+						dnsTimes = append(dnsTimes, metrics.DNSTime)
+						connectTimes = append(connectTimes, metrics.ConnectTime)
+						tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
+						outputTokenCounts = append(outputTokenCounts, metrics.CompletionTokens)
+						inputTokenCounts = append(inputTokenCounts, metrics.PromptTokens)
 					ttftsMutex.Unlock()
 				}
 				return
@@ -183,7 +187,8 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			dnsTimes = append(dnsTimes, metrics.DNSTime)
 			connectTimes = append(connectTimes, metrics.ConnectTime)
 			tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
-			tokenCounts = append(tokenCounts, metrics.CompletionTokens)
+			outputTokenCounts = append(outputTokenCounts, metrics.CompletionTokens)
+			inputTokenCounts = append(inputTokenCounts, metrics.PromptTokens)
 			ttftsMutex.Unlock()
 
 			if metrics.ErrorMessage == "" && r.upload != nil {
@@ -207,7 +212,8 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 		DNSTimes:          make([]time.Duration, len(dnsTimes)),
 		ConnectTimes:      make([]time.Duration, len(connectTimes)),
 		TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
-		TokenCounts:       make([]int, len(tokenCounts)),
+		InputTokenCounts:  make([]int, len(inputTokenCounts)),
+		OutputTokenCounts: make([]int, len(outputTokenCounts)),
 		ErrorMessages:     make([]string, len(errorMessages)),
 		StartTime:         start,
 		ElapsedTime:       elapsed,
@@ -217,7 +223,8 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 	copy(finalStats.DNSTimes, dnsTimes)
 	copy(finalStats.ConnectTimes, connectTimes)
 	copy(finalStats.TLSHandshakeTimes, tlsHandshakeTimes)
-	copy(finalStats.TokenCounts, tokenCounts)
+	copy(finalStats.InputTokenCounts, inputTokenCounts)
+	copy(finalStats.OutputTokenCounts, outputTokenCounts)
 	copy(finalStats.ErrorMessages, errorMessages)
 	ttftsMutex.Unlock()
 	progressCallback(finalStats)

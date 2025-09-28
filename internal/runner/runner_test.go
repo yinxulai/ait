@@ -528,8 +528,8 @@ func TestRunner_RunWithProgress_Success(t *testing.T) {
 			t.Errorf("Expected %d TotalTimes, got %d", input.Count, len(finalProgress.TotalTimes))
 		}
 		
-		if len(finalProgress.TokenCounts) != input.Count {
-			t.Errorf("Expected %d TokenCounts, got %d", input.Count, len(finalProgress.TokenCounts))
+		if len(finalProgress.OutputTokenCounts) != input.Count {
+			t.Errorf("Expected %d OutputTokenCounts, got %d", input.Count, len(finalProgress.OutputTokenCounts))
 		}
 	}
 	
@@ -1006,14 +1006,15 @@ func TestRunner_RunWithProgress_BasicFunctionality(t *testing.T) {
 // 测试进度回调的数据结构
 func TestStatsDataStructure(t *testing.T) {
 	stats := types.StatsData{
-		CompletedCount: 5,
-		FailedCount:    2,
-		TTFTs:          []time.Duration{100 * time.Millisecond, 150 * time.Millisecond},
-		TotalTimes:     []time.Duration{500 * time.Millisecond, 600 * time.Millisecond},
-		TokenCounts:    []int{100, 150},
-		ErrorMessages:  []string{"error1", "error2"},
-		StartTime:      time.Now(),
-		ElapsedTime:    2 * time.Second,
+		CompletedCount:    5,
+		FailedCount:       2,
+		TTFTs:             []time.Duration{100 * time.Millisecond, 150 * time.Millisecond},
+		TotalTimes:        []time.Duration{500 * time.Millisecond, 600 * time.Millisecond},
+		InputTokenCounts:  []int{50, 60},
+		OutputTokenCounts: []int{100, 150},
+		ErrorMessages:     []string{"error1", "error2"},
+		StartTime:         time.Now(),
+		ElapsedTime:       2 * time.Second,
 	}
 	
 	// 验证基本字段

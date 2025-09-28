@@ -44,8 +44,9 @@ type StatsData struct {
 	ConnectTimes      []time.Duration // 所有TCP连接时间
 	TLSHandshakeTimes []time.Duration // 所有TLS握手时间
 
-	// 服务性能指标 - 原始数据收集
-	TokenCounts []int // 所有 completion token 数量 (用于TPS计算)
+	// 服务性能指标 - 原始数据收集（与 ReportData 命名对齐）
+	InputTokenCounts  []int // 所有 prompt/input token 数量
+	OutputTokenCounts []int // 所有 completion/output token 数量 (用于TPS计算)
 
 	// 错误信息
 	ErrorMessages []string // 所有错误信息
