@@ -65,169 +65,97 @@ type ReportData struct {
 	IsStream      bool          `json:"is_stream"`      // 是否为流式请求
 	TotalTime     time.Duration `json:"total_time"`     // 总测试时间
 
-	// 元数据信息 - 用于报告
-	Metadata struct {
-		Timestamp string `json:"timestamp"`  // 测试时间戳
-		Protocol  string `json:"protocol"`   // 协议类型
-		Model     string `json:"model"`      // 模型名称
-		BaseUrl   string `json:"base_url"`   // 基础URL
-	} `json:"metadata"`
+	// 扁平化的元数据信息
+	Timestamp string `json:"timestamp"` // 测试时间戳
+	Protocol  string `json:"protocol"`  // 协议类型
+	Model     string `json:"model"`     // 模型名称
+	BaseUrl   string `json:"base_url"`  // 基础URL
 
 	// 时间性能指标 - 统计结果
-	TimeMetrics struct {
-		AvgTotalTime time.Duration `json:"avg_total_time"` // 平均总耗时
-		MinTotalTime time.Duration `json:"min_total_time"` // 最小总耗时
-		MaxTotalTime time.Duration `json:"max_total_time"` // 最大总耗时
-	} `json:"time_metrics"`
+	AvgTotalTime time.Duration `json:"avg_total_time"` // 平均总耗时
+	MinTotalTime time.Duration `json:"min_total_time"` // 最小总耗时
+	MaxTotalTime time.Duration `json:"max_total_time"` // 最大总耗时
 
 	// 网络性能指标 - 统计结果
-	NetworkMetrics struct {
-		AvgDNSTime          time.Duration `json:"avg_dns_time"`           // 平均DNS解析时间
-		MinDNSTime          time.Duration `json:"min_dns_time"`           // 最小DNS解析时间
-		MaxDNSTime          time.Duration `json:"max_dns_time"`           // 最大DNS解析时间
-		AvgConnectTime      time.Duration `json:"avg_connect_time"`       // 平均TCP连接时间
-		MinConnectTime      time.Duration `json:"min_connect_time"`       // 最小TCP连接时间
-		MaxConnectTime      time.Duration `json:"max_connect_time"`       // 最大TCP连接时间
-		AvgTLSHandshakeTime time.Duration `json:"avg_tls_handshake_time"` // 平均TLS握手时间
-		MinTLSHandshakeTime time.Duration `json:"min_tls_handshake_time"` // 最小TLS握手时间
-		MaxTLSHandshakeTime time.Duration `json:"max_tls_handshake_time"` // 最大TLS握手时间
-		TargetIP            string        `json:"target_ip"`              // 目标IP地址
-	} `json:"network_metrics"`
+	AvgDNSTime          time.Duration `json:"avg_dns_time"`           // 平均DNS解析时间
+	MinDNSTime          time.Duration `json:"min_dns_time"`           // 最小DNS解析时间
+	MaxDNSTime          time.Duration `json:"max_dns_time"`           // 最大DNS解析时间
+	AvgConnectTime      time.Duration `json:"avg_connect_time"`       // 平均TCP连接时间
+	MinConnectTime      time.Duration `json:"min_connect_time"`       // 最小TCP连接时间
+	MaxConnectTime      time.Duration `json:"max_connect_time"`       // 最大TCP连接时间
+	AvgTLSHandshakeTime time.Duration `json:"avg_tls_handshake_time"` // 平均TLS握手时间
+	MinTLSHandshakeTime time.Duration `json:"min_tls_handshake_time"` // 最小TLS握手时间
+	MaxTLSHandshakeTime time.Duration `json:"max_tls_handshake_time"` // 最大TLS握手时间
+	TargetIP            string        `json:"target_ip"`              // 目标IP地址
 
 	// 服务性能指标 - 统计结果
-	ContentMetrics struct {
-		AvgTTFT             time.Duration `json:"avg_ttft"`              // 平均首个token响应时间
-		MinTTFT             time.Duration `json:"min_ttft"`              // 最小首个token响应时间
-		MaxTTFT             time.Duration `json:"max_ttft"`              // 最大首个token响应时间
-		AvgTPOT             time.Duration `json:"avg_tpot"`              // 平均每个输出token的耗时（除首token外）
-		MinTPOT             time.Duration `json:"min_tpot"`              // 最小每个输出token的耗时
-		MaxTPOT             time.Duration `json:"max_tpot"`              // 最大每个输出token的耗时
-		AvgInputTokenCount  int           `json:"avg_input_token_count"`  // 平均输入token数量
-		MinInputTokenCount  int           `json:"min_input_token_count"`  // 最小输入token数量
-		MaxInputTokenCount  int           `json:"max_input_token_count"`  // 最大输入token数量
-		AvgOutputTokenCount int           `json:"avg_output_token_count"` // 平均输出token数量
-		MinOutputTokenCount int           `json:"min_output_token_count"` // 最小输出token数量
-		MaxOutputTokenCount int           `json:"max_output_token_count"` // 最大输出token数量
-		AvgTPS              float64       `json:"avg_tps"`               // 平均每秒token数 (Tokens Per Second)
-		MinTPS              float64       `json:"min_tps"`               // 最小每秒token数
-		MaxTPS              float64       `json:"max_tps"`               // 最大每秒token数
-	} `json:"content_metrics"`
+	AvgTTFT             time.Duration `json:"avg_ttft"`               // 平均首个token响应时间
+	MinTTFT             time.Duration `json:"min_ttft"`               // 最小首个token响应时间
+	MaxTTFT             time.Duration `json:"max_ttft"`               // 最大首个token响应时间
+	AvgTPOT             time.Duration `json:"avg_tpot"`               // 平均每个输出token的耗时（除首token外）
+	MinTPOT             time.Duration `json:"min_tpot"`               // 最小每个输出token的耗时
+	MaxTPOT             time.Duration `json:"max_tpot"`               // 最大每个输出token的耗时
+	AvgInputTokenCount  int           `json:"avg_input_token_count"`  // 平均输入token数量
+	MinInputTokenCount  int           `json:"min_input_token_count"`  // 最小输入token数量
+	MaxInputTokenCount  int           `json:"max_input_token_count"`  // 最大输入token数量
+	AvgOutputTokenCount int           `json:"avg_output_token_count"` // 平均输出token数量
+	MinOutputTokenCount int           `json:"min_output_token_count"` // 最小输出token数量
+	MaxOutputTokenCount int           `json:"max_output_token_count"` // 最大输出token数量
+	AvgTPS              float64       `json:"avg_tps"`                // 平均每秒token数 (Tokens Per Second)
+	MinTPS              float64       `json:"min_tps"`                // 最小每秒token数
+	MaxTPS              float64       `json:"max_tps"`                // 最大每秒token数
 
 	// 可靠性指标 - 统计结果
-	ReliabilityMetrics struct {
-		ErrorRate   float64 `json:"error_rate"`   // 错误率 (%)
-		SuccessRate float64 `json:"success_rate"` // 成功率 (%)
-	} `json:"reliability_metrics"`
+	ErrorRate   float64 `json:"error_rate"`   // 错误率 (%)
+	SuccessRate float64 `json:"success_rate"` // 成功率 (%)
 }
 
 // MarshalJSON 自定义 JSON 序列化，将 time.Duration 转换为字符串
 func (r *ReportData) MarshalJSON() ([]byte, error) {
+	// 自定义序列化，所有 time.Duration 字段转为字符串
 	type Alias ReportData
 	return json.Marshal(&struct {
 		*Alias
-		TotalTime string `json:"total_time"`
-		TimeMetrics struct {
-			AvgTotalTime string `json:"avg_total_time"`
-			MinTotalTime string `json:"min_total_time"`
-			MaxTotalTime string `json:"max_total_time"`
-		} `json:"time_metrics"`
-		NetworkMetrics struct {
-			AvgDNSTime          string `json:"avg_dns_time"`
-			MinDNSTime          string `json:"min_dns_time"`
-			MaxDNSTime          string `json:"max_dns_time"`
-			AvgConnectTime      string `json:"avg_connect_time"`
-			MinConnectTime      string `json:"min_connect_time"`
-			MaxConnectTime      string `json:"max_connect_time"`
-			AvgTLSHandshakeTime string `json:"avg_tls_handshake_time"`
-			MinTLSHandshakeTime string `json:"min_tls_handshake_time"`
-			MaxTLSHandshakeTime string `json:"max_tls_handshake_time"`
-			TargetIP            string `json:"target_ip"`
-		} `json:"network_metrics"`
-		ContentMetrics struct {
-			AvgTTFT             string  `json:"avg_ttft"`
-			MinTTFT             string  `json:"min_ttft"`
-			MaxTTFT             string  `json:"max_ttft"`
-			AvgTPOT             string  `json:"avg_tpot"`
-			MinTPOT             string  `json:"min_tpot"`
-			MaxTPOT             string  `json:"max_tpot"`
-			AvgInputTokenCount  int     `json:"avg_input_token_count"`
-			MinInputTokenCount  int     `json:"min_input_token_count"`
-			MaxInputTokenCount  int     `json:"max_input_token_count"`
-			AvgOutputTokenCount int     `json:"avg_output_token_count"`
-			MinOutputTokenCount int     `json:"min_output_token_count"`
-			MaxOutputTokenCount int     `json:"max_output_token_count"`
-			AvgTPS              float64 `json:"avg_tps"`
-			MinTPS              float64 `json:"min_tps"`
-			MaxTPS              float64 `json:"max_tps"`
-		} `json:"content_metrics"`
+		TotalTime         string `json:"total_time"`
+		AvgTotalTime      string `json:"avg_total_time"`
+		MinTotalTime      string `json:"min_total_time"`
+		MaxTotalTime      string `json:"max_total_time"`
+		AvgDNSTime        string `json:"avg_dns_time"`
+		MinDNSTime        string `json:"min_dns_time"`
+		MaxDNSTime        string `json:"max_dns_time"`
+		AvgConnectTime    string `json:"avg_connect_time"`
+		MinConnectTime    string `json:"min_connect_time"`
+		MaxConnectTime    string `json:"max_connect_time"`
+		AvgTLSHandshakeTime string `json:"avg_tls_handshake_time"`
+		MinTLSHandshakeTime string `json:"min_tls_handshake_time"`
+		MaxTLSHandshakeTime string `json:"max_tls_handshake_time"`
+		AvgTTFT           string `json:"avg_ttft"`
+		MinTTFT           string `json:"min_ttft"`
+		MaxTTFT           string `json:"max_ttft"`
+		AvgTPOT           string `json:"avg_tpot"`
+		MinTPOT           string `json:"min_tpot"`
+		MaxTPOT           string `json:"max_tpot"`
 	}{
-		Alias:     (*Alias)(r),
-		TotalTime: r.TotalTime.String(),
-		TimeMetrics: struct {
-			AvgTotalTime string `json:"avg_total_time"`
-			MinTotalTime string `json:"min_total_time"`
-			MaxTotalTime string `json:"max_total_time"`
-		}{
-			AvgTotalTime: r.TimeMetrics.AvgTotalTime.String(),
-			MinTotalTime: r.TimeMetrics.MinTotalTime.String(),
-			MaxTotalTime: r.TimeMetrics.MaxTotalTime.String(),
-		},
-		NetworkMetrics: struct {
-			AvgDNSTime          string `json:"avg_dns_time"`
-			MinDNSTime          string `json:"min_dns_time"`
-			MaxDNSTime          string `json:"max_dns_time"`
-			AvgConnectTime      string `json:"avg_connect_time"`
-			MinConnectTime      string `json:"min_connect_time"`
-			MaxConnectTime      string `json:"max_connect_time"`
-			AvgTLSHandshakeTime string `json:"avg_tls_handshake_time"`
-			MinTLSHandshakeTime string `json:"min_tls_handshake_time"`
-			MaxTLSHandshakeTime string `json:"max_tls_handshake_time"`
-			TargetIP            string `json:"target_ip"`
-		}{
-			AvgDNSTime:          r.NetworkMetrics.AvgDNSTime.String(),
-			MinDNSTime:          r.NetworkMetrics.MinDNSTime.String(),
-			MaxDNSTime:          r.NetworkMetrics.MaxDNSTime.String(),
-			AvgConnectTime:      r.NetworkMetrics.AvgConnectTime.String(),
-			MinConnectTime:      r.NetworkMetrics.MinConnectTime.String(),
-			MaxConnectTime:      r.NetworkMetrics.MaxConnectTime.String(),
-			AvgTLSHandshakeTime: r.NetworkMetrics.AvgTLSHandshakeTime.String(),
-			MinTLSHandshakeTime: r.NetworkMetrics.MinTLSHandshakeTime.String(),
-			MaxTLSHandshakeTime: r.NetworkMetrics.MaxTLSHandshakeTime.String(),
-			TargetIP:            r.NetworkMetrics.TargetIP,
-		},
-		ContentMetrics: struct {
-			AvgTTFT             string  `json:"avg_ttft"`
-			MinTTFT             string  `json:"min_ttft"`
-			MaxTTFT             string  `json:"max_ttft"`
-			AvgTPOT             string  `json:"avg_tpot"`
-			MinTPOT             string  `json:"min_tpot"`
-			MaxTPOT             string  `json:"max_tpot"`
-			AvgInputTokenCount  int     `json:"avg_input_token_count"`
-			MinInputTokenCount  int     `json:"min_input_token_count"`
-			MaxInputTokenCount  int     `json:"max_input_token_count"`
-			AvgOutputTokenCount int     `json:"avg_output_token_count"`
-			MinOutputTokenCount int     `json:"min_output_token_count"`
-			MaxOutputTokenCount int     `json:"max_output_token_count"`
-			AvgTPS              float64 `json:"avg_tps"`
-			MinTPS              float64 `json:"min_tps"`
-			MaxTPS              float64 `json:"max_tps"`
-		}{
-			AvgTTFT:             formatTTFT(r.ContentMetrics.AvgTTFT, r.IsStream),
-			MinTTFT:             formatTTFT(r.ContentMetrics.MinTTFT, r.IsStream),
-			MaxTTFT:             formatTTFT(r.ContentMetrics.MaxTTFT, r.IsStream),
-			AvgTPOT:             formatTPOT(r.ContentMetrics.AvgTPOT, r.IsStream),
-			MinTPOT:             formatTPOT(r.ContentMetrics.MinTPOT, r.IsStream),
-			MaxTPOT:             formatTPOT(r.ContentMetrics.MaxTPOT, r.IsStream),
-			AvgInputTokenCount:  r.ContentMetrics.AvgInputTokenCount,
-			MinInputTokenCount:  r.ContentMetrics.MinInputTokenCount,
-			MaxInputTokenCount:  r.ContentMetrics.MaxInputTokenCount,
-			AvgOutputTokenCount: r.ContentMetrics.AvgOutputTokenCount,
-			MinOutputTokenCount: r.ContentMetrics.MinOutputTokenCount,
-			MaxOutputTokenCount: r.ContentMetrics.MaxOutputTokenCount,
-			AvgTPS:              r.ContentMetrics.AvgTPS,
-			MinTPS:              r.ContentMetrics.MinTPS,
-			MaxTPS:              r.ContentMetrics.MaxTPS,
-		},
+		Alias:              (*Alias)(r),
+		TotalTime:          r.TotalTime.String(),
+		AvgTotalTime:       r.AvgTotalTime.String(),
+		MinTotalTime:       r.MinTotalTime.String(),
+		MaxTotalTime:       r.MaxTotalTime.String(),
+		AvgDNSTime:         r.AvgDNSTime.String(),
+		MinDNSTime:         r.MinDNSTime.String(),
+		MaxDNSTime:         r.MaxDNSTime.String(),
+		AvgConnectTime:     r.AvgConnectTime.String(),
+		MinConnectTime:     r.MinConnectTime.String(),
+		MaxConnectTime:     r.MaxConnectTime.String(),
+		AvgTLSHandshakeTime: r.AvgTLSHandshakeTime.String(),
+		MinTLSHandshakeTime: r.MinTLSHandshakeTime.String(),
+		MaxTLSHandshakeTime: r.MaxTLSHandshakeTime.String(),
+		AvgTTFT:            formatTTFT(r.AvgTTFT, r.IsStream),
+		MinTTFT:            formatTTFT(r.MinTTFT, r.IsStream),
+		MaxTTFT:            formatTTFT(r.MaxTTFT, r.IsStream),
+		AvgTPOT:            formatTPOT(r.AvgTPOT, r.IsStream),
+		MinTPOT:            formatTPOT(r.MinTPOT, r.IsStream),
+		MaxTPOT:            formatTPOT(r.MaxTPOT, r.IsStream),
 	})
 }
 

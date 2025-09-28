@@ -231,10 +231,10 @@ func collectErrorsWithContext(modelName string, modelErrors []string) []string {
 // fillResultMetadata 填充结果元数据
 func fillResultMetadata(results []*types.ReportData, modelList []string, baseUrl, protocol string) {
 	for i, result := range results {
-		result.Metadata.Model = modelList[i]
-		result.Metadata.BaseUrl = baseUrl
-		result.Metadata.Protocol = protocol
-		result.Metadata.Timestamp = time.Now().Format(time.RFC3339)
+		result.Model = modelList[i]
+		result.BaseUrl = baseUrl
+		result.Protocol = protocol
+		result.Timestamp = time.Now().Format(time.RFC3339)
 	}
 }
 

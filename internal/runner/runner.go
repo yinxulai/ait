@@ -417,18 +417,14 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 
 	// 如果没有有效结果，返回基础结果
 	if validCount == 0 {
-		result := &types.ReportData{
+		return &types.ReportData{
 			TotalRequests: r.input.Count,
 			Concurrency:   r.input.Concurrency,
 			TotalTime:     totalTime,
 			IsStream:      r.input.Stream,
+			ErrorRate:     errorRate,
+			SuccessRate:   successRate,
 		}
-
-		// 可靠性指标
-		result.ReliabilityMetrics.ErrorRate = errorRate
-		result.ReliabilityMetrics.SuccessRate = successRate
-
-		return result
 	}
 
 	// 计算各项指标的平均值
@@ -468,49 +464,45 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	avgTPS := sumTPS / float64(validCount)
 
 	result := &types.ReportData{
-		TotalRequests: r.input.Count,
-		Concurrency:   r.input.Concurrency,
-		TotalTime:     totalTime,
-		IsStream:      r.input.Stream,
+		TotalRequests:       r.input.Count,
+		Concurrency:         r.input.Concurrency,
+		TotalTime:           totalTime,
+		IsStream:            r.input.Stream,
+		// 时间指标
+		AvgTotalTime:        avgTotalTime,
+		MinTotalTime:        minTotalTime,
+		MaxTotalTime:        maxTotalTime,
+		// 网络指标
+		AvgDNSTime:          avgDNSTime,
+		MinDNSTime:          minDNSTime,
+		MaxDNSTime:          maxDNSTime,
+		AvgConnectTime:      avgConnectTime,
+		MinConnectTime:      minConnectTime,
+		MaxConnectTime:      maxConnectTime,
+		AvgTLSHandshakeTime: avgTLSTime,
+		MinTLSHandshakeTime: minTLSTime,
+		MaxTLSHandshakeTime: maxTLSTime,
+		TargetIP:            targetIP,
+		// 服务性能指标
+		AvgTTFT:             avgTTFT,
+		MinTTFT:             minTTFT,
+		MaxTTFT:             maxTTFT,
+		AvgTPOT:             avgTPOT,
+		MinTPOT:             minTPOT,
+		MaxTPOT:             maxTPOT,
+		AvgInputTokenCount:  avgInputTokens,
+		MinInputTokenCount:  minInputTokens,
+		MaxInputTokenCount:  maxInputTokens,
+		AvgOutputTokenCount: avgOutputTokens,
+		MinOutputTokenCount: minOutputTokens,
+		MaxOutputTokenCount: maxOutputTokens,
+		AvgTPS:              avgTPS,
+		MinTPS:              minTPS,
+		MaxTPS:              maxTPS,
+		// 可靠性指标
+		ErrorRate:           errorRate,
+		SuccessRate:         successRate,
 	}
-
-	// 时间指标
-	result.TimeMetrics.AvgTotalTime = avgTotalTime
-	result.TimeMetrics.MinTotalTime = minTotalTime
-	result.TimeMetrics.MaxTotalTime = maxTotalTime
-
-	// 网络指标
-	result.NetworkMetrics.AvgDNSTime = avgDNSTime
-	result.NetworkMetrics.MinDNSTime = minDNSTime
-	result.NetworkMetrics.MaxDNSTime = maxDNSTime
-	result.NetworkMetrics.AvgConnectTime = avgConnectTime
-	result.NetworkMetrics.MinConnectTime = minConnectTime
-	result.NetworkMetrics.MaxConnectTime = maxConnectTime
-	result.NetworkMetrics.AvgTLSHandshakeTime = avgTLSTime
-	result.NetworkMetrics.MinTLSHandshakeTime = minTLSTime
-	result.NetworkMetrics.MaxTLSHandshakeTime = maxTLSTime
-	result.NetworkMetrics.TargetIP = targetIP
-
-	// 服务性能指标
-	result.ContentMetrics.AvgTTFT = avgTTFT
-	result.ContentMetrics.MinTTFT = minTTFT
-	result.ContentMetrics.MaxTTFT = maxTTFT
-	result.ContentMetrics.AvgTPOT = avgTPOT
-	result.ContentMetrics.MinTPOT = minTPOT
-	result.ContentMetrics.MaxTPOT = maxTPOT
-	result.ContentMetrics.AvgInputTokenCount = avgInputTokens
-	result.ContentMetrics.MinInputTokenCount = minInputTokens
-	result.ContentMetrics.MaxInputTokenCount = maxInputTokens
-	result.ContentMetrics.AvgOutputTokenCount = avgOutputTokens
-	result.ContentMetrics.MinOutputTokenCount = minOutputTokens
-	result.ContentMetrics.MaxOutputTokenCount = maxOutputTokens
-	result.ContentMetrics.AvgTPS = avgTPS
-	result.ContentMetrics.MinTPS = minTPS
-	result.ContentMetrics.MaxTPS = maxTPS
-
-	// 可靠性指标
-	result.ReliabilityMetrics.ErrorRate = errorRate
-	result.ReliabilityMetrics.SuccessRate = successRate
 
 	return result
 }

@@ -251,17 +251,17 @@ func TestRunner_Run_Success(t *testing.T) {
 	}
 	
 	// 验证成功率
-	if result.ReliabilityMetrics.SuccessRate != 100.0 {
-		t.Errorf("Expected SuccessRate 100.0, got %f", result.ReliabilityMetrics.SuccessRate)
+	if result.SuccessRate != 100.0 {
+			t.Errorf("Expected SuccessRate 100.0, got %f", result.SuccessRate)
 	}
-	
-	if result.ReliabilityMetrics.ErrorRate != 0.0 {
-		t.Errorf("Expected ErrorRate 0.0, got %f", result.ReliabilityMetrics.ErrorRate)
+
+	if result.ErrorRate != 0.0 {
+			t.Errorf("Expected ErrorRate 0.0, got %f", result.ErrorRate)
 	}
-	
+
 	// 验证性能指标
-	if result.ContentMetrics.AvgOutputTokenCount != 100 {
-		t.Errorf("Expected AvgOutputTokenCount 100, got %d", result.ContentMetrics.AvgOutputTokenCount)
+	if result.AvgOutputTokenCount != 100 {
+			t.Errorf("Expected AvgOutputTokenCount 100, got %d", result.AvgOutputTokenCount)
 	}
 	
 	// 验证总时间有合理值
@@ -325,12 +325,12 @@ func TestRunner_Run_PartialFailures(t *testing.T) {
 	expectedSuccessRate := 70.0
 	expectedErrorRate := 30.0
 	
-	if result.ReliabilityMetrics.SuccessRate != expectedSuccessRate {
-		t.Errorf("Expected SuccessRate %f, got %f", expectedSuccessRate, result.ReliabilityMetrics.SuccessRate)
+	if result.SuccessRate != expectedSuccessRate {
+			t.Errorf("Expected SuccessRate %f, got %f", expectedSuccessRate, result.SuccessRate)
 	}
-	
-	if result.ReliabilityMetrics.ErrorRate != expectedErrorRate {
-		t.Errorf("Expected ErrorRate %f, got %f", expectedErrorRate, result.ReliabilityMetrics.ErrorRate)
+
+	if result.ErrorRate != expectedErrorRate {
+			t.Errorf("Expected ErrorRate %f, got %f", expectedErrorRate, result.ErrorRate)
 	}
 }
 
@@ -371,8 +371,8 @@ func TestRunner_Run_AllFailures(t *testing.T) {
 	
 	// 调试输出
 	t.Logf("TotalRequests: %d", result.TotalRequests)
-	t.Logf("SuccessRate: %f", result.ReliabilityMetrics.SuccessRate)
-	t.Logf("ErrorRate: %f", result.ReliabilityMetrics.ErrorRate)
+	t.Logf("SuccessRate: %f", result.SuccessRate)
+	t.Logf("ErrorRate: %f", result.ErrorRate)
 	
 	// 所有请求都失败的情况，由于当前calculateResult的实现
 	// 在validResults为0时返回空ReportData，所以基础字段都是零值
@@ -381,12 +381,12 @@ func TestRunner_Run_AllFailures(t *testing.T) {
 		t.Errorf("Expected TotalRequests 0 (current implementation), got %d", result.TotalRequests)
 	}
 	
-	if result.ReliabilityMetrics.ErrorRate != 0.0 {
-		t.Errorf("Expected ErrorRate 0.0 (current implementation), got %f", result.ReliabilityMetrics.ErrorRate)
+	if result.ErrorRate != 0.0 {
+			t.Errorf("Expected ErrorRate 0.0 (current implementation), got %f", result.ErrorRate)
 	}
-	
-	if result.ReliabilityMetrics.SuccessRate != 0.0 {
-		t.Errorf("Expected SuccessRate 0.0 (current implementation), got %f", result.ReliabilityMetrics.SuccessRate)
+
+	if result.SuccessRate != 0.0 {
+			t.Errorf("Expected SuccessRate 0.0 (current implementation), got %f", result.SuccessRate)
 	}
 }
 
@@ -613,8 +613,8 @@ func TestRunner_RunWithProgress_WithFailures(t *testing.T) {
 	
 	// 验证最终结果的错误率
 	expectedErrorRate := float64(expectedFailureCount) / float64(input.Count) * 100
-	if result.ReliabilityMetrics.ErrorRate != expectedErrorRate {
-		t.Errorf("Expected ErrorRate %f, got %f", expectedErrorRate, result.ReliabilityMetrics.ErrorRate)
+	if result.ErrorRate != expectedErrorRate {
+			t.Errorf("Expected ErrorRate %f, got %f", expectedErrorRate, result.ErrorRate)
 	}
 }
 
@@ -759,8 +759,8 @@ func TestRunner_CalculateResult_AllNilResults(t *testing.T) {
 	}
 	
 	// 应该返回基础结果，所有指标应该是零值
-	if result.ContentMetrics.AvgOutputTokenCount != 0 {
-		t.Errorf("Expected AvgOutputTokenCount 0, got %d", result.ContentMetrics.AvgOutputTokenCount)
+	if result.AvgOutputTokenCount != 0 {
+			t.Errorf("Expected AvgOutputTokenCount 0, got %d", result.AvgOutputTokenCount)
 	}
 }
 
@@ -822,40 +822,40 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 	expectedSuccessRate := float64(2) / float64(5) * 100
 	expectedErrorRate := float64(3) / float64(5) * 100
 	
-	if result.ReliabilityMetrics.SuccessRate != expectedSuccessRate {
-		t.Errorf("Expected SuccessRate %f, got %f", expectedSuccessRate, result.ReliabilityMetrics.SuccessRate)
+	if result.SuccessRate != expectedSuccessRate {
+			t.Errorf("Expected SuccessRate %f, got %f", expectedSuccessRate, result.SuccessRate)
 	}
-	
-	if result.ReliabilityMetrics.ErrorRate != expectedErrorRate {
-		t.Errorf("Expected ErrorRate %f, got %f", expectedErrorRate, result.ReliabilityMetrics.ErrorRate)
+
+	if result.ErrorRate != expectedErrorRate {
+			t.Errorf("Expected ErrorRate %f, got %f", expectedErrorRate, result.ErrorRate)
 	}
 	
 	// 验证时间指标计算
 	expectedAvgTotalTime := (500*time.Millisecond + 700*time.Millisecond) / 2
-	if result.TimeMetrics.AvgTotalTime != expectedAvgTotalTime {
-		t.Errorf("Expected AvgTotalTime %v, got %v", expectedAvgTotalTime, result.TimeMetrics.AvgTotalTime)
+	if result.AvgTotalTime != expectedAvgTotalTime {
+		t.Errorf("Expected AvgTotalTime %v, got %v", expectedAvgTotalTime, result.AvgTotalTime)
 	}
-	
-	if result.TimeMetrics.MinTotalTime != 500*time.Millisecond {
-		t.Errorf("Expected MinTotalTime %v, got %v", 500*time.Millisecond, result.TimeMetrics.MinTotalTime)
+
+	if result.MinTotalTime != 500*time.Millisecond {
+		t.Errorf("Expected MinTotalTime %v, got %v", 500*time.Millisecond, result.MinTotalTime)
 	}
-	
-	if result.TimeMetrics.MaxTotalTime != 700*time.Millisecond {
-		t.Errorf("Expected MaxTotalTime %v, got %v", 700*time.Millisecond, result.TimeMetrics.MaxTotalTime)
+
+	if result.MaxTotalTime != 700*time.Millisecond {
+		t.Errorf("Expected MaxTotalTime %v, got %v", 700*time.Millisecond, result.MaxTotalTime)
 	}
 	
 	// 验证token指标计算
 	expectedAvgTokens := (150 + 200) / 2
-	if result.ContentMetrics.AvgOutputTokenCount != expectedAvgTokens {
-		t.Errorf("Expected AvgOutputTokenCount %d, got %d", expectedAvgTokens, result.ContentMetrics.AvgOutputTokenCount)
+	if result.AvgOutputTokenCount != expectedAvgTokens {
+			t.Errorf("Expected AvgOutputTokenCount %d, got %d", expectedAvgTokens, result.AvgOutputTokenCount)
 	}
 	
-	if result.ContentMetrics.MinOutputTokenCount != 150 {
-		t.Errorf("Expected MinOutputTokenCount %d, got %d", 150, result.ContentMetrics.MinOutputTokenCount)
+	if result.MinOutputTokenCount != 150 {
+			t.Errorf("Expected MinOutputTokenCount %d, got %d", 150, result.MinOutputTokenCount)
 	}
 	
-	if result.ContentMetrics.MaxOutputTokenCount != 200 {
-		t.Errorf("Expected MaxOutputTokenCount %d, got %d", 200, result.ContentMetrics.MaxOutputTokenCount)
+	if result.MaxOutputTokenCount != 200 {
+			t.Errorf("Expected MaxOutputTokenCount %d, got %d", 200, result.MaxOutputTokenCount)
 	}
 	
 	// 验证TPS计算
@@ -863,18 +863,18 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 	tps2 := float64(200) / (700 * time.Millisecond).Seconds()
 	expectedAvgTPS := (tps1 + tps2) / 2
 	
-	if result.ContentMetrics.AvgTPS != expectedAvgTPS {
-		t.Errorf("Expected AvgTPS %f, got %f", expectedAvgTPS, result.ContentMetrics.AvgTPS)
+	if result.AvgTPS != expectedAvgTPS {
+			t.Errorf("Expected AvgTPS %f, got %f", expectedAvgTPS, result.AvgTPS)
 	}
 	
 	// 验证网络指标
-	if result.NetworkMetrics.TargetIP != "8.8.8.8" {
-		t.Errorf("Expected TargetIP '8.8.8.8', got '%s'", result.NetworkMetrics.TargetIP)
+	if result.TargetIP != "8.8.8.8" {
+		t.Errorf("Expected TargetIP '8.8.8.8', got '%s'", result.TargetIP)
 	}
-	
+
 	expectedAvgDNS := (10*time.Millisecond + 15*time.Millisecond) / 2
-	if result.NetworkMetrics.AvgDNSTime != expectedAvgDNS {
-		t.Errorf("Expected AvgDNSTime %v, got %v", expectedAvgDNS, result.NetworkMetrics.AvgDNSTime)
+	if result.AvgDNSTime != expectedAvgDNS {
+		t.Errorf("Expected AvgDNSTime %v, got %v", expectedAvgDNS, result.AvgDNSTime)
 	}
 }
 
@@ -911,25 +911,25 @@ func TestRunner_CalculateResult_SingleValidResult(t *testing.T) {
 	}
 	
 	// 单个结果的情况下，平均值、最小值、最大值应该都相等
-	if result.TimeMetrics.AvgTotalTime != singleResult.TotalTime {
-		t.Errorf("Expected AvgTotalTime %v, got %v", singleResult.TotalTime, result.TimeMetrics.AvgTotalTime)
+	if result.AvgTotalTime != singleResult.TotalTime {
+		t.Errorf("Expected AvgTotalTime %v, got %v", singleResult.TotalTime, result.AvgTotalTime)
 	}
-	
-	if result.TimeMetrics.MinTotalTime != singleResult.TotalTime {
-		t.Errorf("Expected MinTotalTime %v, got %v", singleResult.TotalTime, result.TimeMetrics.MinTotalTime)
+
+	if result.MinTotalTime != singleResult.TotalTime {
+		t.Errorf("Expected MinTotalTime %v, got %v", singleResult.TotalTime, result.MinTotalTime)
 	}
-	
-	if result.TimeMetrics.MaxTotalTime != singleResult.TotalTime {
-		t.Errorf("Expected MaxTotalTime %v, got %v", singleResult.TotalTime, result.TimeMetrics.MaxTotalTime)
+
+	if result.MaxTotalTime != singleResult.TotalTime {
+		t.Errorf("Expected MaxTotalTime %v, got %v", singleResult.TotalTime, result.MaxTotalTime)
 	}
 	
 	// 验证成功率
-	if result.ReliabilityMetrics.SuccessRate != 100.0 {
-		t.Errorf("Expected SuccessRate 100.0, got %f", result.ReliabilityMetrics.SuccessRate)
+	if result.SuccessRate != 100.0 {
+			t.Errorf("Expected SuccessRate 100.0, got %f", result.SuccessRate)
 	}
-	
-	if result.ReliabilityMetrics.ErrorRate != 0.0 {
-		t.Errorf("Expected ErrorRate 0.0, got %f", result.ReliabilityMetrics.ErrorRate)
+
+	if result.ErrorRate != 0.0 {
+			t.Errorf("Expected ErrorRate 0.0, got %f", result.ErrorRate)
 	}
 }
 
@@ -1100,16 +1100,16 @@ func TestRunner_CalculateResult_TPOT(t *testing.T) {
 	expectedMinTPOT := 100 * time.Millisecond
 	expectedMaxTPOT := 200 * time.Millisecond
 	
-	if result.ContentMetrics.AvgTPOT != expectedAvgTPOT {
-		t.Errorf("Expected AvgTPOT %v, got %v", expectedAvgTPOT, result.ContentMetrics.AvgTPOT)
+	if result.AvgTPOT != expectedAvgTPOT {
+			t.Errorf("Expected AvgTPOT %v, got %v", expectedAvgTPOT, result.AvgTPOT)
 	}
 	
-	if result.ContentMetrics.MinTPOT != expectedMinTPOT {
-		t.Errorf("Expected MinTPOT %v, got %v", expectedMinTPOT, result.ContentMetrics.MinTPOT)
+	if result.MinTPOT != expectedMinTPOT {
+			t.Errorf("Expected MinTPOT %v, got %v", expectedMinTPOT, result.MinTPOT)
 	}
 	
-	if result.ContentMetrics.MaxTPOT != expectedMaxTPOT {
-		t.Errorf("Expected MaxTPOT %v, got %v", expectedMaxTPOT, result.ContentMetrics.MaxTPOT)
+	if result.MaxTPOT != expectedMaxTPOT {
+			t.Errorf("Expected MaxTPOT %v, got %v", expectedMaxTPOT, result.MaxTPOT)
 	}
 }
 
@@ -1158,16 +1158,16 @@ func TestRunner_CalculateResult_TPOT_SingleToken(t *testing.T) {
 	}
 	
 	// 所有结果都只有1个token，TPOT应该为0
-	if result.ContentMetrics.AvgTPOT != 0 {
-		t.Errorf("Expected AvgTPOT 0 for single token results, got %v", result.ContentMetrics.AvgTPOT)
+	if result.AvgTPOT != 0 {
+			t.Errorf("Expected AvgTPOT 0 for single token results, got %v", result.AvgTPOT)
 	}
 	
-	if result.ContentMetrics.MinTPOT != 0 {
-		t.Errorf("Expected MinTPOT 0 for single token results, got %v", result.ContentMetrics.MinTPOT)
+	if result.MinTPOT != 0 {
+			t.Errorf("Expected MinTPOT 0 for single token results, got %v", result.MinTPOT)
 	}
 	
-	if result.ContentMetrics.MaxTPOT != 0 {
-		t.Errorf("Expected MaxTPOT 0 for single token results, got %v", result.ContentMetrics.MaxTPOT)
+	if result.MaxTPOT != 0 {
+			t.Errorf("Expected MaxTPOT 0 for single token results, got %v", result.MaxTPOT)
 	}
 }
 
@@ -1208,8 +1208,8 @@ func TestRunner_CalculateResult_TPOT_NonStream(t *testing.T) {
 	// TPOT = (500-0) / (5-1) = 500ms / 4 = 125ms
 	expectedTPOT := 125 * time.Millisecond
 	
-	if calculatedResult.ContentMetrics.AvgTPOT != expectedTPOT {
-		t.Errorf("Expected AvgTPOT %v for non-stream mode, got %v", expectedTPOT, calculatedResult.ContentMetrics.AvgTPOT)
+	if calculatedResult.AvgTPOT != expectedTPOT {
+							t.Errorf("Expected AvgTPOT %v for non-stream mode, got %v", expectedTPOT, calculatedResult.AvgTPOT)
 	}
 }
 

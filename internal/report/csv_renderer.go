@@ -52,38 +52,38 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 
 	for _, modelData := range data {
 		// 处理TTFT和TPOT字段，非流式模式显示为"-"
-		avgTTFT := formatDurationForCSV(modelData.ContentMetrics.AvgTTFT, modelData.IsStream)
-		minTTFT := formatDurationForCSV(modelData.ContentMetrics.MinTTFT, modelData.IsStream)
-		maxTTFT := formatDurationForCSV(modelData.ContentMetrics.MaxTTFT, modelData.IsStream)
-		avgTPOT := formatDurationForCSV(modelData.ContentMetrics.AvgTPOT, modelData.IsStream)
-		minTPOT := formatDurationForCSV(modelData.ContentMetrics.MinTPOT, modelData.IsStream)
-		maxTPOT := formatDurationForCSV(modelData.ContentMetrics.MaxTPOT, modelData.IsStream)
+		avgTTFT := formatDurationForCSV(modelData.AvgTTFT, modelData.IsStream)
+		minTTFT := formatDurationForCSV(modelData.MinTTFT, modelData.IsStream)
+		maxTTFT := formatDurationForCSV(modelData.MaxTTFT, modelData.IsStream)
+		avgTPOT := formatDurationForCSV(modelData.AvgTPOT, modelData.IsStream)
+		minTPOT := formatDurationForCSV(modelData.MinTPOT, modelData.IsStream)
+		maxTPOT := formatDurationForCSV(modelData.MaxTPOT, modelData.IsStream)
 
 		record := []string{
 			// 基础信息
-			modelData.Metadata.Model,
-			modelData.Metadata.Protocol,
-			modelData.Metadata.Timestamp,
-			modelData.Metadata.BaseUrl,
+			modelData.Model,
+			modelData.Protocol,
+			modelData.Timestamp,
+			modelData.BaseUrl,
 			strconv.Itoa(modelData.TotalRequests),
 			strconv.Itoa(modelData.Concurrency),
 			strconv.FormatBool(modelData.IsStream),
 			modelData.TotalTime.String(),
 			// 时间性能指标
-			modelData.TimeMetrics.AvgTotalTime.String(),
-			modelData.TimeMetrics.MinTotalTime.String(),
-			modelData.TimeMetrics.MaxTotalTime.String(),
+			modelData.AvgTotalTime.String(),
+			modelData.MinTotalTime.String(),
+			modelData.MaxTotalTime.String(),
 			// 网络性能指标
-			modelData.NetworkMetrics.TargetIP,
-			modelData.NetworkMetrics.AvgDNSTime.String(),
-			modelData.NetworkMetrics.MinDNSTime.String(),
-			modelData.NetworkMetrics.MaxDNSTime.String(),
-			modelData.NetworkMetrics.AvgConnectTime.String(),
-			modelData.NetworkMetrics.MinConnectTime.String(),
-			modelData.NetworkMetrics.MaxConnectTime.String(),
-			modelData.NetworkMetrics.AvgTLSHandshakeTime.String(),
-			modelData.NetworkMetrics.MinTLSHandshakeTime.String(),
-			modelData.NetworkMetrics.MaxTLSHandshakeTime.String(),
+			modelData.TargetIP,
+			modelData.AvgDNSTime.String(),
+			modelData.MinDNSTime.String(),
+			modelData.MaxDNSTime.String(),
+			modelData.AvgConnectTime.String(),
+			modelData.MinConnectTime.String(),
+			modelData.MaxConnectTime.String(),
+			modelData.AvgTLSHandshakeTime.String(),
+			modelData.MinTLSHandshakeTime.String(),
+			modelData.MaxTLSHandshakeTime.String(),
 			// 服务性能指标
 			avgTTFT,
 			minTTFT,
@@ -91,18 +91,18 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 			avgTPOT,
 			minTPOT,
 			maxTPOT,
-			strconv.Itoa(modelData.ContentMetrics.AvgInputTokenCount),
-			strconv.Itoa(modelData.ContentMetrics.MinInputTokenCount),
-			strconv.Itoa(modelData.ContentMetrics.MaxInputTokenCount),
-			strconv.Itoa(modelData.ContentMetrics.AvgOutputTokenCount),
-			strconv.Itoa(modelData.ContentMetrics.MinOutputTokenCount),
-			strconv.Itoa(modelData.ContentMetrics.MaxOutputTokenCount),
-			strconv.FormatFloat(modelData.ContentMetrics.AvgTPS, 'f', 2, 64),
-			strconv.FormatFloat(modelData.ContentMetrics.MinTPS, 'f', 2, 64),
-			strconv.FormatFloat(modelData.ContentMetrics.MaxTPS, 'f', 2, 64),
+			strconv.Itoa(modelData.AvgInputTokenCount),
+			strconv.Itoa(modelData.MinInputTokenCount),
+			strconv.Itoa(modelData.MaxInputTokenCount),
+			strconv.Itoa(modelData.AvgOutputTokenCount),
+			strconv.Itoa(modelData.MinOutputTokenCount),
+			strconv.Itoa(modelData.MaxOutputTokenCount),
+			strconv.FormatFloat(modelData.AvgTPS, 'f', 2, 64),
+			strconv.FormatFloat(modelData.MinTPS, 'f', 2, 64),
+			strconv.FormatFloat(modelData.MaxTPS, 'f', 2, 64),
 			// 可靠性指标
-			strconv.FormatFloat(modelData.ReliabilityMetrics.SuccessRate, 'f', 2, 64),
-			strconv.FormatFloat(modelData.ReliabilityMetrics.ErrorRate, 'f', 2, 64),
+			strconv.FormatFloat(modelData.SuccessRate, 'f', 2, 64),
+			strconv.FormatFloat(modelData.ErrorRate, 'f', 2, 64),
 		}
 		if err := writer.Write(record); err != nil {
 			return "", fmt.Errorf("failed to write CSV record: %v", err)

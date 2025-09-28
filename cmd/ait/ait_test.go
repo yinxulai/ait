@@ -34,70 +34,34 @@ func NewMockRunner(config types.Input) (*MockRunner, error) {
 	return &MockRunner{
 		input: config,
 		result: &types.ReportData{
-			TotalRequests: config.Count,
-			Concurrency:   config.Concurrency,
-			IsStream:      config.Stream,
-			TotalTime:     1500 * time.Millisecond,
-			Metadata: struct {
-				Timestamp string `json:"timestamp"`
-				Protocol  string `json:"protocol"`
-				Model     string `json:"model"`
-				BaseUrl   string `json:"base_url"`
-			}{
-				Timestamp: time.Now().Format(time.RFC3339),
-				Protocol:  config.Protocol,
-				Model:     config.Model,
-				BaseUrl:   config.BaseUrl,
-			},
-			TimeMetrics: struct {
-				AvgTotalTime time.Duration `json:"avg_total_time"`
-				MinTotalTime time.Duration `json:"min_total_time"`
-				MaxTotalTime time.Duration `json:"max_total_time"`
-			}{
-				AvgTotalTime: 150 * time.Millisecond,
-				MinTotalTime: 100 * time.Millisecond,
-				MaxTotalTime: 200 * time.Millisecond,
-			},
-			ContentMetrics: struct {
-				AvgTTFT             time.Duration `json:"avg_ttft"`
-				MinTTFT             time.Duration `json:"min_ttft"`
-				MaxTTFT             time.Duration `json:"max_ttft"`
-				AvgTPOT             time.Duration `json:"avg_tpot"`
-				MinTPOT             time.Duration `json:"min_tpot"`
-				MaxTPOT             time.Duration `json:"max_tpot"`
-				AvgInputTokenCount  int           `json:"avg_input_token_count"`
-				MinInputTokenCount  int           `json:"min_input_token_count"`
-				MaxInputTokenCount  int           `json:"max_input_token_count"`
-				AvgOutputTokenCount int           `json:"avg_output_token_count"`
-				MinOutputTokenCount int           `json:"min_output_token_count"`
-				MaxOutputTokenCount int           `json:"max_output_token_count"`
-				AvgTPS              float64       `json:"avg_tps"`
-				MinTPS              float64       `json:"min_tps"`
-				MaxTPS              float64       `json:"max_tps"`
-			}{
-				AvgTTFT:             50 * time.Millisecond,
-				MinTTFT:             30 * time.Millisecond,
-				MaxTTFT:             70 * time.Millisecond,
-				AvgTPOT:             25 * time.Millisecond,
-				MinTPOT:             20 * time.Millisecond,
-				MaxTPOT:             30 * time.Millisecond,
-				AvgInputTokenCount:  50,
-				MinInputTokenCount:  40,
-				MaxInputTokenCount:  60,
-				AvgOutputTokenCount: 100,
-				MinOutputTokenCount: 80,
-				MaxOutputTokenCount: 120,
-				AvgTPS:              200.0,
-				MinTPS:              150.0,
-				MaxTPS:              250.0,
-			},
-			ReliabilityMetrics: struct {
-				ErrorRate   float64 `json:"error_rate"`
-				SuccessRate float64 `json:"success_rate"`
-			}{
-				ErrorRate:   0.0,
-				SuccessRate: 100.0,
-			},
+			TotalRequests:      config.Count,
+			Concurrency:        config.Concurrency,
+			IsStream:           config.Stream,
+			TotalTime:          1500 * time.Millisecond,
+			Timestamp:          time.Now().Format(time.RFC3339),
+			Protocol:           config.Protocol,
+			Model:              config.Model,
+			BaseUrl:            config.BaseUrl,
+			AvgTotalTime:       150 * time.Millisecond,
+			MinTotalTime:       100 * time.Millisecond,
+			MaxTotalTime:       200 * time.Millisecond,
+			AvgTTFT:            50 * time.Millisecond,
+			MinTTFT:            30 * time.Millisecond,
+			MaxTTFT:            70 * time.Millisecond,
+			AvgTPOT:            25 * time.Millisecond,
+			MinTPOT:            20 * time.Millisecond,
+			MaxTPOT:            30 * time.Millisecond,
+			AvgInputTokenCount: 50,
+			MinInputTokenCount: 40,
+			MaxInputTokenCount: 60,
+			AvgOutputTokenCount: 100,
+			MinOutputTokenCount: 80,
+			MaxOutputTokenCount: 120,
+			AvgTPS:             200.0,
+			MinTPS:             150.0,
+			MaxTPS:             250.0,
+			ErrorRate:          0.0,
+			SuccessRate:        100.0,
 		},
 	}, nil
 }
@@ -1511,21 +1475,20 @@ func TestFillResultMetadata(t *testing.T) {
 
 	// 验证结果
 	for i, result := range results {
-		if result.Metadata.Model != modelList[i] {
-			t.Errorf("Result[%d] Model: expected %s, got %s", i, modelList[i], result.Metadata.Model)
+		if result.Model != modelList[i] {
+			t.Errorf("Result[%d] Model: expected %s, got %s", i, modelList[i], result.Model)
 		}
-		if result.Metadata.BaseUrl != baseUrl {
-			t.Errorf("Result[%d] BaseUrl: expected %s, got %s", i, baseUrl, result.Metadata.BaseUrl)
+		if result.BaseUrl != baseUrl {
+			t.Errorf("Result[%d] BaseUrl: expected %s, got %s", i, baseUrl, result.BaseUrl)
 		}
-		if result.Metadata.Protocol != protocol {
-			t.Errorf("Result[%d] Protocol: expected %s, got %s", i, protocol, result.Metadata.Protocol)
+		if result.Protocol != protocol {
+			t.Errorf("Result[%d] Protocol: expected %s, got %s", i, protocol, result.Protocol)
 		}
-		if result.Metadata.Timestamp == "" {
+		if result.Timestamp == "" {
 			t.Errorf("Result[%d] Timestamp should not be empty", i)
 		}
-		
 		// 验证时间戳格式是否为RFC3339
-		if _, err := time.Parse(time.RFC3339, result.Metadata.Timestamp); err != nil {
+		if _, err := time.Parse(time.RFC3339, result.Timestamp); err != nil {
 			t.Errorf("Result[%d] Timestamp format invalid: %v", i, err)
 		}
 	}

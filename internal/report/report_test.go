@@ -232,53 +232,53 @@ func createTestReportData() types.ReportData {
 		TotalTime:     5 * time.Second,
 	}
 	
-	// 设置元数据
-	data.Metadata.Model = "gpt-3.5-turbo"
-	data.Metadata.Protocol = "openai"
-	data.Metadata.Timestamp = time.Now().Format(time.RFC3339)
-	data.Metadata.BaseUrl = "https://api.openai.com"
+	// 设置元数据 (已扁平化)
+	data.Model = "gpt-3.5-turbo"
+	data.Protocol = "openai"
+	data.Timestamp = time.Now().Format(time.RFC3339)
+	data.BaseUrl = "https://api.openai.com"
 	
 	// 设置时间指标
-	data.TimeMetrics.AvgTotalTime = 500 * time.Millisecond
-	data.TimeMetrics.MinTotalTime = 300 * time.Millisecond
-	data.TimeMetrics.MaxTotalTime = 800 * time.Millisecond
+	data.AvgTotalTime = 500 * time.Millisecond
+	data.MinTotalTime = 300 * time.Millisecond
+	data.MaxTotalTime = 800 * time.Millisecond
 	
 	// 设置网络指标
-	data.NetworkMetrics.TargetIP = "8.8.8.8"
-	data.NetworkMetrics.AvgDNSTime = 10 * time.Millisecond
-	data.NetworkMetrics.MinDNSTime = 5 * time.Millisecond
-	data.NetworkMetrics.MaxDNSTime = 20 * time.Millisecond
-	data.NetworkMetrics.AvgConnectTime = 50 * time.Millisecond
-	data.NetworkMetrics.MinConnectTime = 30 * time.Millisecond
-	data.NetworkMetrics.MaxConnectTime = 80 * time.Millisecond
-	data.NetworkMetrics.AvgTLSHandshakeTime = 100 * time.Millisecond
-	data.NetworkMetrics.MinTLSHandshakeTime = 80 * time.Millisecond
-	data.NetworkMetrics.MaxTLSHandshakeTime = 150 * time.Millisecond
+	data.TargetIP = "8.8.8.8"
+	data.AvgDNSTime = 10 * time.Millisecond
+	data.MinDNSTime = 5 * time.Millisecond
+	data.MaxDNSTime = 20 * time.Millisecond
+	data.AvgConnectTime = 50 * time.Millisecond
+	data.MinConnectTime = 30 * time.Millisecond
+	data.MaxConnectTime = 80 * time.Millisecond
+	data.AvgTLSHandshakeTime = 100 * time.Millisecond
+	data.MinTLSHandshakeTime = 80 * time.Millisecond
+	data.MaxTLSHandshakeTime = 150 * time.Millisecond
 	
 	// 设置内容指标
-	data.ContentMetrics.AvgTTFT = 200 * time.Millisecond
-	data.ContentMetrics.MinTTFT = 100 * time.Millisecond
-	data.ContentMetrics.MaxTTFT = 300 * time.Millisecond
-	data.ContentMetrics.AvgInputTokenCount = 50
-	data.ContentMetrics.MinInputTokenCount = 40
-	data.ContentMetrics.MaxInputTokenCount = 60
-	data.ContentMetrics.AvgOutputTokenCount = 150
-	data.ContentMetrics.MinOutputTokenCount = 100
-	data.ContentMetrics.MaxOutputTokenCount = 200
-	data.ContentMetrics.AvgTPS = 300.0
-	data.ContentMetrics.MinTPS = 250.0
-	data.ContentMetrics.MaxTPS = 350.0
+	data.AvgTTFT = 200 * time.Millisecond
+	data.MinTTFT = 100 * time.Millisecond
+	data.MaxTTFT = 300 * time.Millisecond
+	data.AvgInputTokenCount = 50
+	data.MinInputTokenCount = 40
+	data.MaxInputTokenCount = 60
+	data.AvgOutputTokenCount = 150
+	data.MinOutputTokenCount = 100
+	data.MaxOutputTokenCount = 200
+	data.AvgTPS = 300.0
+	data.MinTPS = 250.0
+	data.MaxTPS = 350.0
 	
 	// 设置可靠性指标
-	data.ReliabilityMetrics.SuccessRate = 95.0
-	data.ReliabilityMetrics.ErrorRate = 5.0
+	data.SuccessRate = 95.0
+	data.ErrorRate = 5.0
 	
 	return data
 }
 
 func createTestReportDataWithModel(model string) types.ReportData {
 	data := createTestReportData()
-	data.Metadata.Model = model
+	data.Model = model
 	return data
 }
 
