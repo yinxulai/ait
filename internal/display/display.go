@@ -72,6 +72,9 @@ func (td *Displayer) ShowInput(data *Input) {
 	)
 	table.Header("配置项", "值", "说明")
 
+	// 任务信息
+	table.Append("🆔 任务 ID", data.TaskId, "本次测试的唯一标识符")
+
 	// 基础配置
 	table.Append("🔗 协议", data.Protocol, "API 协议类型")
 	table.Append("🌐 服务地址", data.BaseUrl, "API 基础 URL")
@@ -107,9 +110,6 @@ func (td *Displayer) ShowInput(data *Input) {
 	table.Append("📝 测试提示词", promptDisplay, "用于测试的提示内容")
 
 	table.Append("📄 生成报告", strconv.FormatBool(data.Report), "是否生成测试报告文件")
-
-	// 任务信息
-	table.Append("🆔 任务 ID", data.TaskId, "本次测试的唯一标识符")
 
 	table.Render()
 }

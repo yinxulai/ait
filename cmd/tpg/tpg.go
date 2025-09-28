@@ -171,7 +171,7 @@ func generateTaskID() string {
 }
 
 // validateParams 验证参数
-func validateParams(count, length int, outputDir, format string) error {
+func validateParams(count, length int, outputDir string) error {
 	if count <= 0 {
 		return fmt.Errorf("count 必须大于 0")
 	}
@@ -182,19 +182,6 @@ func validateParams(count, length int, outputDir, format string) error {
 
 	if outputDir == "" {
 		return fmt.Errorf("输出目录不能为空")
-	}
-
-	validFormats := []string{"txt", "json"}
-	formatValid := false
-	for _, validFormat := range validFormats {
-		if format == validFormat {
-			formatValid = true
-			break
-		}
-	}
-
-	if !formatValid {
-		return fmt.Errorf("不支持的格式: %s, 支持的格式: %s", format, strings.Join(validFormats, ", "))
 	}
 
 	return nil
@@ -210,8 +197,7 @@ func printHelp() {
 	fmt.Println("选项:")
 	fmt.Println("  -count        生成的 prompt 数量 (默认: 10)")
 	fmt.Println("  -length       每个 prompt 的近似长度 (默认: 50)")
-	fmt.Println("  -dir          输出目录 (默认: prompts)")
-	fmt.Println("  -format       输出格式: txt 或 json (默认: txt)")
+	fmt.Println("  -output       输出目录 (默认: output)")
 	fmt.Println("  -template     模板字符串，支持占位符: {{content}}, {{index}}, {{timestamp}}")
 	fmt.Println("  -help         显示此帮助信息")
 	fmt.Println("")
@@ -222,7 +208,7 @@ func printHelp() {
 	fmt.Println("")
 	fmt.Println("示例:")
 	fmt.Println("  tpg -count=20 -length=100")
-	fmt.Println("  tpg -dir=./test-prompts -format=json")
+	fmt.Println("  tpg -output=./test-prompts")
 	fmt.Println("  tpg -template=\"请回答以下问题: {{content}}\"")
 }
 
@@ -255,27 +241,14 @@ func generateRandomText(desiredLength int) string {
 }
 
 // writePromptFile 写入 prompt 文件
-func writePromptFile(prompt, filename, format string, template *Template, index int) error {
-	var content string
-	
+func writePromptFile(prompt, filename string, template *Template, index int) error {
 	// 如果有模板，应用模板
 	finalContent := prompt
 	if template != nil {
 		finalContent = template.applyTemplate(prompt, index, time.Now())
 	}
-	
-	switch format {
-	case "json":
-		content = fmt.Sprintf(`{
-  "prompt": "%s",
-  "length": %d,
-  "timestamp": "%s"
-}`, strings.ReplaceAll(finalContent, "\"", "\\\""), len(finalContent), time.Now().Format(time.RFC3339))
-	default:
-		content = finalContent
-	}
 
-	if err := os.WriteFile(filename, []byte(content), 0644); err != nil {
+	if err := os.WriteFile(filename, []byte(finalContent), 0644); err != nil {
 		return fmt.Errorf("写入文件 %s 失败: %v", filename, err)
 	}
 	return nil
@@ -285,8 +258,7 @@ func main() {
 	// 定义命令行参数
 	count := flag.Int("count", 10, "生成的 prompt 数量")
 	length := flag.Int("length", 50, "每个 prompt 的近似长度")
-	outputDir := flag.String("dir", "prompts", "输出目录")
-	format := flag.String("format", "txt", "输出格式: txt 或 json")
+	outputDir := flag.String("output", "prompts", "输出目录")
 	templateStr := flag.String("template", "", "模板字符串，支持占位符")
 	help := flag.Bool("help", false, "显示帮助信息")
 
@@ -299,7 +271,7 @@ func main() {
 	}
 
 	// 验证参数
-	if err := validateParams(*count, *length, *outputDir, *format); err != nil {
+	if err := validateParams(*count, *length, *outputDir); err != nil {
 		fmt.Printf("%s错误: %s%s\n", display.ColorRed, err.Error(), display.ColorReset)
 		fmt.Println("使用 -help 查看帮助信息")
 		os.Exit(1)
@@ -333,7 +305,6 @@ func main() {
 	fmt.Printf("数量: %d\n", *count)
 	fmt.Printf("长度: %d 字符\n", *length)
 	fmt.Printf("输出目录: %s\n", *outputDir)
-	fmt.Printf("输出格式: %s\n", *format)
 	if template != nil {
 		fmt.Printf("使用模板: 是\n")
 	} else {
@@ -347,16 +318,9 @@ func main() {
 
 	for i := 0; i < *count; i++ {
 		prompt := generateRandomText(*length)
+		filename := fmt.Sprintf("%s/prompt_%d.txt", *outputDir, i+1)
 
-		var filename string
-		switch *format {
-		case "json":
-			filename = fmt.Sprintf("%s/prompt_%d.json", *outputDir, i+1)
-		default:
-			filename = fmt.Sprintf("%s/prompt_%d.txt", *outputDir, i+1)
-		}
-
-		if err := writePromptFile(prompt, filename, *format, template, i+1); err != nil {
+		if err := writePromptFile(prompt, filename, template, i+1); err != nil {
 			errors = append(errors, err.Error())
 			continue
 		}
