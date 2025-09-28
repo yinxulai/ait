@@ -28,6 +28,14 @@
 
 从 [Releases 页面](https://github.com/yinxulai/ait/releases) 下载适合您平台的预编译二进制文件：
 
+#### Linux 一键安装脚本（自动识别架构）
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh | bash
+```
+
+> 脚本会自动识别多种架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh -o install-ait.sh && INSTALL_DIR=$HOME/.local/bin bash install-ait.sh`。
+
 ```bash
 # Linux (x64)
 wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-amd64
@@ -38,6 +46,16 @@ sudo mv ait-linux-amd64 /usr/local/bin/ait
 wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-arm64
 chmod +x ait-linux-arm64
 sudo mv ait-linux-arm64 /usr/local/bin/ait
+
+# Linux (ARM)
+wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-arm
+chmod +x ait-linux-arm
+sudo mv ait-linux-arm /usr/local/bin/ait
+
+# Linux (386)
+wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-386
+chmod +x ait-linux-386
+sudo mv ait-linux-386 /usr/local/bin/ait
 
 # macOS (Intel)
 wget https://github.com/yinxulai/ait/releases/latest/download/ait-darwin-amd64
@@ -55,6 +73,10 @@ Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download
 
 # Windows (ARM64) - PowerShell
 Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/ait-windows-arm64.exe" -OutFile "ait.exe"
+# 将 ait.exe 移动到您的 PATH 中
+
+# Windows (386) - PowerShell
+Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/ait-windows-386.exe" -OutFile "ait.exe"
 # 将 ait.exe 移动到您的 PATH 中
 ```
 
@@ -373,6 +395,123 @@ ait --models=gemini-2.5-pro,gemini-2.5-flash,gemini-2.0-flash --count=5 --report
 # 测试 Claude 3.x 系列模型
 ait --models=claude-3.7-sonnet,claude-3.5-haiku --count=5 --report
 ```
+
+## 🧰 Prompt 生成助手 tpg
+
+`tpg`（Test Prompt Generator）是随项目提供的辅助工具，用于批量生成高质量、语言多样的 Prompt 文件，搭配 `ait` 做大规模压测尤为省心。
+
+- 🧠 **内置多语言语料**：覆盖中英文及多语种，轻松模拟全球业务场景
+- 📄 **文本文件输出**：生成 `.txt` 格式的 prompt 文件，便于集成各种测试流程
+- 🧩 **模板占位符**：`{{content}}`、`{{index}}`、`{{timestamp}}` 等，方便拼装上下文
+
+### 安装 tpg
+
+#### tpg Linux 一键安装脚本
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-tpg.sh | bash
+```
+
+> 脚本会自动识别多种架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-tpg.sh -o install-tpg.sh && INSTALL_DIR=$HOME/.local/bin bash install-tpg.sh`。
+
+#### 手动下载安装
+
+从 [Releases 页面](https://github.com/yinxulai/ait/releases) 下载适合您平台的 tpg 二进制文件：
+
+```bash
+# Linux (x64)
+wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-amd64
+chmod +x tpg-linux-amd64
+sudo mv tpg-linux-amd64 /usr/local/bin/tpg
+
+# Linux (ARM64)
+wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-arm64
+chmod +x tpg-linux-arm64
+sudo mv tpg-linux-arm64 /usr/local/bin/tpg
+
+# Linux (ARM)
+wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-arm
+chmod +x tpg-linux-arm
+sudo mv tpg-linux-arm /usr/local/bin/tpg
+
+# Linux (386)
+wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-386
+chmod +x tpg-linux-386
+sudo mv tpg-linux-386 /usr/local/bin/tpg
+
+# macOS (Intel)
+wget https://github.com/yinxulai/ait/releases/latest/download/tpg-darwin-amd64
+chmod +x tpg-darwin-amd64
+sudo mv tpg-darwin-amd64 /usr/local/bin/tpg
+
+# macOS (Apple Silicon)
+wget https://github.com/yinxulai/ait/releases/latest/download/tpg-darwin-arm64
+chmod +x tpg-darwin-arm64
+sudo mv tpg-darwin-arm64 /usr/local/bin/tpg
+
+# Windows (x64) - PowerShell
+Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/tpg-windows-amd64.exe" -OutFile "tpg.exe"
+# 将 tpg.exe 移动到您的 PATH 中
+
+# Windows (ARM64) - PowerShell
+Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/tpg-windows-arm64.exe" -OutFile "tpg.exe"
+# 将 tpg.exe 移动到您的 PATH 中
+
+# Windows (386) - PowerShell
+Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/tpg-windows-386.exe" -OutFile "tpg.exe"
+# 将 tpg.exe 移动到您的 PATH 中
+```
+
+#### 从源码编译
+
+```bash
+# 克隆项目
+git clone https://github.com/yinxulai/ait.git
+cd ait
+
+# 编译 tpg
+make build
+
+# 或者直接用 go build
+go build -o bin/tpg ./cmd/tpg/
+```
+
+### tpg 使用示例
+
+```bash
+# 生成 100 条 500 字左右的 Prompt，并按照模板写入 prompts/think
+tpg \
+  -count=100 \
+  -length=500 \
+  -output=prompts/think \
+  -template="帮我生成 400 词左右的内容摘要: {{content}}"
+
+# 搭配 ait 做批量压测
+ait \
+  --models=deepseek-v3-1-terminus,gemini-2.5-pro \
+  --prompt-file="prompts/think/*.txt" \
+  --count=500 \
+  --concurrency=50 \
+  --report
+```
+
+### tpg 参数说明
+
+| 参数        | 描述                                      | 默认值     |
+|:-----------|:------------------------------------------|:-----------|
+| `-count`   | 生成的 prompt 数量                         | `10`       |
+| `-length`  | 每个 prompt 的近似长度（字符数）             | `50`       |
+| `-output`  | 输出目录                                   | `prompts`  |
+| `-template`| 模板字符串，支持占位符                      | 无         |
+| `-help`    | 显示帮助信息                               | -          |
+
+### 模板占位符
+
+- `{{content}}` - 生成的 prompt 内容
+- `{{index}}` - prompt 序号（从 1 开始）  
+- `{{timestamp}}` - 当前时间戳（RFC3339 格式）
+
+> 更多详细用法可运行 `tpg -help` 查看。
 
 ## 🔧 开发和贡献
 
