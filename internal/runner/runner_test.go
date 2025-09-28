@@ -60,6 +60,7 @@ func (m *MockClient) Request(prompt string, stream bool) (*client.ResponseMetric
 		TotalTime:         100 * time.Millisecond,
 		TimeToFirstToken:  20 * time.Millisecond,
 		CompletionTokens:  50,
+		ThinkingTokens:   10,
 		DNSTime:          5 * time.Millisecond,
 		ConnectTime:      10 * time.Millisecond,
 		TLSHandshakeTime: 15 * time.Millisecond,
@@ -211,6 +212,7 @@ func TestRunner_Run_Success(t *testing.T) {
 			TotalTime:         200 * time.Millisecond,
 			TimeToFirstToken:  50 * time.Millisecond,
 			CompletionTokens:  100,
+			ThinkingTokens:   20,
 			DNSTime:          10 * time.Millisecond,
 			ConnectTime:      20 * time.Millisecond,
 			TLSHandshakeTime: 30 * time.Millisecond,
@@ -263,11 +265,16 @@ func TestRunner_Run_Success(t *testing.T) {
 	if result.AvgOutputTokenCount != 100 {
 			t.Errorf("Expected AvgOutputTokenCount 100, got %d", result.AvgOutputTokenCount)
 	}
+
+	if result.AvgThinkingTokenCount != 20 {
+			t.Errorf("Expected AvgThinkingTokenCount 20, got %d", result.AvgThinkingTokenCount)
+	}
 	
 	// 验证总时间有合理值
 	if result.TotalTime <= 0 {
 		t.Error("Expected positive TotalTime")
 	}
+
 }
 
 func TestRunner_Run_PartialFailures(t *testing.T) {
@@ -531,6 +538,10 @@ func TestRunner_RunWithProgress_Success(t *testing.T) {
 		if len(finalProgress.OutputTokenCounts) != input.Count {
 			t.Errorf("Expected %d OutputTokenCounts, got %d", input.Count, len(finalProgress.OutputTokenCounts))
 		}
+
+		if len(finalProgress.ThinkingTokenCounts) != input.Count {
+			t.Errorf("Expected %d ThinkingTokenCounts, got %d", input.Count, len(finalProgress.ThinkingTokenCounts))
+		}
 	}
 	
 	// 验证客户端调用次数
@@ -783,6 +794,7 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 			TotalTime:         500 * time.Millisecond,
 			TimeToFirstToken:  100 * time.Millisecond,
 			CompletionTokens:  150,
+			ThinkingTokens:   40,
 			DNSTime:          10 * time.Millisecond,
 			ConnectTime:      50 * time.Millisecond,
 			TLSHandshakeTime: 80 * time.Millisecond,
@@ -793,6 +805,7 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 			TotalTime:         300 * time.Millisecond,
 			TimeToFirstToken:  80 * time.Millisecond,
 			CompletionTokens:  0, // 无效结果(token=0)
+			ThinkingTokens:   0,
 			DNSTime:          8 * time.Millisecond,
 			ConnectTime:      40 * time.Millisecond,
 			TLSHandshakeTime: 60 * time.Millisecond,
@@ -802,6 +815,7 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 			TotalTime:         700 * time.Millisecond,
 			TimeToFirstToken:  120 * time.Millisecond,
 			CompletionTokens:  200,
+			ThinkingTokens:   80,
 			DNSTime:          15 * time.Millisecond,
 			ConnectTime:      60 * time.Millisecond,
 			TLSHandshakeTime: 100 * time.Millisecond,
@@ -857,6 +871,20 @@ func TestRunner_CalculateResult_MixedResults(t *testing.T) {
 	if result.MaxOutputTokenCount != 200 {
 			t.Errorf("Expected MaxOutputTokenCount %d, got %d", 200, result.MaxOutputTokenCount)
 	}
+
+	// 验证思考token指标计算
+	expectedAvgThinkingTokens := (40 + 80) / 2
+	if result.AvgThinkingTokenCount != expectedAvgThinkingTokens {
+			t.Errorf("Expected AvgThinkingTokenCount %d, got %d", expectedAvgThinkingTokens, result.AvgThinkingTokenCount)
+	}
+
+	if result.MinThinkingTokenCount != 40 {
+			t.Errorf("Expected MinThinkingTokenCount %d, got %d", 40, result.MinThinkingTokenCount)
+	}
+
+	if result.MaxThinkingTokenCount != 80 {
+			t.Errorf("Expected MaxThinkingTokenCount %d, got %d", 80, result.MaxThinkingTokenCount)
+	}
 	
 	// 验证TPS计算
 	tps1 := float64(150) / (500 * time.Millisecond).Seconds()
@@ -887,6 +915,7 @@ func TestRunner_CalculateResult_SingleValidResult(t *testing.T) {
 		Concurrency: 1,
 		Count:       1,
 		Stream:      true,
+		Thinking:    true,
 	}
 	
 	runner := &Runner{input: input}
@@ -895,6 +924,7 @@ func TestRunner_CalculateResult_SingleValidResult(t *testing.T) {
 		TotalTime:         500 * time.Millisecond,
 		TimeToFirstToken:  100 * time.Millisecond,
 		CompletionTokens:  150,
+		ThinkingTokens:   45,
 		DNSTime:          10 * time.Millisecond,
 		ConnectTime:      50 * time.Millisecond,
 		TLSHandshakeTime: 80 * time.Millisecond,
@@ -930,6 +960,22 @@ func TestRunner_CalculateResult_SingleValidResult(t *testing.T) {
 
 	if result.ErrorRate != 0.0 {
 			t.Errorf("Expected ErrorRate 0.0, got %f", result.ErrorRate)
+	}
+
+	if result.AvgThinkingTokenCount != singleResult.ThinkingTokens {
+			t.Errorf("Expected AvgThinkingTokenCount %d, got %d", singleResult.ThinkingTokens, result.AvgThinkingTokenCount)
+	}
+
+	if result.MinThinkingTokenCount != singleResult.ThinkingTokens {
+			t.Errorf("Expected MinThinkingTokenCount %d, got %d", singleResult.ThinkingTokens, result.MinThinkingTokenCount)
+	}
+
+	if result.MaxThinkingTokenCount != singleResult.ThinkingTokens {
+			t.Errorf("Expected MaxThinkingTokenCount %d, got %d", singleResult.ThinkingTokens, result.MaxThinkingTokenCount)
+	}
+
+	if !result.IsThinking {
+			t.Errorf("Expected IsThinking true, got %v", result.IsThinking)
 	}
 }
 
@@ -1012,6 +1058,7 @@ func TestStatsDataStructure(t *testing.T) {
 		TotalTimes:        []time.Duration{500 * time.Millisecond, 600 * time.Millisecond},
 		InputTokenCounts:  []int{50, 60},
 		OutputTokenCounts: []int{100, 150},
+		ThinkingTokenCounts: []int{20, 30},
 		ErrorMessages:     []string{"error1", "error2"},
 		StartTime:         time.Now(),
 		ElapsedTime:       2 * time.Second,
@@ -1032,6 +1079,10 @@ func TestStatsDataStructure(t *testing.T) {
 	
 	if len(stats.ErrorMessages) != 2 {
 		t.Errorf("Expected 2 ErrorMessages, got %d", len(stats.ErrorMessages))
+	}
+
+	if len(stats.ThinkingTokenCounts) != 2 {
+		t.Errorf("Expected 2 ThinkingTokenCounts, got %d", len(stats.ThinkingTokenCounts))
 	}
 	
 	if stats.ElapsedTime != 2*time.Second {

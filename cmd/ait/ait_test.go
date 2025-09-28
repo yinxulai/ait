@@ -22,7 +22,7 @@ func createTestPromptSource(promptText string) *prompt.PromptSource {
 // MockRunner 模拟 runner 以便测试 main 函数逻辑
 type MockRunner struct {
 	result *types.ReportData
-	input types.Input
+	input  types.Input
 	err    error
 }
 
@@ -30,38 +30,42 @@ func NewMockRunner(config types.Input) (*MockRunner, error) {
 	if config.Model == "invalid-model" {
 		return nil, fmt.Errorf("invalid model: %s", config.Model)
 	}
-	
+
 	return &MockRunner{
 		input: config,
 		result: &types.ReportData{
-			TotalRequests:      config.Count,
-			Concurrency:        config.Concurrency,
-			IsStream:           config.Stream,
-			TotalTime:          1500 * time.Millisecond,
-			Timestamp:          time.Now().Format(time.RFC3339),
-			Protocol:           config.Protocol,
-			Model:              config.Model,
-			BaseUrl:            config.BaseUrl,
-			AvgTotalTime:       150 * time.Millisecond,
-			MinTotalTime:       100 * time.Millisecond,
-			MaxTotalTime:       200 * time.Millisecond,
-			AvgTTFT:            50 * time.Millisecond,
-			MinTTFT:            30 * time.Millisecond,
-			MaxTTFT:            70 * time.Millisecond,
-			AvgTPOT:            25 * time.Millisecond,
-			MinTPOT:            20 * time.Millisecond,
-			MaxTPOT:            30 * time.Millisecond,
-			AvgInputTokenCount: 50,
-			MinInputTokenCount: 40,
-			MaxInputTokenCount: 60,
-			AvgOutputTokenCount: 100,
-			MinOutputTokenCount: 80,
-			MaxOutputTokenCount: 120,
-			AvgTPS:             200.0,
-			MinTPS:             150.0,
-			MaxTPS:             250.0,
-			ErrorRate:          0.0,
-			SuccessRate:        100.0,
+			TotalRequests:         config.Count,
+			Concurrency:           config.Concurrency,
+			IsStream:              config.Stream,
+			IsThinking:            config.Thinking,
+			TotalTime:             1500 * time.Millisecond,
+			Timestamp:             time.Now().Format(time.RFC3339),
+			Protocol:              config.Protocol,
+			Model:                 config.Model,
+			BaseUrl:               config.BaseUrl,
+			AvgTotalTime:          150 * time.Millisecond,
+			MinTotalTime:          100 * time.Millisecond,
+			MaxTotalTime:          200 * time.Millisecond,
+			AvgTTFT:               50 * time.Millisecond,
+			MinTTFT:               30 * time.Millisecond,
+			MaxTTFT:               70 * time.Millisecond,
+			AvgTPOT:               25 * time.Millisecond,
+			MinTPOT:               20 * time.Millisecond,
+			MaxTPOT:               30 * time.Millisecond,
+			AvgInputTokenCount:    50,
+			MinInputTokenCount:    40,
+			MaxInputTokenCount:    60,
+			AvgOutputTokenCount:   100,
+			MinOutputTokenCount:   80,
+			MaxOutputTokenCount:   120,
+			AvgThinkingTokenCount: 40,
+			MinThinkingTokenCount: 30,
+			MaxThinkingTokenCount: 50,
+			AvgTPS:                200.0,
+			MinTPS:                150.0,
+			MaxTPS:                250.0,
+			ErrorRate:             0.0,
+			SuccessRate:           100.0,
 		},
 	}, nil
 }
@@ -122,12 +126,12 @@ func TestDetectProtocolFromEnv(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name                string
-		openaiKey          string
-		openaiURL          string
-		anthropicKey       string
-		anthropicURL       string
-		expectedProtocol   string
+		name             string
+		openaiKey        string
+		openaiURL        string
+		anthropicKey     string
+		anthropicURL     string
+		expectedProtocol string
 	}{
 		{
 			name:             "OpenAI API key set",
@@ -225,11 +229,11 @@ func TestLoadEnvForProtocol(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name         string
-		protocol     string
-		envVars      map[string]string
-		expectedURL  string
-		expectedKey  string
+		name        string
+		protocol    string
+		envVars     map[string]string
+		expectedURL string
+		expectedKey string
 	}{
 		{
 			name:     "OpenAI protocol with environment variables",
@@ -424,7 +428,7 @@ func TestInputConfig(t *testing.T) {
 		baseUrl  string
 		apiKey   string
 		model    string
-		input   types.Input
+		input    types.Input
 	}{
 		{
 			name:     "OpenAI configuration",
@@ -470,8 +474,8 @@ func TestInputConfig(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 模拟创建 Input 配置的过程
 			input := types.Input{
-				Protocol:    tt.protocol,
-				BaseUrl:     tt.baseUrl,
+				Protocol:     tt.protocol,
+				BaseUrl:      tt.baseUrl,
 				ApiKey:       tt.apiKey,
 				Model:        tt.model,
 				Concurrency:  tt.input.Concurrency,
@@ -568,12 +572,12 @@ func TestParameterValidation(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 模拟主函数中的参数验证逻辑
 			hasError := false
-			
+
 			// 检查 models 参数
 			if tt.models == "" {
 				hasError = true
 			}
-			
+
 			// 检查 baseUrl 和 apiKey 参数
 			if tt.baseUrl == "" || tt.apiKey == "" {
 				hasError = true
@@ -761,8 +765,8 @@ func TestModelListProcessing(t *testing.T) {
 
 func TestConfigCreation(t *testing.T) {
 	tests := []struct {
-		name     string
-		input    struct {
+		name  string
+		input struct {
 			protocol    string
 			baseUrl     string
 			apiKey      string
@@ -1025,7 +1029,7 @@ func TestValidateRequiredParams(t *testing.T) {
 			name:        "Empty models",
 			models:      "",
 			baseUrl:     "https://api.openai.com",
-			apiKey:      "sk-test123", 
+			apiKey:      "sk-test123",
 			protocol:    "openai",
 			expectError: true,
 			errorMsg:    "models 参数必填",
@@ -1062,7 +1066,7 @@ func TestValidateRequiredParams(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			err := validateRequiredParams(tt.models, tt.baseUrl, tt.apiKey, tt.protocol)
-			
+
 			if tt.expectError {
 				if err == nil {
 					t.Errorf("Expected error containing '%s', but got no error", tt.errorMsg)
@@ -1114,12 +1118,12 @@ func TestParseModelList(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			result := parseModelList(tt.input)
-			
+
 			if len(result) != len(tt.expected) {
 				t.Errorf("Expected %d models, got %d", len(tt.expected), len(result))
 				return
 			}
-			
+
 			for i, expected := range tt.expected {
 				if result[i] != expected {
 					t.Errorf("Model[%d]: expected '%s', got '%s'", i, expected, result[i])
@@ -1145,14 +1149,14 @@ func TestResolveConfigValues(t *testing.T) {
 	}()
 
 	tests := []struct {
-		name               string
-		inputProtocol      string
-		inputBaseUrl       string
-		inputApiKey        string
-		envVars            map[string]string
-		expectedProtocol   string
-		expectedBaseUrl    string
-		expectedApiKey     string
+		name             string
+		inputProtocol    string
+		inputBaseUrl     string
+		inputApiKey      string
+		envVars          map[string]string
+		expectedProtocol string
+		expectedBaseUrl  string
+		expectedApiKey   string
 	}{
 		{
 			name:             "All command line params provided",
@@ -1165,22 +1169,22 @@ func TestResolveConfigValues(t *testing.T) {
 			expectedApiKey:   "cmd-key",
 		},
 		{
-			name:             "Empty protocol, auto-detect from env",
-			inputProtocol:    "",
-			inputBaseUrl:     "https://cmd.api.com",
-			inputApiKey:      "cmd-key",
+			name:          "Empty protocol, auto-detect from env",
+			inputProtocol: "",
+			inputBaseUrl:  "https://cmd.api.com",
+			inputApiKey:   "cmd-key",
 			envVars: map[string]string{
 				"OPENAI_API_KEY": "env-key",
 			},
 			expectedProtocol: "openai",
-			expectedBaseUrl:  "https://cmd.api.com", 
+			expectedBaseUrl:  "https://cmd.api.com",
 			expectedApiKey:   "cmd-key",
 		},
 		{
-			name:             "Missing baseUrl, get from env",
-			inputProtocol:    "openai",
-			inputBaseUrl:     "",
-			inputApiKey:      "cmd-key",
+			name:          "Missing baseUrl, get from env",
+			inputProtocol: "openai",
+			inputBaseUrl:  "",
+			inputApiKey:   "cmd-key",
 			envVars: map[string]string{
 				"OPENAI_BASE_URL": "https://env.api.com",
 			},
@@ -1189,10 +1193,10 @@ func TestResolveConfigValues(t *testing.T) {
 			expectedApiKey:   "cmd-key",
 		},
 		{
-			name:             "Missing apiKey, get from env",
-			inputProtocol:    "anthropic",
-			inputBaseUrl:     "https://cmd.api.com",
-			inputApiKey:      "",
+			name:          "Missing apiKey, get from env",
+			inputProtocol: "anthropic",
+			inputBaseUrl:  "https://cmd.api.com",
+			inputApiKey:   "",
 			envVars: map[string]string{
 				"ANTHROPIC_API_KEY": "env-key",
 			},
@@ -1201,10 +1205,10 @@ func TestResolveConfigValues(t *testing.T) {
 			expectedApiKey:   "env-key",
 		},
 		{
-			name:             "All from env vars",
-			inputProtocol:    "",
-			inputBaseUrl:     "",
-			inputApiKey:      "",
+			name:          "All from env vars",
+			inputProtocol: "",
+			inputBaseUrl:  "",
+			inputApiKey:   "",
 			envVars: map[string]string{
 				"ANTHROPIC_BASE_URL": "https://env.anthropic.com",
 				"ANTHROPIC_API_KEY":  "env-ant-key",
@@ -1259,7 +1263,7 @@ func TestPrintErrorMessages(t *testing.T) {
 		},
 		{
 			name:     "Anthropic protocol",
-			protocol: "anthropic", 
+			protocol: "anthropic",
 			expected: []string{
 				"  ANTHROPIC_BASE_URL - Anthropic API 基础 URL",
 				"  ANTHROPIC_API_KEY - Anthropic API 密钥",
@@ -1281,7 +1285,7 @@ func TestPrintErrorMessages(t *testing.T) {
 					t.Errorf("printErrorMessages panicked: %v", r)
 				}
 			}()
-			
+
 			printErrorMessages(tt.protocol)
 		})
 	}
@@ -1356,13 +1360,13 @@ func TestCreateRunnerConfig(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-		result := createRunnerConfig(
-			tt.protocol, tt.baseUrl, tt.apiKey, tt.model, createTestPromptSource(tt.prompt),
-			tt.concurrency, tt.count, tt.timeout, tt.stream, tt.report,
-			false, false,
-		)
+			result := createRunnerConfig(
+				tt.protocol, tt.baseUrl, tt.apiKey, tt.model, createTestPromptSource(tt.prompt),
+				tt.concurrency, tt.count, tt.timeout, tt.stream, tt.report,
+				false, false,
+			)
 
-		if result.Protocol != tt.expected.Protocol {
+			if result.Protocol != tt.expected.Protocol {
 				t.Errorf("Protocol: expected %s, got %s", tt.expected.Protocol, result.Protocol)
 			}
 			if result.BaseUrl != tt.expected.BaseUrl {
@@ -1584,7 +1588,7 @@ func TestGenerateReportsIfEnabled(t *testing.T) {
 			}()
 
 			err := generateReportsIfEnabled(tt.reportFlag, tt.results)
-			
+
 			// 如果不应该调用，检查是否返回nil error（因为是空操作）
 			if !tt.expectCall && err != nil {
 				t.Errorf("Expected no error when report disabled or no results, got: %v", err)
@@ -1595,13 +1599,13 @@ func TestGenerateReportsIfEnabled(t *testing.T) {
 
 func TestProcessModelExecution(t *testing.T) {
 	tests := []struct {
-		name               string
-		modelName          string
+		name              string
+		modelName         string
 		input             types.Input
-		displayer          *display.Displayer
-		completedRequests  int
-		totalRequests      int
-		expectedResult     bool
+		displayer         *display.Displayer
+		completedRequests int
+		totalRequests     int
+		expectedResult    bool
 	}{
 		{
 			name:      "Successful execution",
@@ -1643,13 +1647,13 @@ func TestProcessModelExecution(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			// 设置模型配置
 			tt.input.Model = tt.modelName
-			
+
 			result, errorMessages, err := processModelExecution(
 				"test-task-id",
-				tt.modelName, 
-				tt.input, 
-				tt.displayer, 
-				tt.completedRequests, 
+				tt.modelName,
+				tt.input,
+				tt.displayer,
+				tt.completedRequests,
 				tt.totalRequests,
 			)
 
@@ -1672,20 +1676,20 @@ func TestProcessModelExecution(t *testing.T) {
 
 func TestExecuteModelsTestSuite(t *testing.T) {
 	tests := []struct {
-		name         string
-		modelList    []string
-		protocol     string
-		baseUrl      string
-		apiKey       string
-		prompt       string
-		concurrency  int
-		count        int
-		timeout      int
-		stream       bool
-		reportFlag   bool
-		displayer    *display.Displayer
-		expectedLen  int
-		expectError  bool
+		name        string
+		modelList   []string
+		protocol    string
+		baseUrl     string
+		apiKey      string
+		prompt      string
+		concurrency int
+		count       int
+		timeout     int
+		stream      bool
+		reportFlag  bool
+		displayer   *display.Displayer
+		expectedLen int
+		expectError bool
 	}{
 		{
 			name:        "Single model execution",

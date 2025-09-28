@@ -30,7 +30,7 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 	// 完整的CSV头部，包含所有ReportData指标
 	headers := []string{
 		// 基础信息
-		"模型", "协议", "时间戳", "基础URL", "总请求数", "并发数", "流模式", "总测试时间",
+		"模型", "协议", "时间戳", "基础URL", "总请求数", "并发数", "流模式", "思考模式", "总测试时间",
 		// 时间性能指标
 		"平均总耗时", "最小总耗时", "最大总耗时",
 		// 网络性能指标
@@ -42,6 +42,7 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 		"平均TPOT", "最小TPOT", "最大TPOT",
 		"平均输入Token数", "最小输入Token数", "最大输入Token数",
 		"平均输出Token数", "最小输出Token数", "最大输出Token数",
+		"平均思考Token数", "最小思考Token数", "最大思考Token数",
 		"平均TPS", "最小TPS", "最大TPS",
 		// 可靠性指标
 		"成功率", "错误率",
@@ -68,6 +69,7 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 			strconv.Itoa(modelData.TotalRequests),
 			strconv.Itoa(modelData.Concurrency),
 			strconv.FormatBool(modelData.IsStream),
+			strconv.FormatBool(modelData.IsThinking),
 			modelData.TotalTime.String(),
 			// 时间性能指标
 			modelData.AvgTotalTime.String(),
@@ -97,6 +99,9 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 			strconv.Itoa(modelData.AvgOutputTokenCount),
 			strconv.Itoa(modelData.MinOutputTokenCount),
 			strconv.Itoa(modelData.MaxOutputTokenCount),
+			strconv.Itoa(modelData.AvgThinkingTokenCount),
+			strconv.Itoa(modelData.MinThinkingTokenCount),
+			strconv.Itoa(modelData.MaxThinkingTokenCount),
 			strconv.FormatFloat(modelData.AvgTPS, 'f', 2, 64),
 			strconv.FormatFloat(modelData.MinTPS, 'f', 2, 64),
 			strconv.FormatFloat(modelData.MaxTPS, 'f', 2, 64),

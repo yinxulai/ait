@@ -47,6 +47,7 @@ type StatsData struct {
 	// 服务性能指标 - 原始数据收集（与 ReportData 命名对齐）
 	InputTokenCounts  []int // 所有 prompt/input token 数量
 	OutputTokenCounts []int // 所有 completion/output token 数量 (用于TPS计算)
+	ThinkingTokenCounts []int // 所有思考/推理 token 数量
 
 	// 错误信息
 	ErrorMessages []string // 所有错误信息
@@ -64,6 +65,7 @@ type ReportData struct {
 	TotalRequests int           `json:"total_requests"` // 总请求数
 	Concurrency   int           `json:"concurrency"`    // 并发数
 	IsStream      bool          `json:"is_stream"`      // 是否为流式请求
+	IsThinking    bool          `json:"is_thinking"`    // 是否启用思考模式
 	TotalTime     time.Duration `json:"total_time"`     // 总测试时间
 
 	// 扁平化的元数据信息
@@ -102,6 +104,9 @@ type ReportData struct {
 	AvgOutputTokenCount int           `json:"avg_output_token_count"` // 平均输出token数量
 	MinOutputTokenCount int           `json:"min_output_token_count"` // 最小输出token数量
 	MaxOutputTokenCount int           `json:"max_output_token_count"` // 最大输出token数量
+	AvgThinkingTokenCount int          `json:"avg_thinking_token_count"` // 平均思考token数量
+	MinThinkingTokenCount int          `json:"min_thinking_token_count"` // 最小思考token数量
+	MaxThinkingTokenCount int          `json:"max_thinking_token_count"` // 最大思考token数量
 	AvgTPS              float64       `json:"avg_tps"`                // 平均每秒token数 (Tokens Per Second)
 	MinTPS              float64       `json:"min_tps"`                // 最小每秒token数
 	MaxTPS              float64       `json:"max_tps"`                // 最大每秒token数

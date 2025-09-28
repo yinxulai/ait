@@ -34,6 +34,12 @@ type ThinkingOptions struct {
 	Type string `json:"type"`
 }
 
+// CompletionTokensDetails represents detailed completion token usage breakdown
+type CompletionTokensDetails struct {
+	ReasoningTokens int `json:"reasoning_tokens"`
+	ThinkingTokens  int `json:"thinking_tokens"`
+}
+
 // ChatCompletionRequest represents the request payload for chat completion
 type ChatCompletionRequest struct {
 	Model         string                  `json:"model"`
@@ -61,6 +67,7 @@ type ChatCompletionResponse struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
 		TotalTokens      int `json:"total_tokens"`
+		CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
 	} `json:"usage"`
 }
 
@@ -92,7 +99,18 @@ type StreamResponseChunk struct {
 		PromptTokens     int `json:"prompt_tokens"`
 		CompletionTokens int `json:"completion_tokens"`
 		TotalTokens      int `json:"total_tokens"`
+		CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
 	} `json:"usage,omitempty"`
+}
+
+func extractThinkingTokens(details *CompletionTokensDetails) int {
+	if details == nil {
+		return 0
+	}
+	if details.ThinkingTokens > 0 {
+		return details.ThinkingTokens
+	}
+	return details.ReasoningTokens
 }
 
 // OpenAIClient OpenAI 协议客户端
@@ -338,6 +356,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		var fullContent strings.Builder
 		var completionTokens int
 		var promptTokens int
+		var thinkingTokens int
 		var streamChunks []string // 用于记录所有流式数据块
 
 		// 记录流式响应开始日志
@@ -389,6 +408,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				if chunk.Usage != nil {
 					promptTokens = chunk.Usage.PromptTokens
 					completionTokens = chunk.Usage.CompletionTokens
+					thinkingTokens = extractThinkingTokens(chunk.Usage.CompletionTokensDetails)
 				}
 			}
 		}
@@ -415,6 +435,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				"time_to_first_token": firstTokenTime.String(),
 				"prompt_tokens":       promptTokens,
 				"completion_tokens":   completionTokens,
+				"thinking_tokens":     thinkingTokens,
 				"full_content":        fullContent.String(),
 			})
 		}
@@ -428,6 +449,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			TargetIP:         targetIP,
 			PromptTokens:     promptTokens,
 			CompletionTokens: completionTokens,
+			ThinkingTokens:   thinkingTokens,
 			ErrorMessage:     "",
 		}, nil
 	} else {
@@ -528,6 +550,8 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			}, err
 		}
 
+		thinkingTokens := extractThinkingTokens(chatResp.Usage.CompletionTokensDetails)
+
 		return &ResponseMetrics{
 			TimeToFirstToken: totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
 			TotalTime:        totalTime,
@@ -537,6 +561,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			TargetIP:         targetIP,
 			PromptTokens:     chatResp.Usage.PromptTokens,
 			CompletionTokens: chatResp.Usage.CompletionTokens,
+			ThinkingTokens:   thinkingTokens,
 			ErrorMessage:     "",
 		}, nil
 	}

@@ -22,6 +22,7 @@ type ResponseMetrics struct {
 	
 	// 内容指标
 	PromptTokens     int           // 输入 token 数量
+	ThinkingTokens   int           // 思考/推理 token 数量
 	CompletionTokens int           // 输出 token 数量 (用于TPS计算)
 	
 	// 错误信息

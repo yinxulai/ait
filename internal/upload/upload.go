@@ -17,25 +17,27 @@ import (
 
 // ReportUploadItem API接口所需的单个上传数据结构
 type ReportUploadItem struct {
-	TaskID               string  `json:"taskId"`
-	ModelKey             *string `json:"modelKey,omitempty"`
-	Reporter             string  `json:"reporter"`
-	Protocol             string  `json:"protocol"`
-	Endpoint             string  `json:"endpoint"`
-	SourceIP             string  `json:"sourceIP"`
-	ServiceIP            string  `json:"serviceIP"`
-	Successful           bool    `json:"successful"`
-	ProviderKey          *string `json:"providerKey,omitempty"`
-	ProviderModelKey     string  `json:"providerModelKey"`
-	InputTokenCount      int     `json:"inputTokenCount"`
-	OutputTokenCount     int     `json:"outputTokenCount"`
-	TotalTime            int64   `json:"totalTime"`            // 毫秒
-	DNSLookupTime        int64   `json:"dnsLookupTime"`        // 毫秒
-	TCPConnectTime       int64   `json:"tcpConnectTime"`       // 毫秒
-	TLSHandshakeTime     int64   `json:"tlsHandshakeTime"`     // 毫秒
-	PerOutputTokenTime   float64 `json:"perOutputTokenTime"`   // 毫秒
-	FirstOutputTokenTime int64   `json:"firstOutputTokenTime"` // 毫秒
-	ErrorMessage         string  `json:"errorMessage"`
+	TaskID                   string  `json:"taskId"`
+	Thinking                 bool    `json:"thinking"` // 是否开启思考/推理内容
+	ModelKey                 *string `json:"modelKey,omitempty"`
+	Reporter                 string  `json:"reporter"`
+	Protocol                 string  `json:"protocol"`
+	Endpoint                 string  `json:"endpoint"`
+	SourceIP                 string  `json:"sourceIP"`
+	ServiceIP                string  `json:"serviceIP"`
+	Successful               bool    `json:"successful"`
+	ProviderKey              *string `json:"providerKey,omitempty"`
+	ProviderModelKey         string  `json:"providerModelKey"`
+	InputTokenCount          int     `json:"inputTokenCount"`
+	OutputTokenCount         int     `json:"outputTokenCount"`
+	OutputThinkingTokenCount int     `json:"outputThinkingTokenCount"` // 思考/推理内容输出长度（字符数）
+	TotalTime                int64   `json:"totalTime"`                // 毫秒
+	DNSLookupTime            int64   `json:"dnsLookupTime"`            // 毫秒
+	TCPConnectTime           int64   `json:"tcpConnectTime"`           // 毫秒
+	TLSHandshakeTime         int64   `json:"tlsHandshakeTime"`         // 毫秒
+	PerOutputTokenTime       float64 `json:"perOutputTokenTime"`       // 毫秒
+	FirstOutputTokenTime     int64   `json:"firstOutputTokenTime"`     // 毫秒
+	ErrorMessage             string  `json:"errorMessage"`
 }
 
 // Uploader 上传器结构体
@@ -122,25 +124,27 @@ func (u *Uploader) convertResponseMetricsToUploadItem(taskID string, metrics *cl
 	}
 
 	return ReportUploadItem{
-		TaskID:               taskID,
-		ModelKey:             nil, // 未知模型
-		Reporter:             u.userAgent,
-		Protocol:             strings.ToUpper(input.Protocol),
-		Endpoint:             input.BaseUrl,
-		SourceIP:             sourceIP,
-		ServiceIP:            metrics.TargetIP,
-		Successful:           successful,
-		ProviderKey:          nil,                  // 未知提供商
-		ProviderModelKey:     input.Model,          // 使用输入的模型名称
-		InputTokenCount:      metrics.PromptTokens, // ResponseMetrics 中没有输入token数
-		OutputTokenCount:     metrics.CompletionTokens,
-		TotalTime:            metrics.TotalTime.Nanoseconds() / 1e6,        // 转换为毫秒
-		DNSLookupTime:        metrics.DNSTime.Nanoseconds() / 1e6,          // 转换为毫秒
-		TCPConnectTime:       metrics.ConnectTime.Nanoseconds() / 1e6,      // 转换为毫秒
-		TLSHandshakeTime:     metrics.TLSHandshakeTime.Nanoseconds() / 1e6, // 转换为毫秒
-		PerOutputTokenTime:   perOutputTokenTime,
-		FirstOutputTokenTime: metrics.TimeToFirstToken.Nanoseconds() / 1e6, // 转换为毫秒
-		ErrorMessage:         errorMessage,
+		TaskID:                   taskID,
+		Thinking:                 input.Thinking,
+		ModelKey:                 nil, // 未知模型
+		Reporter:                 u.userAgent,
+		Protocol:                 strings.ToUpper(input.Protocol),
+		Endpoint:                 input.BaseUrl,
+		SourceIP:                 sourceIP,
+		ServiceIP:                metrics.TargetIP,
+		Successful:               successful,
+		ProviderKey:              nil,                  // 未知提供商
+		ProviderModelKey:         input.Model,          // 使用输入的模型名称
+		InputTokenCount:          metrics.PromptTokens, // ResponseMetrics 中没有输入token数
+		OutputTokenCount:         metrics.CompletionTokens,
+		OutputThinkingTokenCount: metrics.ThinkingTokens,
+		TotalTime:                metrics.TotalTime.Nanoseconds() / 1e6,        // 转换为毫秒
+		DNSLookupTime:            metrics.DNSTime.Nanoseconds() / 1e6,          // 转换为毫秒
+		TCPConnectTime:           metrics.ConnectTime.Nanoseconds() / 1e6,      // 转换为毫秒
+		TLSHandshakeTime:         metrics.TLSHandshakeTime.Nanoseconds() / 1e6, // 转换为毫秒
+		PerOutputTokenTime:       perOutputTokenTime,
+		FirstOutputTokenTime:     metrics.TimeToFirstToken.Nanoseconds() / 1e6, // 转换为毫秒
+		ErrorMessage:             errorMessage,
 	}
 }
 

@@ -10,9 +10,9 @@ import (
 
 // MockRenderer 用于测试的模拟渲染器
 type MockRenderer struct {
-	format   string
+	format      string
 	shouldError bool
-	fileName string
+	fileName    string
 }
 
 func (m *MockRenderer) Render(data []types.ReportData) (string, error) {
@@ -136,11 +136,11 @@ func TestReportManager_GenerateReports_RenderError(t *testing.T) {
 
 func TestReportManager_GenerateReports_Success(t *testing.T) {
 	manager := NewReportManager()
-	
+
 	// 使用模拟渲染器以避免实际文件操作
 	mockJSONRenderer := &MockRenderer{format: "json", fileName: "test.json"}
 	mockCSVRenderer := &MockRenderer{format: "csv", fileName: "test.csv"}
-	
+
 	manager.RegisterRenderer("json", mockJSONRenderer)
 	manager.RegisterRenderer("csv", mockCSVRenderer)
 
@@ -166,7 +166,7 @@ func TestReportManager_GenerateReports_Success(t *testing.T) {
 
 func TestReportManager_GenerateReports_MultipleFormats(t *testing.T) {
 	manager := NewReportManager()
-	
+
 	mockRenderers := []*MockRenderer{
 		{format: "json", fileName: "report.json"},
 		{format: "csv", fileName: "report.csv"},
@@ -229,20 +229,21 @@ func createTestReportData() types.ReportData {
 		TotalRequests: 10,
 		Concurrency:   2,
 		IsStream:      true,
+		IsThinking:    true,
 		TotalTime:     5 * time.Second,
 	}
-	
+
 	// 设置元数据 (已扁平化)
 	data.Model = "gpt-3.5-turbo"
 	data.Protocol = "openai"
 	data.Timestamp = time.Now().Format(time.RFC3339)
 	data.BaseUrl = "https://api.openai.com"
-	
+
 	// 设置时间指标
 	data.AvgTotalTime = 500 * time.Millisecond
 	data.MinTotalTime = 300 * time.Millisecond
 	data.MaxTotalTime = 800 * time.Millisecond
-	
+
 	// 设置网络指标
 	data.TargetIP = "8.8.8.8"
 	data.AvgDNSTime = 10 * time.Millisecond
@@ -254,7 +255,7 @@ func createTestReportData() types.ReportData {
 	data.AvgTLSHandshakeTime = 100 * time.Millisecond
 	data.MinTLSHandshakeTime = 80 * time.Millisecond
 	data.MaxTLSHandshakeTime = 150 * time.Millisecond
-	
+
 	// 设置内容指标
 	data.AvgTTFT = 200 * time.Millisecond
 	data.MinTTFT = 100 * time.Millisecond
@@ -265,14 +266,17 @@ func createTestReportData() types.ReportData {
 	data.AvgOutputTokenCount = 150
 	data.MinOutputTokenCount = 100
 	data.MaxOutputTokenCount = 200
+	data.AvgThinkingTokenCount = 70
+	data.MinThinkingTokenCount = 60
+	data.MaxThinkingTokenCount = 80
 	data.AvgTPS = 300.0
 	data.MinTPS = 250.0
 	data.MaxTPS = 350.0
-	
+
 	// 设置可靠性指标
 	data.SuccessRate = 95.0
 	data.ErrorRate = 5.0
-	
+
 	return data
 }
 
@@ -285,12 +289,12 @@ func createTestReportDataWithModel(model string) types.ReportData {
 // TestCleanup 测试后清理临时文件
 func TestMain(m *testing.M) {
 	code := m.Run()
-	
+
 	// 清理可能生成的测试文件
 	testFiles := []string{"test.json", "test.csv", "test.xml", "multi-model.json", "report.json", "report.csv", "report.xml"}
 	for _, file := range testFiles {
 		os.Remove(file)
 	}
-	
+
 	os.Exit(code)
 }

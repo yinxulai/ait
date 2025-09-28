@@ -102,6 +102,7 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 	var tlsHandshakeTimes []time.Duration
 	var outputTokenCounts []int
 	var inputTokenCounts []int
+	var thinkingTokenCounts []int
 	var errorMessages []string
 	var ttftsMutex sync.Mutex
 
@@ -125,6 +126,7 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 					TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
 					InputTokenCounts:  make([]int, len(inputTokenCounts)),
 					OutputTokenCounts: make([]int, len(outputTokenCounts)),
+					ThinkingTokenCounts: make([]int, len(thinkingTokenCounts)),
 					ErrorMessages:     make([]string, len(errorMessages)),
 					StartTime:         start,
 					ElapsedTime:       time.Since(start),
@@ -136,6 +138,7 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 				copy(stats.TLSHandshakeTimes, tlsHandshakeTimes)
 				copy(stats.InputTokenCounts, inputTokenCounts)
 				copy(stats.OutputTokenCounts, outputTokenCounts)
+				copy(stats.ThinkingTokenCounts, thinkingTokenCounts)
 				copy(stats.ErrorMessages, errorMessages)
 				ttftsMutex.Unlock()
 
@@ -174,6 +177,7 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 						tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
 						outputTokenCounts = append(outputTokenCounts, metrics.CompletionTokens)
 						inputTokenCounts = append(inputTokenCounts, metrics.PromptTokens)
+						thinkingTokenCounts = append(thinkingTokenCounts, metrics.ThinkingTokens)
 					ttftsMutex.Unlock()
 				}
 				return
@@ -189,6 +193,7 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
 			outputTokenCounts = append(outputTokenCounts, metrics.CompletionTokens)
 			inputTokenCounts = append(inputTokenCounts, metrics.PromptTokens)
+			thinkingTokenCounts = append(thinkingTokenCounts, metrics.ThinkingTokens)
 			ttftsMutex.Unlock()
 
 			if metrics.ErrorMessage == "" && r.upload != nil {
@@ -214,6 +219,7 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 		TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
 		InputTokenCounts:  make([]int, len(inputTokenCounts)),
 		OutputTokenCounts: make([]int, len(outputTokenCounts)),
+		ThinkingTokenCounts: make([]int, len(thinkingTokenCounts)),
 		ErrorMessages:     make([]string, len(errorMessages)),
 		StartTime:         start,
 		ElapsedTime:       elapsed,
@@ -225,6 +231,7 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 	copy(finalStats.TLSHandshakeTimes, tlsHandshakeTimes)
 	copy(finalStats.InputTokenCounts, inputTokenCounts)
 	copy(finalStats.OutputTokenCounts, outputTokenCounts)
+	copy(finalStats.ThinkingTokenCounts, thinkingTokenCounts)
 	copy(finalStats.ErrorMessages, errorMessages)
 	ttftsMutex.Unlock()
 	progressCallback(finalStats)
@@ -284,6 +291,8 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	maxOutputTokens := firstResult.CompletionTokens
 	minInputTokens := firstResult.PromptTokens
 	maxInputTokens := firstResult.PromptTokens
+	minThinkingTokens := firstResult.ThinkingTokens
+	maxThinkingTokens := firstResult.ThinkingTokens
 
 	minDNSTime := firstResult.DNSTime
 	maxDNSTime := firstResult.DNSTime
@@ -323,6 +332,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	var sumTTFT, sumTotalTime time.Duration
 	var sumDNSTime, sumConnectTime, sumTLSTime time.Duration
 	var sumOutputTokens, sumInputTokens int
+	var sumThinkingTokens int
 	var sumTPOT time.Duration
 
 	for _, result := range validResults {
@@ -403,6 +413,15 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxInputTokens = result.PromptTokens
 		}
 
+		// Thinking Token 统计
+		sumThinkingTokens += result.ThinkingTokens
+		if result.ThinkingTokens < minThinkingTokens {
+			minThinkingTokens = result.ThinkingTokens
+		}
+		if result.ThinkingTokens > maxThinkingTokens {
+			maxThinkingTokens = result.ThinkingTokens
+		}
+
 		// TPS 统计
 		var tps float64
 		if result.TotalTime.Seconds() > 0 {
@@ -429,6 +448,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			Concurrency:   r.input.Concurrency,
 			TotalTime:     totalTime,
 			IsStream:      r.input.Stream,
+			IsThinking:    r.input.Thinking,
 			ErrorRate:     errorRate,
 			SuccessRate:   successRate,
 		}
@@ -457,6 +477,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	// Token数量计算
 	avgOutputTokens := sumOutputTokens / validCount
 	avgInputTokens := sumInputTokens / validCount
+	avgThinkingTokens := sumThinkingTokens / validCount
 
 	// TPS是比率指标，需要特殊处理：
 	// 错误方式：float64(sumTokens) / sumTotalTime.Seconds() - 这相当于计算总体批处理的TPS
@@ -475,6 +496,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		Concurrency:         r.input.Concurrency,
 		TotalTime:           totalTime,
 		IsStream:            r.input.Stream,
+		IsThinking:          r.input.Thinking,
 		// 时间指标
 		AvgTotalTime:        avgTotalTime,
 		MinTotalTime:        minTotalTime,
@@ -503,6 +525,9 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		AvgOutputTokenCount: avgOutputTokens,
 		MinOutputTokenCount: minOutputTokens,
 		MaxOutputTokenCount: maxOutputTokens,
+		AvgThinkingTokenCount: avgThinkingTokens,
+		MinThinkingTokenCount: minThinkingTokens,
+		MaxThinkingTokenCount: maxThinkingTokens,
 		AvgTPS:              avgTPS,
 		MinTPS:              minTPS,
 		MaxTPS:              maxTPS,

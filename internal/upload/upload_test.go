@@ -149,123 +149,135 @@ func TestUploader_convertResponseMetricsToUploadItem(t *testing.T) {
 			name:   "successful response",
 			taskID: "task-123",
 			metrics: &client.ResponseMetrics{
-				PromptTokens:      100,
-				CompletionTokens:  50,
-				TotalTime:         time.Millisecond * 1500,
-				DNSTime:           time.Millisecond * 50,
-				ConnectTime:       time.Millisecond * 100,
-				TLSHandshakeTime:  time.Millisecond * 200,
-				TimeToFirstToken:  time.Millisecond * 800,
-				TargetIP:          "1.2.3.4",
-				ErrorMessage:      "",
+				PromptTokens:     100,
+				CompletionTokens: 50,
+				ThinkingTokens:   12,
+				TotalTime:        time.Millisecond * 1500,
+				DNSTime:          time.Millisecond * 50,
+				ConnectTime:      time.Millisecond * 100,
+				TLSHandshakeTime: time.Millisecond * 200,
+				TimeToFirstToken: time.Millisecond * 800,
+				TargetIP:         "1.2.3.4",
+				ErrorMessage:     "",
 			},
 			input: types.Input{
 				Protocol: "openai",
 				BaseUrl:  "https://api.example.com",
 				Model:    "gpt-3.5-turbo",
+				Thinking: true,
 			},
 			expected: ReportUploadItem{
-				TaskID:               "task-123",
-				ModelKey:             nil,
-				Reporter:             "test-agent",
-				Protocol:             "OPENAI",
-				Endpoint:             "https://api.example.com",
-				SourceIP:             "", // 将在后面动态设置
-				ServiceIP:            "1.2.3.4",
-				Successful:           true,
-				ProviderKey:          nil,
-				ProviderModelKey:     "gpt-3.5-turbo",
-				InputTokenCount:      100,
-				OutputTokenCount:     50,
-				TotalTime:            1500,
-				DNSLookupTime:        50,
-				TCPConnectTime:       100,
-				TLSHandshakeTime:     200,
-				PerOutputTokenTime:   14.285714285714286, // (1500-800)/(50-1) = 700/49
-				FirstOutputTokenTime: 800,
-				ErrorMessage:         "",
+				TaskID:                   "task-123",
+				Thinking:                 true,
+				ModelKey:                 nil,
+				Reporter:                 "test-agent",
+				Protocol:                 "OPENAI",
+				Endpoint:                 "https://api.example.com",
+				SourceIP:                 "", // 将在后面动态设置
+				ServiceIP:                "1.2.3.4",
+				Successful:               true,
+				ProviderKey:              nil,
+				ProviderModelKey:         "gpt-3.5-turbo",
+				InputTokenCount:          100,
+				OutputTokenCount:         50,
+				OutputThinkingTokenCount: 12,
+				TotalTime:                1500,
+				DNSLookupTime:            50,
+				TCPConnectTime:           100,
+				TLSHandshakeTime:         200,
+				PerOutputTokenTime:       14.285714285714286, // (1500-800)/(50-1) = 700/49
+				FirstOutputTokenTime:     800,
+				ErrorMessage:             "",
 			},
 		},
 		{
 			name:   "failed response with error",
 			taskID: "task-456",
 			metrics: &client.ResponseMetrics{
-				PromptTokens:      0,
-				CompletionTokens:  0,
-				TotalTime:         time.Millisecond * 5000,
-				DNSTime:           time.Millisecond * 100,
-				ConnectTime:       time.Millisecond * 0,
-				TLSHandshakeTime:  time.Millisecond * 0,
-				TimeToFirstToken:  time.Millisecond * 0,
-				TargetIP:          "",
-				ErrorMessage:      "Connection timeout",
+				PromptTokens:     0,
+				CompletionTokens: 0,
+				ThinkingTokens:   0,
+				TotalTime:        time.Millisecond * 5000,
+				DNSTime:          time.Millisecond * 100,
+				ConnectTime:      time.Millisecond * 0,
+				TLSHandshakeTime: time.Millisecond * 0,
+				TimeToFirstToken: time.Millisecond * 0,
+				TargetIP:         "",
+				ErrorMessage:     "Connection timeout",
 			},
 			input: types.Input{
 				Protocol: "anthropic",
 				BaseUrl:  "https://api.example.com",
 				Model:    "claude-3-sonnet",
+				Thinking: false,
 			},
 			expected: ReportUploadItem{
-				TaskID:               "task-456",
-				ModelKey:             nil,
-				Reporter:             "test-agent",
-				Protocol:             "ANTHROPIC",
-				Endpoint:             "https://api.example.com",
-				SourceIP:             "", // 将在后面动态设置
-				ServiceIP:            "",
-				Successful:           false,
-				ProviderKey:          nil,
-				ProviderModelKey:     "claude-3-sonnet",
-				InputTokenCount:      0,
-				OutputTokenCount:     0,
-				TotalTime:            5000,
-				DNSLookupTime:        100,
-				TCPConnectTime:       0,
-				TLSHandshakeTime:     0,
-				PerOutputTokenTime:   0,
-				FirstOutputTokenTime: 0,
-				ErrorMessage:         "Connection timeout",
+				TaskID:                   "task-456",
+				Thinking:                 false,
+				ModelKey:                 nil,
+				Reporter:                 "test-agent",
+				Protocol:                 "ANTHROPIC",
+				Endpoint:                 "https://api.example.com",
+				SourceIP:                 "", // 将在后面动态设置
+				ServiceIP:                "",
+				Successful:               false,
+				ProviderKey:              nil,
+				ProviderModelKey:         "claude-3-sonnet",
+				InputTokenCount:          0,
+				OutputTokenCount:         0,
+				OutputThinkingTokenCount: 0,
+				TotalTime:                5000,
+				DNSLookupTime:            100,
+				TCPConnectTime:           0,
+				TLSHandshakeTime:         0,
+				PerOutputTokenTime:       0,
+				FirstOutputTokenTime:     0,
+				ErrorMessage:             "Connection timeout",
 			},
 		},
 		{
 			name:   "single completion token",
 			taskID: "task-789",
 			metrics: &client.ResponseMetrics{
-				PromptTokens:      10,
-				CompletionTokens:  1,
-				TotalTime:         time.Millisecond * 1000,
-				DNSTime:           time.Millisecond * 10,
-				ConnectTime:       time.Millisecond * 20,
-				TLSHandshakeTime:  time.Millisecond * 30,
-				TimeToFirstToken:  time.Millisecond * 900,
-				TargetIP:          "5.6.7.8",
-				ErrorMessage:      "",
+				PromptTokens:     10,
+				CompletionTokens: 1,
+				ThinkingTokens:   5,
+				TotalTime:        time.Millisecond * 1000,
+				DNSTime:          time.Millisecond * 10,
+				ConnectTime:      time.Millisecond * 20,
+				TLSHandshakeTime: time.Millisecond * 30,
+				TimeToFirstToken: time.Millisecond * 900,
+				TargetIP:         "5.6.7.8",
+				ErrorMessage:     "",
 			},
 			input: types.Input{
 				Protocol: "local",
 				BaseUrl:  "http://localhost:8080",
 				Model:    "local-model",
+				Thinking: true,
 			},
 			expected: ReportUploadItem{
-				TaskID:               "task-789",
-				ModelKey:             nil,
-				Reporter:             "test-agent",
-				Protocol:             "LOCAL",
-				Endpoint:             "http://localhost:8080",
-				SourceIP:             "", // 将在后面动态设置
-				ServiceIP:            "5.6.7.8",
-				Successful:           true,
-				ProviderKey:          nil,
-				ProviderModelKey:     "local-model",
-				InputTokenCount:      10,
-				OutputTokenCount:     1,
-				TotalTime:            1000,
-				DNSLookupTime:        10,
-				TCPConnectTime:       20,
-				TLSHandshakeTime:     30,
-				PerOutputTokenTime:   0, // 只有一个token，不计算每token时间
-				FirstOutputTokenTime: 900,
-				ErrorMessage:         "",
+				TaskID:                   "task-789",
+				Thinking:                 true,
+				ModelKey:                 nil,
+				Reporter:                 "test-agent",
+				Protocol:                 "LOCAL",
+				Endpoint:                 "http://localhost:8080",
+				SourceIP:                 "", // 将在后面动态设置
+				ServiceIP:                "5.6.7.8",
+				Successful:               true,
+				ProviderKey:              nil,
+				ProviderModelKey:         "local-model",
+				InputTokenCount:          10,
+				OutputTokenCount:         1,
+				OutputThinkingTokenCount: 5,
+				TotalTime:                1000,
+				DNSLookupTime:            10,
+				TCPConnectTime:           20,
+				TLSHandshakeTime:         30,
+				PerOutputTokenTime:       0, // 只有一个token，不计算每token时间
+				FirstOutputTokenTime:     900,
+				ErrorMessage:             "",
 			},
 		},
 	}
@@ -298,6 +310,9 @@ func TestUploader_convertResponseMetricsToUploadItem(t *testing.T) {
 			if result.SourceIP != tt.expected.SourceIP {
 				t.Errorf("SourceIP: got %q, expected %q", result.SourceIP, tt.expected.SourceIP)
 			}
+			if result.Thinking != tt.expected.Thinking {
+				t.Errorf("Thinking: got %v, expected %v", result.Thinking, tt.expected.Thinking)
+			}
 			if result.ServiceIP != tt.expected.ServiceIP {
 				t.Errorf("ServiceIP: got %q, expected %q", result.ServiceIP, tt.expected.ServiceIP)
 			}
@@ -317,6 +332,9 @@ func TestUploader_convertResponseMetricsToUploadItem(t *testing.T) {
 			}
 			if result.OutputTokenCount != tt.expected.OutputTokenCount {
 				t.Errorf("OutputTokenCount: got %d, expected %d", result.OutputTokenCount, tt.expected.OutputTokenCount)
+			}
+			if result.OutputThinkingTokenCount != tt.expected.OutputThinkingTokenCount {
+				t.Errorf("OutputThinkingTokenCount: got %d, expected %d", result.OutputThinkingTokenCount, tt.expected.OutputThinkingTokenCount)
 			}
 			if result.TotalTime != tt.expected.TotalTime {
 				t.Errorf("TotalTime: got %d, expected %d", result.TotalTime, tt.expected.TotalTime)
@@ -352,15 +370,15 @@ func TestUploader_UploadReport(t *testing.T) {
 		expectedError  bool
 	}{
 		{
-			name:      "invalid base URL - should return nil",
-			baseURL:   "null",
-			authToken: "test-token",
+			name:          "invalid base URL - should return nil",
+			baseURL:       "null",
+			authToken:     "test-token",
 			expectedError: false,
 		},
 		{
-			name:      "null auth token - should return nil", 
-			baseURL:   "https://api.example.com",
-			authToken: "null",
+			name:          "null auth token - should return nil",
+			baseURL:       "https://api.example.com",
+			authToken:     "null",
 			expectedError: false,
 		},
 		{
@@ -372,24 +390,24 @@ func TestUploader_UploadReport(t *testing.T) {
 				if r.Method != "POST" {
 					t.Errorf("Expected POST request, got %s", r.Method)
 				}
-				
+
 				// 验证URL路径
 				expectedPath := "/model/perf/report/upload"
 				if r.URL.Path != expectedPath {
 					t.Errorf("Expected path %s, got %s", expectedPath, r.URL.Path)
 				}
-				
+
 				// 验证Content-Type
 				if r.Header.Get("Content-Type") != "application/json" {
 					t.Errorf("Expected Content-Type application/json, got %s", r.Header.Get("Content-Type"))
 				}
-				
+
 				// 验证Authorization header
 				expectedAuth := "Bearer test-token"
 				if r.Header.Get("Authorization") != expectedAuth {
 					t.Errorf("Expected Authorization %s, got %s", expectedAuth, r.Header.Get("Authorization"))
 				}
-				
+
 				w.WriteHeader(http.StatusOK)
 				w.Write([]byte(`{"success": true}`))
 			},
@@ -437,15 +455,15 @@ func TestUploader_UploadReport(t *testing.T) {
 			// 准备测试数据
 			taskID := "test-task-123"
 			metrics := &client.ResponseMetrics{
-				PromptTokens:      100,
-				CompletionTokens:  50,
-				TotalTime:         time.Millisecond * 1500,
-				DNSTime:           time.Millisecond * 50,
-				ConnectTime:       time.Millisecond * 100,
-				TLSHandshakeTime:  time.Millisecond * 200,
-				TimeToFirstToken:  time.Millisecond * 800,
-				TargetIP:          "1.2.3.4",
-				ErrorMessage:      "",
+				PromptTokens:     100,
+				CompletionTokens: 50,
+				TotalTime:        time.Millisecond * 1500,
+				DNSTime:          time.Millisecond * 50,
+				ConnectTime:      time.Millisecond * 100,
+				TLSHandshakeTime: time.Millisecond * 200,
+				TimeToFirstToken: time.Millisecond * 800,
+				TargetIP:         "1.2.3.4",
+				ErrorMessage:     "",
 			}
 			input := types.Input{
 				Protocol: "openai",
@@ -478,15 +496,15 @@ func TestUploader_UploadReport_NetworkError(t *testing.T) {
 
 	taskID := "test-task-123"
 	metrics := &client.ResponseMetrics{
-		PromptTokens:      100,
-		CompletionTokens:  50,
-		TotalTime:         time.Millisecond * 1500,
-		DNSTime:           time.Millisecond * 50,
-		ConnectTime:       time.Millisecond * 100,
-		TLSHandshakeTime:  time.Millisecond * 200,
-		TimeToFirstToken:  time.Millisecond * 800,
-		TargetIP:          "1.2.3.4",
-		ErrorMessage:      "",
+		PromptTokens:     100,
+		CompletionTokens: 50,
+		TotalTime:        time.Millisecond * 1500,
+		DNSTime:          time.Millisecond * 50,
+		ConnectTime:      time.Millisecond * 100,
+		TLSHandshakeTime: time.Millisecond * 200,
+		TimeToFirstToken: time.Millisecond * 800,
+		TargetIP:         "1.2.3.4",
+		ErrorMessage:     "",
 	}
 	input := types.Input{
 		Protocol: "openai",

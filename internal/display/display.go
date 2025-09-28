@@ -223,6 +223,7 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	table.Append("🤖 模型", data.Model, "", "", "-", "配置信息")
 	table.Append("🌐 URL", data.BaseUrl, "", "", "-", "配置信息")
 	table.Append("🌊 流式", strconv.FormatBool(data.IsStream), "", "", "-", "配置信息")
+	table.Append("🧠 思考模式", strconv.FormatBool(data.IsThinking), "", "", "-", "配置信息")
 	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "个", "配置信息")
 	table.Append("📊 总请求数", strconv.Itoa(data.TotalRequests), "", "", "个", "完成的请求总数")
 	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.SuccessRate), "", "", "%", "成功请求占比")
@@ -242,6 +243,7 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 	// Token 数指标
 	table.Append("📥 输入 Token 数", strconv.Itoa(data.MinInputTokenCount), strconv.Itoa(data.AvgInputTokenCount), strconv.Itoa(data.MaxInputTokenCount), "个", "API 请求的 prompt tokens")
 	table.Append("🎲 生成 Token 数", strconv.Itoa(data.MinOutputTokenCount), strconv.Itoa(data.AvgOutputTokenCount), strconv.Itoa(data.MaxOutputTokenCount), "个", "API 返回的 completion tokens")
+	table.Append("🧠 思考 Token 数", strconv.Itoa(data.MinThinkingTokenCount), strconv.Itoa(data.AvgThinkingTokenCount), strconv.Itoa(data.MaxThinkingTokenCount), "个", "模型返回的 reasoning/thinking tokens")
 
 	// 内容性能指标
 	if data.IsStream {
@@ -265,8 +267,8 @@ func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
 	)
 
 	table.Header("🤖 模型", "🎯 目标 IP", "📊 请求数", "⚡ 并发", "✅ 成功率",
-		"🕐 平均总耗时", "⚡ 平均 TTFT", "⏰ 平均 TPOT", "🚀 平均 TPS", "🎲 平均 Token 数",
-		"🌊 流式模式", "🧠 思考模式", "🔍 平均 DNS 时间", "🔌 平均 TCP 连接时间", "🔒 平均 TLS 时间")
+		"🕐 平均总耗时", "⚡ 平均 TTFT", "⏰ 平均 TPOT", "🚀 平均 TPS", "🎲 平均输出 Token 数",
+		"🧠 平均思考 Token 数", "🌊 流式模式", "🧠 思考模式", "🔍 平均 DNS 时间", "🔌 平均 TCP 连接时间", "🔒 平均 TLS 时间")
 
 	for _, report := range data {
 		// TTFT 和 TPOT 处理（流式模式才显示）
@@ -288,7 +290,9 @@ func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
 			tpotStr,
 			fmt.Sprintf("%.2f", report.AvgTPS),
 			strconv.Itoa(report.AvgOutputTokenCount),
+			strconv.Itoa(report.AvgThinkingTokenCount),
 			strconv.FormatBool(report.IsStream),
+			strconv.FormatBool(report.IsThinking),
 			report.AvgDNSTime.String(),
 			report.AvgConnectTime.String(),
 			report.AvgTLSHandshakeTime.String(),
