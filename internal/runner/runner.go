@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"math"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -309,6 +310,15 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	minTPS := firstTPS
 	maxTPS := firstTPS
 
+	// 计算第一个结果的总吞吐量 TPS (输入 + 输出 tokens / 时间)
+	var firstTotalThroughputTPS float64
+	if firstResult.TotalTime.Seconds() > 0 {
+		totalTokens := firstResult.PromptTokens + firstResult.CompletionTokens
+		firstTotalThroughputTPS = float64(totalTokens) / firstResult.TotalTime.Seconds()
+	}
+	minTotalThroughputTPS := firstTotalThroughputTPS
+	maxTotalThroughputTPS := firstTotalThroughputTPS
+
 	// 计算第一个结果的 TPOT (Time Per Output Token)
 	var firstTPOT time.Duration
 	if firstResult.CompletionTokens > 1 {
@@ -334,6 +344,7 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	var sumOutputTokens, sumInputTokens int
 	var sumThinkingTokens int
 	var sumTPOT time.Duration
+	var sumTotalThroughputTPS float64
 
 	for _, result := range validResults {
 		// TTFT 统计
@@ -433,6 +444,20 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		if tps > maxTPS {
 			maxTPS = tps
 		}
+
+		// 总吞吐量 TPS 统计 (输入 + 输出 tokens / 时间)
+		var totalThroughputTPS float64
+		if result.TotalTime.Seconds() > 0 {
+			totalTokens := result.PromptTokens + result.CompletionTokens
+			totalThroughputTPS = float64(totalTokens) / result.TotalTime.Seconds()
+			sumTotalThroughputTPS += totalThroughputTPS
+		}
+		if totalThroughputTPS < minTotalThroughputTPS {
+			minTotalThroughputTPS = totalThroughputTPS
+		}
+		if totalThroughputTPS > maxTotalThroughputTPS {
+			maxTotalThroughputTPS = totalThroughputTPS
+		}
 	}
 
 	validCount := len(validResults)
@@ -491,6 +516,76 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	}
 	avgTPS := sumTPS / float64(validCount)
 
+	// 计算总吞吐量 TPS 的平均值
+	avgTotalThroughputTPS := sumTotalThroughputTPS / float64(validCount)
+
+	// 计算方差 - 第一遍遍历计算平均值后的方差
+	var varianceSumTotalTime, varianceSumTTFT, varianceSumTPOT float64
+	var varianceSumInputTokens, varianceSumOutputTokens, varianceSumThinkingTokens float64
+	var varianceSumTPS, varianceSumTotalThroughputTPS float64
+
+	for _, result := range validResults {
+		// 总时间方差
+		diffTotalTime := float64(result.TotalTime - avgTotalTime)
+		varianceSumTotalTime += diffTotalTime * diffTotalTime
+
+		// TTFT 方差
+		diffTTFT := float64(result.TimeToFirstToken - avgTTFT)
+		varianceSumTTFT += diffTTFT * diffTTFT
+
+		// Input Token 方差
+		diffInputTokens := float64(result.PromptTokens - avgInputTokens)
+		varianceSumInputTokens += diffInputTokens * diffInputTokens
+
+		// Output Token 方差
+		diffOutputTokens := float64(result.CompletionTokens - avgOutputTokens)
+		varianceSumOutputTokens += diffOutputTokens * diffOutputTokens
+
+		// Thinking Token 方差
+		diffThinkingTokens := float64(result.ThinkingTokens - avgThinkingTokens)
+		varianceSumThinkingTokens += diffThinkingTokens * diffThinkingTokens
+
+		// TPS 方差
+		var tps float64
+		if result.TotalTime.Seconds() > 0 {
+			tps = float64(result.CompletionTokens) / result.TotalTime.Seconds()
+		}
+		diffTPS := tps - avgTPS
+		varianceSumTPS += diffTPS * diffTPS
+
+		// 总吞吐量 TPS 方差
+		var totalThroughputTPS float64
+		if result.TotalTime.Seconds() > 0 {
+			totalTokens := result.PromptTokens + result.CompletionTokens
+			totalThroughputTPS = float64(totalTokens) / result.TotalTime.Seconds()
+		}
+		diffTotalThroughputTPS := totalThroughputTPS - avgTotalThroughputTPS
+		varianceSumTotalThroughputTPS += diffTotalThroughputTPS * diffTotalThroughputTPS
+	}
+
+	// TPOT 方差计算 - 只对有效的 TPOT 计算
+	for _, result := range validResults {
+		if result.CompletionTokens > 1 {
+			remainingTime := result.TotalTime - result.TimeToFirstToken
+			tpot := remainingTime / time.Duration(result.CompletionTokens-1)
+			diffTPOT := float64(tpot - avgTPOT)
+			varianceSumTPOT += diffTPOT * diffTPOT
+		}
+	}
+
+	// 计算最终标准差值（方差的平方根）
+	stdDevTotalTime := time.Duration(math.Sqrt(varianceSumTotalTime / float64(validCount)))
+	stdDevTTFT := time.Duration(math.Sqrt(varianceSumTTFT / float64(validCount)))
+	stdDevTPOT := time.Duration(0)
+	if validTPOTCount > 0 {
+		stdDevTPOT = time.Duration(math.Sqrt(varianceSumTPOT / float64(validTPOTCount)))
+	}
+	stdDevInputTokenCount := math.Sqrt(varianceSumInputTokens / float64(validCount))
+	stdDevOutputTokenCount := math.Sqrt(varianceSumOutputTokens / float64(validCount))
+	stdDevThinkingTokenCount := math.Sqrt(varianceSumThinkingTokens / float64(validCount))
+	stdDevTPS := math.Sqrt(varianceSumTPS / float64(validCount))
+	stdDevTotalThroughputTPS := math.Sqrt(varianceSumTotalThroughputTPS / float64(validCount))
+
 	result := &types.ReportData{
 		TotalRequests:       r.input.Count,
 		Concurrency:         r.input.Concurrency,
@@ -531,6 +626,19 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		AvgTPS:              avgTPS,
 		MinTPS:              minTPS,
 		MaxTPS:              maxTPS,
+		// 总吞吐量指标
+		AvgTotalThroughputTPS: avgTotalThroughputTPS,
+		MinTotalThroughputTPS: minTotalThroughputTPS,
+		MaxTotalThroughputTPS: maxTotalThroughputTPS,
+		// 标准差指标
+		StdDevTotalTime:        stdDevTotalTime,
+		StdDevTTFT:             stdDevTTFT,
+		StdDevTPOT:             stdDevTPOT,
+		StdDevInputTokenCount:  stdDevInputTokenCount,
+		StdDevOutputTokenCount: stdDevOutputTokenCount,
+		StdDevThinkingTokenCount: stdDevThinkingTokenCount,
+		StdDevTPS:              stdDevTPS,
+		StdDevTotalThroughputTPS: stdDevTotalThroughputTPS,
 		// 可靠性指标
 		ErrorRate:           errorRate,
 		SuccessRate:         successRate,

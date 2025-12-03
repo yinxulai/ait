@@ -55,7 +55,7 @@ func TestCSVRenderer_Render_EmptyData(t *testing.T) {
 
 	// 验证头部存在
 	headers := strings.Split(lines[0], ",")
-	expectedHeaderCount := 42 // 更新后的头部数量，包含思考模式与思考token字段
+	expectedHeaderCount := 53 // 更新后的头部数量，包含思考模式、思考token、总吞吐量TPS和方差字段
 	if len(headers) != expectedHeaderCount {
 		t.Errorf("Expected %d headers, got %d", expectedHeaderCount, len(headers))
 	}
@@ -122,7 +122,7 @@ func TestCSVRenderer_Render_SingleModel(t *testing.T) {
 
 	// 验证头部
 	headers := records[0]
-	expectedHeaderCount := 42 // 额外增加思考模式与思考token字段
+	expectedHeaderCount := 53 // 额外增加思考模式、思考token、总吞吐量TPS和方差字段
 	if len(headers) != expectedHeaderCount {
 		t.Errorf("Expected %d headers, got %d", expectedHeaderCount, len(headers))
 	}
@@ -248,7 +248,7 @@ func TestCSVRenderer_Render_StreamVsNonStream(t *testing.T) {
 		t.Fatalf("Expected 3 rows in CSV (header + 2 data rows), got %d", len(records))
 	}
 
-	const expectedHeaderCount = 42
+	const expectedHeaderCount = 53
 	headers := records[0]
 	if len(headers) != expectedHeaderCount {
 		t.Fatalf("Expected %d headers, got %d", expectedHeaderCount, len(headers))

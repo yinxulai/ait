@@ -5,6 +5,7 @@ import (
 	"os"
 	"strconv"
 	"sync"
+	"time"
 
 	"github.com/olekukonko/tablewriter"
 	"github.com/schollz/progressbar/v3"
@@ -216,42 +217,42 @@ func (td *Displayer) ShowSignalReport(data *types.ReportData) {
 		tablewriter.WithEastAsian(false),
 	)
 
-	table.Header("指标", "最小值", "平均值", "最大值", "单位", "采样方式说明")
+	table.Header("指标", "最小值", "平均值", "标准差", "最大值", "单位", "采样方式说明")
 
 	// 基础信息（这些只有单一值，只填最小值列）
-	table.Append("🔗 协议", data.Protocol, "", "", "-", "配置信息")
-	table.Append("🤖 模型", data.Model, "", "", "-", "配置信息")
-	table.Append("🌐 URL", data.BaseUrl, "", "", "-", "配置信息")
-	table.Append("🌊 流式", strconv.FormatBool(data.IsStream), "", "", "-", "配置信息")
-	table.Append("🧠 思考模式", strconv.FormatBool(data.IsThinking), "", "", "-", "配置信息")
-	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "个", "配置信息")
-	table.Append("📊 总请求数", strconv.Itoa(data.TotalRequests), "", "", "个", "完成的请求总数")
-	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.SuccessRate), "", "", "%", "成功请求占比")
+	table.Append("🔗 协议", data.Protocol, "", "", "", "-", "配置信息")
+	table.Append("🤖 模型", data.Model, "", "", "", "-", "配置信息")
+	table.Append("🌐 URL", data.BaseUrl, "", "", "", "-", "配置信息")
+	table.Append("🌊 流式", strconv.FormatBool(data.IsStream), "", "", "", "-", "配置信息")
+	table.Append("🧠 思考模式", strconv.FormatBool(data.IsThinking), "", "", "", "-", "配置信息")
+	table.Append("⚡ 并发数", strconv.Itoa(data.Concurrency), "", "", "", "个", "配置信息")
+	table.Append("📊 总请求数", strconv.Itoa(data.TotalRequests), "", "", "", "个", "完成的请求总数")
+	table.Append("✅ 成功率", fmt.Sprintf("%.2f", data.SuccessRate), "", "", "", "%", "成功请求占比")
 
 	// 时间性能指标
-	table.Append("🕐 总耗时", data.MinTotalTime.String(), data.AvgTotalTime.String(), data.MaxTotalTime.String(), "时间", "单个请求从发起到完全结束的时间")
+	table.Append("🕐 总耗时", formatDuration(data.MinTotalTime), formatDuration(data.AvgTotalTime), fmt.Sprintf("±%s", formatDuration(data.StdDevTotalTime)), formatDuration(data.MaxTotalTime), "时间", "单个请求从发起到完全结束的时间")
 
 	if data.TargetIP != "" {
-		table.Append("🎯 目标 IP", data.TargetIP, "", "", "-", "DNS 解析后的实际连接 IP")
+		table.Append("🎯 目标 IP", data.TargetIP, "", "", "", "-", "DNS 解析后的实际连接 IP")
+	}
+	// 内容性能指标
+	if data.IsStream {
+		table.Append("⚡ TTFT", formatDuration(data.MinTTFT), formatDuration(data.AvgTTFT), fmt.Sprintf("±%s", formatDuration(data.StdDevTTFT)), formatDuration(data.MaxTTFT), "时间", "首个 token 响应时间 (含请求发送+网络+服务器处理)")
+		table.Append("⚡ TPOT", formatDuration(data.MinTPOT), formatDuration(data.AvgTPOT), fmt.Sprintf("±%s", formatDuration(data.StdDevTPOT)), formatDuration(data.MaxTPOT), "时间", "每个输出 token 的平均耗时 (除首token外)")
 	}
 
 	// 网络性能指标
-	table.Append("🔍 DNS 时间", data.MinDNSTime.String(), data.AvgDNSTime.String(), data.MaxDNSTime.String(), "时间", "域名解析耗时 (httptrace)")
-	table.Append("🔒 TLS 时间", data.MinTLSHandshakeTime.String(), data.AvgTLSHandshakeTime.String(), data.MaxTLSHandshakeTime.String(), "时间", "TLS 握手耗时 (httptrace)")
-	table.Append("🔌 TCP 连接时间", data.MinConnectTime.String(), data.AvgConnectTime.String(), data.MaxConnectTime.String(), "时间", "TCP 连接建立耗时 (httptrace)")
+	table.Append("🔍 DNS 时间", formatDuration(data.MinDNSTime), formatDuration(data.AvgDNSTime), "", formatDuration(data.MaxDNSTime), "时间", "域名解析耗时 (httptrace)")
+	table.Append("🔒 TLS 时间", formatDuration(data.MinTLSHandshakeTime), formatDuration(data.AvgTLSHandshakeTime), "", formatDuration(data.MaxTLSHandshakeTime), "时间", "TLS 握手耗时 (httptrace)")
+	table.Append("🔌 TCP 连接时间", formatDuration(data.MinConnectTime), formatDuration(data.AvgConnectTime), "", formatDuration(data.MaxConnectTime), "时间", "TCP 连接建立耗时 (httptrace)")
+
+	table.Append("🚀 输出 TPS", fmt.Sprintf("%.2f", data.MinTPS), fmt.Sprintf("%.2f", data.AvgTPS), fmt.Sprintf("±%.2f", data.StdDevTPS), fmt.Sprintf("%.2f", data.MaxTPS), "个/秒", "输出 tokens / 总耗时")
+	table.Append("🌐 吞吐 TPS", fmt.Sprintf("%.2f", data.MinTotalThroughputTPS), fmt.Sprintf("%.2f", data.AvgTotalThroughputTPS), fmt.Sprintf("±%.2f", data.StdDevTotalThroughputTPS), fmt.Sprintf("%.2f", data.MaxTotalThroughputTPS), "个/秒", "(输入+输出) tokens / 总耗时")
 
 	// Token 数指标
-	table.Append("📥 输入 Token 数", strconv.Itoa(data.MinInputTokenCount), strconv.Itoa(data.AvgInputTokenCount), strconv.Itoa(data.MaxInputTokenCount), "个", "API 请求的 prompt tokens")
-	table.Append("🎲 生成 Token 数", strconv.Itoa(data.MinOutputTokenCount), strconv.Itoa(data.AvgOutputTokenCount), strconv.Itoa(data.MaxOutputTokenCount), "个", "API 返回的 completion tokens")
-	table.Append("🧠 思考 Token 数", strconv.Itoa(data.MinThinkingTokenCount), strconv.Itoa(data.AvgThinkingTokenCount), strconv.Itoa(data.MaxThinkingTokenCount), "个", "模型返回的 reasoning/thinking tokens")
-
-	// 内容性能指标
-	if data.IsStream {
-		table.Append("⚡ TTFT", data.MinTTFT.String(), data.AvgTTFT.String(), data.MaxTTFT.String(), "时间", "首个 token 响应时间 (含请求发送+网络+服务器处理)")
-		table.Append("⚡ TPOT", data.MinTPOT.String(), data.AvgTPOT.String(), data.MaxTPOT.String(), "时间", "每个输出 token 的平均耗时 (除首token外)")
-	}
-
-	table.Append("🚀 TPS", fmt.Sprintf("%.2f", data.MinTPS), fmt.Sprintf("%.2f", data.AvgTPS), fmt.Sprintf("%.2f", data.MaxTPS), "个/秒", "tokens/总耗时 计算得出")
+	table.Append("📥 输入 Token 数", strconv.Itoa(data.MinInputTokenCount), strconv.Itoa(data.AvgInputTokenCount), fmt.Sprintf("±%.2f", data.StdDevInputTokenCount), strconv.Itoa(data.MaxInputTokenCount), "个", "API 请求的 prompt tokens")
+	table.Append("🎲 生成 Token 数", strconv.Itoa(data.MinOutputTokenCount), strconv.Itoa(data.AvgOutputTokenCount), fmt.Sprintf("±%.2f", data.StdDevOutputTokenCount), strconv.Itoa(data.MaxOutputTokenCount), "个", "API 返回的 completion tokens")
+	table.Append("🧠 思考 Token 数", strconv.Itoa(data.MinThinkingTokenCount), strconv.Itoa(data.AvgThinkingTokenCount), fmt.Sprintf("±%.2f", data.StdDevThinkingTokenCount), strconv.Itoa(data.MaxThinkingTokenCount), "个", "模型返回的 reasoning/thinking tokens")
 
 	table.Render()
 	fmt.Println()
@@ -266,36 +267,28 @@ func (td *Displayer) ShowMultiReport(data []*types.ReportData) {
 		tablewriter.WithEastAsian(false),
 	)
 
-	table.Header("🤖 模型", "🎯 目标 IP", "📊 请求数", "⚡ 并发", "✅ 成功率",
-		"🕐 平均总耗时", "⚡ 平均 TTFT", "⏰ 平均 TPOT", "🚀 平均 TPS", "🎲 平均输出 Token 数",
-		"🧠 平均思考 Token 数", "🌊 流式模式", "🧠 思考模式", "🔍 平均 DNS 时间", "🔌 平均 TCP 连接时间", "🔒 平均 TLS 时间")
+	table.Header("🤖 模型", "📊 请求数", "⚡ 并发", "✅ 成功率",
+		"🕐 平均总耗时", "⚡ 平均 TTFT",
+		"🚀 平均输出 TPS", "🌐 平均吞吐 TPS",
+		"🎲 平均输出 Token 数")
 
 	for _, report := range data {
-		// TTFT 和 TPOT 处理（流式模式才显示）
+		// TTFT 处理（流式模式才显示）
 		ttftStr := "-"
-		tpotStr := "-"
 		if report.IsStream {
-			ttftStr = report.AvgTTFT.String()
-			tpotStr = report.AvgTPOT.String()
+			ttftStr = formatDuration(report.AvgTTFT)
 		}
 
 		table.Append(
 			report.Model,
-			report.TargetIP,
 			strconv.Itoa(report.TotalRequests),
 			strconv.Itoa(report.Concurrency),
 			fmt.Sprintf("%.2f%%", report.SuccessRate),
-			report.AvgTotalTime.String(),
+			formatDuration(report.AvgTotalTime),
 			ttftStr,
-			tpotStr,
 			fmt.Sprintf("%.2f", report.AvgTPS),
+			fmt.Sprintf("%.2f", report.AvgTotalThroughputTPS),
 			strconv.Itoa(report.AvgOutputTokenCount),
-			strconv.Itoa(report.AvgThinkingTokenCount),
-			strconv.FormatBool(report.IsStream),
-			strconv.FormatBool(report.IsThinking),
-			report.AvgDNSTime.String(),
-			report.AvgConnectTime.String(),
-			report.AvgTLSHandshakeTime.String(),
 		)
 	}
 
@@ -319,4 +312,21 @@ func truncatePrompt(prompt string) string {
 		return fmt.Sprintf("%s (长度: %d)", prompt, charCount)
 	}
 	return fmt.Sprintf("%s... (长度: %d)", string(runes[:47]), charCount)
+}
+
+// formatDuration 格式化时间显示，保留2位小数
+func formatDuration(d time.Duration) string {
+	// 根据时间大小选择合适的单位
+	if d >= time.Second {
+		// >= 1s: 显示为秒，保留2位小数
+		return fmt.Sprintf("%.2fs", d.Seconds())
+	} else if d >= time.Millisecond {
+		// >= 1ms: 显示为毫秒，保留2位小数
+		return fmt.Sprintf("%.2fms", float64(d.Microseconds())/1000.0)
+	} else if d >= time.Microsecond {
+		// >= 1µs: 显示为微秒，保留2位小数
+		return fmt.Sprintf("%.2fµs", float64(d.Nanoseconds())/1000.0)
+	}
+	// < 1µs: 显示为纳秒
+	return fmt.Sprintf("%dns", d.Nanoseconds())
 }

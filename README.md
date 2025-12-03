@@ -297,8 +297,10 @@ ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=20 --r
 ### 终端输出指标
 
 - **TTFT (Time To First Token)**: 首字节时间，衡量模型开始响应的速度
-- **TPS (Tokens Per Second)**: 每秒处理的请求数，衡量系统吞吐量
-- **平均/最小/最大响应时间**: 请求的响应时间统计
+- **TPOT (Time Per Output Token)**: 每个输出 token 的平均耗时（除首 token 外），衡量生成速度的稳定性
+- **输出 TPS (Tokens Per Second)**: 每秒输出的 token 数，基于输出 tokens 计算
+- **吞吐 TPS (Total Throughput TPS)**: 每秒处理的总 token 数，基于输入+输出 tokens 计算，衡量系统整体吞吐量
+- **平均/最小/最大/标准差响应时间**: 请求的响应时间统计，标准差反映性能稳定性
 - **网络性能指标**: DNS 解析、TCP 连接、TLS 握手时间
 
 ### 报告文件生成
@@ -320,10 +322,11 @@ ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=20 --r
 **JSON 报告文件结构:**
 
 - **metadata**: 测试元数据（时间戳、协议、模型名称、配置信息等）
-- **time_metrics**: 时间性能指标（平均、最小、最大响应时间）
+- **time_metrics**: 时间性能指标（平均、最小、最大、标准差响应时间）
 - **network_metrics**: 网络性能指标（DNS、TCP连接、TLS握手时间，目标IP）
-- **content_metrics**: 服务性能指标（TTFT、Token统计、TPS等）
+- **content_metrics**: 服务性能指标（TTFT、TPOT、Token统计、输出TPS、吞吐TPS等）
 - **reliability_metrics**: 可靠性指标（成功率、错误率）
+- **variance_metrics**: 方差指标（总耗时、TTFT、TPOT、Token数、TPS的标准差，用于评估性能稳定性）
 
 **CSV 报告文件格式:**
 

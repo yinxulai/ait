@@ -107,9 +107,24 @@ type ReportData struct {
 	AvgThinkingTokenCount int          `json:"avg_thinking_token_count"` // 平均思考token数量
 	MinThinkingTokenCount int          `json:"min_thinking_token_count"` // 最小思考token数量
 	MaxThinkingTokenCount int          `json:"max_thinking_token_count"` // 最大思考token数量
-	AvgTPS              float64       `json:"avg_tps"`                // 平均每秒token数 (Tokens Per Second)
-	MinTPS              float64       `json:"min_tps"`                // 最小每秒token数
-	MaxTPS              float64       `json:"max_tps"`                // 最大每秒token数
+	AvgTPS              float64       `json:"avg_tps"`                // 平均输出 TPS (仅输出 tokens per second)
+	MinTPS              float64       `json:"min_tps"`                // 最小输出 TPS
+	MaxTPS              float64       `json:"max_tps"`                // 最大输出 TPS
+
+	// 吞吐量指标 - 统计结果
+	AvgTotalThroughputTPS float64 `json:"avg_total_throughput_tps"` // 平均吞吐 TPS (输入+输出 tokens per second)
+	MinTotalThroughputTPS float64 `json:"min_total_throughput_tps"` // 最小吞吐 TPS
+	MaxTotalThroughputTPS float64 `json:"max_total_throughput_tps"` // 最大吞吐 TPS
+
+	// 标准差指标 - 统计结果
+	StdDevTotalTime        time.Duration `json:"stddev_total_time"`          // 总耗时标准差
+	StdDevTTFT             time.Duration `json:"stddev_ttft"`                // TTFT 标准差
+	StdDevTPOT             time.Duration `json:"stddev_tpot"`                // TPOT 标准差
+	StdDevInputTokenCount  float64       `json:"stddev_input_token_count"`   // 输入 Token 数标准差
+	StdDevOutputTokenCount float64       `json:"stddev_output_token_count"`  // 输出 Token 数标准差
+	StdDevThinkingTokenCount float64     `json:"stddev_thinking_token_count"` // 思考 Token 数标准差
+	StdDevTPS              float64       `json:"stddev_tps"`                 // 输出 TPS 标准差
+	StdDevTotalThroughputTPS float64     `json:"stddev_total_throughput_tps"` // 吞吐 TPS 标准差
 
 	// 可靠性指标 - 统计结果
 	ErrorRate   float64 `json:"error_rate"`   // 错误率 (%)
@@ -141,6 +156,9 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 		AvgTPOT           string `json:"avg_tpot"`
 		MinTPOT           string `json:"min_tpot"`
 		MaxTPOT           string `json:"max_tpot"`
+		StdDevTotalTime   string `json:"stddev_total_time"`
+		StdDevTTFT        string `json:"stddev_ttft"`
+		StdDevTPOT        string `json:"stddev_tpot"`
 	}{
 		Alias:              (*Alias)(r),
 		TotalTime:          r.TotalTime.String(),
@@ -162,6 +180,9 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 		AvgTPOT:            formatTPOT(r.AvgTPOT, r.IsStream),
 		MinTPOT:            formatTPOT(r.MinTPOT, r.IsStream),
 		MaxTPOT:            formatTPOT(r.MaxTPOT, r.IsStream),
+		StdDevTotalTime:    r.StdDevTotalTime.String(),
+		StdDevTTFT:         formatTTFT(r.StdDevTTFT, r.IsStream),
+		StdDevTPOT:         formatTPOT(r.StdDevTPOT, r.IsStream),
 	})
 }
 

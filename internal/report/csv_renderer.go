@@ -43,7 +43,13 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 		"平均输入Token数", "最小输入Token数", "最大输入Token数",
 		"平均输出Token数", "最小输出Token数", "最大输出Token数",
 		"平均思考Token数", "最小思考Token数", "最大思考Token数",
-		"平均TPS", "最小TPS", "最大TPS",
+		"平均输出TPS", "最小输出TPS", "最大输出TPS",
+		// 吞吐量指标
+		"平均吞吐TPS", "最小吞吐TPS", "最大吞吐TPS",
+		// 标准差指标
+		"总耗时标准差", "TTFT标准差", "TPOT标准差",
+		"输入Token数标准差", "输出Token数标准差", "思考Token数标准差",
+		"输出TPS标准差", "吞吐TPS标准差",
 		// 可靠性指标
 		"成功率", "错误率",
 	}
@@ -105,6 +111,19 @@ func (cr *CSVRenderer) Render(data []types.ReportData) (string, error) {
 			strconv.FormatFloat(modelData.AvgTPS, 'f', 2, 64),
 			strconv.FormatFloat(modelData.MinTPS, 'f', 2, 64),
 			strconv.FormatFloat(modelData.MaxTPS, 'f', 2, 64),
+			// 总吞吐量指标
+			strconv.FormatFloat(modelData.AvgTotalThroughputTPS, 'f', 2, 64),
+			strconv.FormatFloat(modelData.MinTotalThroughputTPS, 'f', 2, 64),
+			strconv.FormatFloat(modelData.MaxTotalThroughputTPS, 'f', 2, 64),
+			// 标准差指标
+			modelData.StdDevTotalTime.String(),
+			formatDurationForCSV(modelData.StdDevTTFT, modelData.IsStream),
+			formatDurationForCSV(modelData.StdDevTPOT, modelData.IsStream),
+			strconv.FormatFloat(modelData.StdDevInputTokenCount, 'f', 2, 64),
+			strconv.FormatFloat(modelData.StdDevOutputTokenCount, 'f', 2, 64),
+			strconv.FormatFloat(modelData.StdDevThinkingTokenCount, 'f', 2, 64),
+			strconv.FormatFloat(modelData.StdDevTPS, 'f', 2, 64),
+			strconv.FormatFloat(modelData.StdDevTotalThroughputTPS, 'f', 2, 64),
 			// 可靠性指标
 			strconv.FormatFloat(modelData.SuccessRate, 'f', 2, 64),
 			strconv.FormatFloat(modelData.ErrorRate, 'f', 2, 64),
