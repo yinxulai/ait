@@ -5,10 +5,20 @@ if [[ ${TPG_DEBUG:-0} -eq 1 ]]; then
   set -x
 fi
 
-if [[ "$(uname -s)" != "Linux" ]]; then
-  echo "[TPG] 仅支持在 Linux 系统上运行该安装脚本" >&2
-  exit 1
-fi
+OS="$(uname -s)"
+case "${OS}" in
+  Linux)
+    OS_TYPE="linux"
+    ;;
+  Darwin)
+    OS_TYPE="darwin"
+    ;;
+  *)
+    echo "[TPG] 暂不支持的操作系统: ${OS}" >&2
+    echo "[TPG] 支持的系统: Linux, macOS (Darwin)" >&2
+    exit 1
+    ;;
+esac
 
 if ! command -v curl >/dev/null 2>&1; then
   echo "[TPG] 未检测到 curl，请先安装 curl 再重试" >&2
@@ -18,16 +28,24 @@ fi
 ARCH=$(uname -m)
 case "${ARCH}" in
   x86_64|amd64)
-    FILE_NAME="tpg-linux-amd64"
+    FILE_NAME="tpg-${OS_TYPE}-amd64"
     ;;
   aarch64|arm64)
-    FILE_NAME="tpg-linux-arm64"
+    FILE_NAME="tpg-${OS_TYPE}-arm64"
     ;;
   armv7l|arm)
-    FILE_NAME="tpg-linux-arm"
+    if [[ "${OS_TYPE}" == "darwin" ]]; then
+      echo "[TPG] macOS 不支持 ARM32 架构" >&2
+      exit 1
+    fi
+    FILE_NAME="tpg-${OS_TYPE}-arm"
     ;;
   i386|i686)
-    FILE_NAME="tpg-linux-386"
+    if [[ "${OS_TYPE}" == "darwin" ]]; then
+      echo "[TPG] macOS 不支持 32 位架构" >&2
+      exit 1
+    fi
+    FILE_NAME="tpg-${OS_TYPE}-386"
     ;;
   *)
     echo "[TPG] 暂不支持的 CPU 架构: ${ARCH}" >&2
@@ -55,6 +73,7 @@ trap 'rm -rf "${TMP_DIR}"' EXIT
 DOWNLOAD_URL="https://github.com/yinxulai/ait/releases/latest/download/${FILE_NAME}"
 TARGET_PATH="${TMP_DIR}/tpg"
 
+echo "[TPG] 检测到系统: ${OS} (${OS_TYPE})"
 echo "[TPG] 检测到架构: ${ARCH}"
 echo "[TPG] 正在从 ${DOWNLOAD_URL} 下载最新版本..."
 curl -fsSL "${DOWNLOAD_URL}" -o "${TARGET_PATH}"

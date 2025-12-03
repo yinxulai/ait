@@ -28,13 +28,13 @@
 
 从 [Releases 页面](https://github.com/yinxulai/ait/releases) 下载适合您平台的预编译二进制文件：
 
-#### Linux 一键安装脚本（自动识别架构）
+#### Linux/macOS 一键安装脚本（自动识别架构）
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh | bash
 ```
 
-> 脚本会自动识别多种架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh -o install-ait.sh && INSTALL_DIR=$HOME/.local/bin bash install-ait.sh`。
+> 脚本会自动识别操作系统（Linux/macOS）和架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh -o install-ait.sh && INSTALL_DIR=$HOME/.local/bin bash install-ait.sh`。
 
 ```bash
 # Linux (x64)
@@ -409,13 +409,13 @@ ait --models=claude-3.7-sonnet,claude-3.5-haiku --count=5 --report
 
 ### 安装 tpg
 
-#### tpg Linux 一键安装脚本
+#### tpg Linux/macOS 一键安装脚本
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-tpg.sh | bash
 ```
 
-> 脚本会自动识别多种架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-tpg.sh -o install-tpg.sh && INSTALL_DIR=$HOME/.local/bin bash install-tpg.sh`。
+> 脚本会自动识别操作系统（Linux/macOS）和架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-tpg.sh -o install-tpg.sh && INSTALL_DIR=$HOME/.local/bin bash install-tpg.sh`。
 
 #### 手动下载安装
 
