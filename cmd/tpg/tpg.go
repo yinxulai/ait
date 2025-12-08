@@ -12,6 +12,13 @@ import (
 	"github.com/yinxulai/ait/internal/display"
 )
 
+// 版本信息，通过 ldflags 在构建时注入
+var (
+	Version   = "dev"
+	GitCommit = "unknown"
+	BuildTime = "unknown"
+)
+
 var (
 	// 使用全局随机数生成器
 	rng = mathRand.New(mathRand.NewSource(time.Now().UnixNano()))
@@ -299,7 +306,7 @@ func main() {
 
 	// 显示欢迎信息和配置
 	displayer := display.New()
-	displayer.ShowWelcome()
+	displayer.ShowWelcome(Version)
 
 	fmt.Printf("%s=== TPG 配置信息 ===%s\n", display.ColorBlue, display.ColorReset)
 	fmt.Printf("数量: %d\n", *count)

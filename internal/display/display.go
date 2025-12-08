@@ -52,10 +52,10 @@ func New() *Displayer {
 	return &Displayer{}
 }
 
-func (td *Displayer) ShowWelcome() {
+func (td *Displayer) ShowWelcome(version string) {
 	fmt.Printf("\n")
 	// AIT ASCII 字符画和说明信息并排显示，使用统一的青色+粗体
-	fmt.Printf("%s%s    █████╗  ██╗ ████████╗%s    %s🚀 %sAI 模型性能测试工具%s\n", ColorBold, ColorCyan, ColorReset, ColorBold, ColorCyan, ColorReset)
+	fmt.Printf("%s%s    █████╗  ██╗ ████████╗%s    %s🚀 %sAI 模型性能测试工具 %s(%s)%s\n", ColorBold, ColorCyan, ColorReset, ColorBold, ColorCyan, ColorGreen, version, ColorReset)
 	fmt.Printf("%s%s   ██╔══██╗ ██║ ╚══██╔══╝%s       %s一个强大的 CLI 工具，用于测试 AI 模型的性能指标%s\n", ColorBold, ColorCyan, ColorReset, ColorWhite, ColorReset)
 	fmt.Printf("%s%s   ███████║ ██║    ██║%s          %s🌐 项目地址: https://github.com/yinxulai/ait%s\n", ColorBold, ColorCyan, ColorReset, ColorBlue, ColorReset)
 	fmt.Printf("%s%s   ██╔══██║ ██║    ██║%s       \n", ColorBold, ColorCyan, ColorReset)

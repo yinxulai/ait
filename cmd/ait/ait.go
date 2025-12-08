@@ -16,6 +16,13 @@ import (
 	"github.com/yinxulai/ait/internal/types"
 )
 
+// 版本信息，通过 ldflags 在构建时注入
+var (
+	Version   = "dev"
+	GitCommit = "unknown"
+	BuildTime = "unknown"
+)
+
 func generateTaskID() string {
 	bytes := make([]byte, 16)
 	rand.Read(bytes)
@@ -319,9 +326,11 @@ func executeModelsTestSuite(taskID string, modelList []string, finalProtocol, fi
 
 func main() {
 	taskID := generateTaskID()
+	versionFlag := flag.Bool("version", false, "显示版本信息")
 	baseUrl := flag.String("baseUrl", "", "服务地址")
 	apiKey := flag.String("apiKey", "", "API 密钥")
 	count := flag.Int("count", 10, "请求总数")
+	model := flag.String("model", "", "模型名称（单个模型）")
 	models := flag.String("models", "", "模型名称，支持多个模型用,(逗号)分割")
 	protocol := flag.String("protocol", "", "协议类型: openai 或 anthropic")
 	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt 内容。未指定时支持管道输入")
@@ -334,14 +343,33 @@ func main() {
 	thinking := flag.Bool("thinking", false, "是否开启 thinking 模式")
 	flag.Parse()
 
+	// 如果指定了 --version，显示版本信息后退出
+	if *versionFlag {
+		fmt.Printf("ait version %s\n", Version)
+		fmt.Printf("Git Commit: %s\n", GitCommit)
+		fmt.Printf("Build Time: %s\n", BuildTime)
+		os.Exit(0)
+	}
+
+	// 合并 --model 和 --models 参数
+	finalModels := *models
+	if *model != "" {
+		if finalModels != "" {
+			fmt.Println("错误：不能同时使用 --model 和 --models 参数")
+			os.Exit(1)
+		}
+		finalModels = *model
+	}
+
 	// 解析和验证配置
 	finalProtocol, finalBaseUrl, finalApiKey := resolveConfigValues(*protocol, *baseUrl, *apiKey)
 
 	// 验证必需参数
-	if err := validateRequiredParams(*models, finalBaseUrl, finalApiKey, finalProtocol); err != nil {
-		if *models == "" {
-			fmt.Println("models 参数必填，请通过 -models 参数指定")
-			fmt.Println("支持多个模型，用逗号分割，例如：gpt-3.5-turbo,gpt-4")
+	if err := validateRequiredParams(finalModels, finalBaseUrl, finalApiKey, finalProtocol); err != nil {
+		if finalModels == "" {
+			fmt.Println("model/models 参数必填，请通过 --model 或 --models 参数指定")
+			fmt.Println("--model: 指定单个模型，例如：--model gpt-3.5-turbo")
+			fmt.Println("--models: 支持多个模型，用逗号分割，例如：--models gpt-3.5-turbo,gpt-4")
 		} else {
 			printErrorMessages(finalProtocol)
 		}
@@ -349,7 +377,7 @@ func main() {
 	}
 
 	// 解析模型列表
-	modelList := parseModelList(*models)
+	modelList := parseModelList(finalModels)
 
 	// 检查用户是否明确指定了 --prompt 和 --prompt-file 参数
 	promptSpecified := false
@@ -373,7 +401,7 @@ func main() {
 	displayer := display.New()
 
 	// 显示欢迎信息
-	displayer.ShowWelcome()
+	displayer.ShowWelcome(Version)
 
 	displayer.ShowInput(&display.Input{
 		TaskId:      taskID,

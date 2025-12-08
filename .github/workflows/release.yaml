@@ -70,7 +70,9 @@ jobs:
             echo "构建 $binary for ${{ matrix.goos }}/${{ matrix.goarch }}..."
             go build \
               -ldflags "-w -s \
-                -X main.version=${{ github.ref_name }} \
+                -X main.Version=${{ github.ref_name }} \
+                -X main.GitCommit=${{ github.sha }} \
+                -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') \
                 -X 'github.com/yinxulai/ait/internal/upload.UploadBaseURL=${{ secrets.UPLOAD_BASE_URL }}' \
                 -X 'github.com/yinxulai/ait/internal/upload.UploadAuthToken=${{ secrets.UPLOAD_AUTH_TOKEN }}' \
                 -X 'github.com/yinxulai/ait/internal/upload.UploadUserAgent=${{ github.repository }}(${{ github.ref_name }})'" \
