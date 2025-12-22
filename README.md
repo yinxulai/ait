@@ -118,58 +118,37 @@ ait --version
 
 ```bash
 # 使用 --model 测试单个模型
-ait 
-  --protocol=openai 
-  --baseUrl=https://api.openai.com/v1 
-  --apiKey=sk-your-api-key 
-  --model=gpt-3.5-turbo 
-  --concurrency=3 
-  --count=10
-  --report
+ait --protocol=openai --baseUrl=https://api.openai.com/v1 --apiKey=sk-your-api-key --model=gpt-3.5-turbo --concurrency=3 --count=10 --report
 
 # 或使用 --models（支持多个模型）
-ait 
-  --protocol=openai 
-  --baseUrl=https://api.openai.com/v1 
-  --apiKey=sk-your-api-key 
-  --models=gpt-3.5-turbo 
-  --concurrency=3 
-  --count=10
-  --report
+ait --protocol=openai --baseUrl=https://api.openai.com/v1 --apiKey=sk-your-api-key --models=gpt-3.5-turbo --concurrency=3 --count=10 --report
+
+# 使用环境变量可以省略 protocol 参数（会自动推断）
+export OPENAI_API_KEY="sk-your-api-key"
+export OPENAI_BASE_URL="https://api.openai.com/v1"
+ait --models=gpt-3.5-turbo --concurrency=3 --count=10 --report
 ```
 
 ### Anthropic 协议测试
 
 ```bash
-ait 
-  --protocol=anthropic 
-  --baseUrl=https://api.anthropic.com 
-  --apiKey=sk-ant-your-api-key 
-  --models=claude-3-haiku-20240307 
-  --concurrency=2 
-  --count=5
-  --report
+ait --protocol=anthropic --baseUrl=https://api.anthropic.com --apiKey=sk-ant-your-api-key --models=claude-3-haiku-20240307 --concurrency=2 --count=5 --report
+
+# 使用环境变量可以省略 protocol 参数（会自动推断）
+export ANTHROPIC_API_KEY="sk-ant-your-api-key"
+export ANTHROPIC_BASE_URL="https://api.anthropic.com"
+ait --models=claude-3-haiku-20240307 --concurrency=2 --count=5 --report
 ```
 
 ### 多模型比较测试
 
 ```bash
 # 同时测试多个 OpenAI 模型
-ait 
-  --protocol=openai 
-  --baseUrl=https://api.openai.com/v1 
-  --apiKey=sk-your-api-key 
-  --models="gpt-3.5-turbo,gpt-4,gpt-4-turbo" 
-  --concurrency=3 
-  --count=10
-  --report
+ait --protocol=openai --baseUrl=https://api.openai.com/v1 --apiKey=sk-your-api-key --models="gpt-3.5-turbo,gpt-4,gpt-4-turbo" --concurrency=3 --count=10 --report
 
-# 测试最新的 Claude 和 Gemini 模型
-ait 
-  --models=claude-4.1-opus,claude-4.0-sonnet,claude-3.5-haiku,gemini-2.5-pro,gemini-2.0-flash 
-  --concurrency=3 
-  --count=5
-  --report
+# 测试最新的 Claude 和 Gemini 模型（使用环境变量）
+export OPENAI_API_KEY="sk-your-key"
+ait --models=claude-4.1-opus,claude-4.0-sonnet,claude-3.5-haiku,gemini-2.5-pro,gemini-2.0-flash --concurrency=3 --count=5 --report
 
 # 多模型测试会为每个模型生成独立的 JSON 和 CSV 报告
 # 同时还会生成一个综合比较的 CSV 报告方便对比分析
@@ -178,13 +157,7 @@ ait
 ### 本地模型测试（如 Ollama）
 
 ```bash
-ait 
-  --protocol=openai 
-  --baseUrl=http://localhost:11434/v1 
-  --apiKey=dummy 
-  --models=llama2 
-  --concurrency=1 
-  --count=3
+ait --protocol=openai --baseUrl=http://localhost:11434/v1 --apiKey=dummy --models=llama2 --concurrency=1 --count=3
 ```
 
 ## 🔧 环境变量支持
@@ -239,7 +212,7 @@ ait --models=gpt-4 --prompt="分析人工智能的发展前景" --count=3
 
 ```bash
 # 单个文件
-ait --models=gpt-4 --prompt-file="prompts/complex_prompt.txt" --count=5
+ait --models=gpt-4 --prompt-file=prompts/complex_prompt.txt --count=5
 
 # 通配符匹配多个文件（随机选择）
 ait --models=gpt-4 --prompt-file="prompts/*.txt" --count=10
@@ -287,10 +260,9 @@ ait --models=gpt-4 --prompt-file="prompts/*.txt" --count=5 --report
 # 结合环境变量使用
 export OPENAI_API_KEY="sk-your-key"
 ait --models=gpt-4,claude-3-sonnet --prompt-file="test_cases/*.txt" --count=10
-EOF
 ```
 
-### 4. 批量测试场景
+### 5. 批量测试场景
 
 ```bash
 # 创建多个测试场景文件
@@ -300,7 +272,7 @@ echo "分析深度学习的应用场景" > test_prompts/dl_applications.txt
 echo "比较不同优化算法的特点" > test_prompts/optimization.txt
 
 # 使用通配符随机测试多个场景
-ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=20 --report
+ait --models=gpt-4,claude-3-sonnet --prompt-file="test_prompts/*.txt" --count=20 --report
 ```
 
 ### 重要说明
@@ -425,14 +397,14 @@ ait --models=gpt-4 --prompt="分析人工智能的发展前景" --count=5
 
 # 2. 单个文件
 echo "请解释机器学习的基本概念和应用场景" > ml_prompt.txt
-ait --models=claude-3-sonnet --prompt="@ml_prompt.txt" --count=3
+ait --models=claude-3-sonnet --prompt-file=ml_prompt.txt --count=3
 
 # 3. 多文件通配符（随机选择）
 mkdir test_prompts
 echo "分析深度学习的优缺点" > test_prompts/dl.txt
 echo "比较不同 NLP 模型的特点" > test_prompts/nlp.txt
 echo "解释计算机视觉的应用" > test_prompts/cv.txt
-ait --models=gpt-4,claude-3-sonnet --prompt="@test_prompts/*.txt" --count=10 --report
+ait --models=gpt-4,claude-3-sonnet --prompt-file="test_prompts/*.txt" --count=10 --report
 
 # 4. 管道输入（未使用 --prompt 参数时生效）
 echo "请分析以下代码的性能" | ait --models=gpt-3.5-turbo --count=2
