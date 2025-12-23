@@ -194,19 +194,38 @@ AIT 提供了灵活的 prompt 输入方式，满足不同的测试需求：
 
 ### 输入方式优先级
 
-1. **用户明确指定的 `--prompt-file` 参数**（最高优先级）
-2. **用户明确指定的 `--prompt` 参数**（高优先级）
-3. **管道输入**（中等优先级，仅当未使用上述参数时生效）
-4. **默认值**（最低优先级）
+1. **用户明确指定的 `--prompt-length` 参数**（最高优先级，用于快速生成指定长度的测试内容）
+2. **用户明确指定的 `--prompt-file` 参数**（高优先级）
+3. **用户明确指定的 `--prompt` 参数**（中高优先级）
+4. **管道输入**（中等优先级，仅当未使用上述参数时生效）
+5. **默认值**（最低优先级）
 
-### 1. 直接字符串输入
+### 1. 快速生成指定长度的测试内容
+
+使用 `--prompt-length` 参数可以快速生成指定字符长度的测试 prompt，无需准备测试文件：
+
+```bash
+# 生成 100 个字符的测试内容
+ait --models=gpt-4 --prompt-length=100 --count=5
+
+# 生成 1000 个字符的测试内容进行压力测试
+ait --models=gpt-4,claude-3-sonnet --prompt-length=1000 --count=20 --concurrency=5 --report
+
+# 测试不同长度的性能表现
+ait --models=gpt-4 --prompt-length=500 --count=10 --report
+ait --models=gpt-4 --prompt-length=2000 --count=10 --report
+```
+
+> **提示**：生成的内容是有意义的中文文本片段，而不是随机字符，更接近真实使用场景。
+
+### 2. 直接字符串输入
 
 ```bash
 # 直接指定 prompt 内容
 ait --models=gpt-4 --prompt="分析人工智能的发展前景" --count=3
 ```
 
-### 2. 从文件读取 prompt
+### 3. 从文件读取 prompt
 
 使用 `--prompt-file` 参数指定文件路径，支持单文件和通配符：
 
@@ -221,9 +240,9 @@ ait --models=gpt-4 --prompt-file="prompts/*.txt" --count=10
 ait --models=claude-3-sonnet --prompt-file="test_cases/scenario_*.txt" --count=5
 ```
 
-### 3. 管道输入
+### 4. 管道输入
 
-当未使用 `--prompt` 或 `--prompt-file` 参数时，支持通过管道输入：
+当未使用 `--prompt`、`--prompt-file` 或 `--prompt-length` 参数时，支持通过管道输入：
 
 ```bash
 # 基本管道输入
@@ -251,10 +270,13 @@ def process_data(data):
 EOF
 ```
 
-### 4. 参数组合使用
+### 5. 参数组合使用
 
 ```bash
-# 同时使用多种输入方式（优先级：prompt-file > prompt > 管道）
+# prompt-length 优先级最高，用于快速测试
+ait --models=gpt-4 --prompt-length=500 --count=10 --report
+
+# 使用文件输入（优先级：prompt-length > prompt-file > prompt > 管道）
 ait --models=gpt-4 --prompt-file="prompts/*.txt" --count=5 --report
 
 # 结合环境变量使用
@@ -262,7 +284,7 @@ export OPENAI_API_KEY="sk-your-key"
 ait --models=gpt-4,claude-3-sonnet --prompt-file="test_cases/*.txt" --count=10
 ```
 
-### 5. 批量测试场景
+### 6. 批量测试场景
 
 ```bash
 # 创建多个测试场景文件
@@ -277,7 +299,8 @@ ait --models=gpt-4,claude-3-sonnet --prompt-file="test_prompts/*.txt" --count=20
 
 ### 重要说明
 
-- **参数优先级**：`--prompt-file` > `--prompt` > 管道输入 > 默认值
+- **参数优先级**：`--prompt-length` > `--prompt-file` > `--prompt` > 管道输入 > 默认值
+- **快速测试**：使用 `--prompt-length` 可以快速生成指定长度的测试内容，无需准备文件
 - **文件随机选择**：使用通配符时，每次请求会随机选择匹配的文件
 - **错误处理**：文件不存在或读取失败时会显示警告并使用默认 prompt
 
@@ -296,12 +319,15 @@ ait --models=gpt-4,claude-3-sonnet --prompt-file="test_prompts/*.txt" --count=20
 | `--timeout`    | 请求超时时间（秒）                                              | `300`                      |  ❌  |
 | `--prompt`     | 测试提示语（直接输入字符串）<br/>如：`"分析人工智能的发展前景"`     | `"你好，介绍一下你自己。"`     |  ❌  |
 | `--prompt-file`| 从文件读取 prompt<br/>**支持多种模式**：<br/>• 单文件：`"prompts/test.txt"`<br/>• 通配符：`"prompts/*.txt"`<br/>• 相对/绝对路径均可 | -                         |  ❌  |
+| `--prompt-length`| 生成指定字符长度的测试 prompt<br/>**快速测试功能**：无需准备文件即可生成测试内容<br/>• 优先级高于其他 prompt 参数<br/>• 生成有意义的中文文本片段 | `0`（不启用）              |  ❌  |
 | `--stream`     | 是否开启流模式                                                 | `true`                    |  ❌  |
 | `--thinking`   | 是否开启思考模式（仅 OpenAI 协议支持）                          | `false`                   |  ❌  |
 | `--log`        | 是否开启详细日志记录                                           | `false`                   |  ❌  |
 | `--report`     | 是否生成报告文件（同时生成 JSON 和 CSV）                           | `false`                   |  ❌  |
 
-**注意**：`--model` 和 `--models` 不能同时使用。使用 `--model` 测试单个模型，使用 `--models` 测试多个模型。
+**注意**：
+- `--model` 和 `--models` 不能同时使用。使用 `--model` 测试单个模型，使用 `--models` 测试多个模型
+- prompt 参数优先级：`--prompt-length` > `--prompt-file` > `--prompt` > 管道输入 > 默认值
 
 ## 📊 输出指标说明
 
@@ -392,24 +418,27 @@ ait --models=gpt-4,claude-3-sonnet --prompt-file="test_prompts/*.txt" --count=20
 ### Prompt 输入方式演示
 
 ```bash
-# 1. 直接字符串
+# 1. 快速生成指定长度的测试内容（推荐用于快速测试）
+ait --models=gpt-4 --prompt-length=500 --count=5 --report
+
+# 2. 直接字符串
 ait --models=gpt-4 --prompt="分析人工智能的发展前景" --count=5
 
-# 2. 单个文件
+# 3. 单个文件
 echo "请解释机器学习的基本概念和应用场景" > ml_prompt.txt
 ait --models=claude-3-sonnet --prompt-file=ml_prompt.txt --count=3
 
-# 3. 多文件通配符（随机选择）
+# 4. 多文件通配符（随机选择）
 mkdir test_prompts
 echo "分析深度学习的优缺点" > test_prompts/dl.txt
 echo "比较不同 NLP 模型的特点" > test_prompts/nlp.txt
 echo "解释计算机视觉的应用" > test_prompts/cv.txt
 ait --models=gpt-4,claude-3-sonnet --prompt-file="test_prompts/*.txt" --count=10 --report
 
-# 4. 管道输入（未使用 --prompt 参数时生效）
+# 5. 管道输入（未使用其他 prompt 参数时生效）
 echo "请分析以下代码的性能" | ait --models=gpt-3.5-turbo --count=2
 
-# 5. 复杂多行 prompt 通过管道输入
+# 6. 复杂多行 prompt 通过管道输入
 cat << 'EOF' | ait --models=gpt-4 --count=1 --report
 请作为一个资深软件架构师，分析以下系统设计：
 
@@ -420,6 +449,22 @@ cat << 'EOF' | ait --models=gpt-4 --count=1 --report
 
 请提供详细的分析和具体的解决方案。
 EOF
+```
+
+### 不同长度输入性能测试
+
+```bash
+# 测试短输入（100字符）
+ait --models=gpt-4 --prompt-length=100 --count=10 --report
+
+# 测试中等长度输入（500字符）
+ait --models=gpt-4 --prompt-length=500 --count=10 --report
+
+# 测试长输入（2000字符）
+ait --models=gpt-4 --prompt-length=2000 --count=10 --report
+
+# 对比不同模型处理长输入的能力
+ait --models=gpt-4,claude-3-sonnet,gemini-2.0-flash --prompt-length=1500 --count=20 --concurrency=5 --report
 ```
 
 ### 最新模型测试

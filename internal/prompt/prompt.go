@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 // PromptSource 表示prompt的来源信息
@@ -208,5 +209,66 @@ func LoadPromptsFromPattern(pattern string) (*PromptSource, error) {
 		FilePaths:   filePaths,
 		Contents:    nil, // 不预加载内容
 		DisplayText: fmt.Sprintf("文件: %s (%d个)", pattern, len(filePaths)),
+	}, nil
+}
+
+// GeneratePromptByLength 根据指定长度生成prompt内容
+// 生成的内容是有意义的文本片段，而不是随机字符
+func GeneratePromptByLength(length int) string {
+	if length <= 0 {
+		return ""
+	}
+
+	// 使用一段可重复的测试文本作为基础内容
+	baseText := "这是一段用于性能测试的文本内容。人工智能技术的发展正在改变我们的生活方式，从自然语言处理到计算机视觉，从机器学习到深度学习，各种技术不断涌现。大语言模型的出现更是让AI应用达到了新的高度，能够理解和生成人类语言，完成各种复杂的任务。测试不同长度的输入对于评估模型性能至关重要，可以帮助我们了解模型在处理不同规模数据时的表现。"
+
+	// 计算需要重复的次数
+	baseLen := utf8.RuneCountInString(baseText)
+	if length <= baseLen {
+		// 如果需要的长度小于基础文本，直接截取
+		runes := []rune(baseText)
+		return string(runes[:length])
+	}
+
+	// 需要重复多次基础文本
+	var builder strings.Builder
+	builder.Grow(length * 3) // 预分配足够的空间（考虑UTF-8编码）
+
+	currentLen := 0
+	for currentLen < length {
+		if currentLen > 0 {
+			builder.WriteString(" ") // 添加分隔符
+			currentLen++
+		}
+
+		remaining := length - currentLen
+		if remaining >= baseLen {
+			builder.WriteString(baseText)
+			currentLen += baseLen
+		} else {
+			// 最后一部分，只取需要的长度
+			runes := []rune(baseText)
+			builder.WriteString(string(runes[:remaining]))
+			currentLen += remaining
+		}
+	}
+
+	return builder.String()
+}
+
+// LoadPromptByLength 创建指定长度的 PromptSource
+func LoadPromptByLength(length int) (*PromptSource, error) {
+	if length <= 0 {
+		return nil, fmt.Errorf("prompt 长度必须大于 0")
+	}
+
+	content := GeneratePromptByLength(length)
+	actualLength := utf8.RuneCountInString(content)
+
+	return &PromptSource{
+		IsFile:      false,
+		FilePaths:   nil,
+		Contents:    []string{content},
+		DisplayText: fmt.Sprintf("生成内容 (长度: %d 字符)", actualLength),
 	}, nil
 }

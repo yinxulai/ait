@@ -58,25 +58,30 @@ func readPromptFromStdin() (string, error) {
 }
 
 // resolvePrompt 解析最终的 prompt 内容
-// 优先级：1. prompt-file 参数 > 2. prompt 参数 > 3. 管道输入 > 4. 默认值
-func resolvePrompt(promptSpecified bool, flagPrompt string, promptFileSpecified bool, flagPromptFile string) (*prompt.PromptSource, error) {
-	// 1. 如果用户指定了 --prompt-file 参数，优先使用文件
+// 优先级：1. prompt-length 参数 > 2. prompt-file 参数 > 3. prompt 参数 > 4. 管道输入 > 5. 默认值
+func resolvePrompt(promptLengthSpecified bool, promptLength int, promptSpecified bool, flagPrompt string, promptFileSpecified bool, flagPromptFile string) (*prompt.PromptSource, error) {
+	// 1. 如果用户指定了 --prompt-length 参数，优先使用长度生成
+	if promptLengthSpecified && promptLength > 0 {
+		return prompt.LoadPromptByLength(promptLength)
+	}
+
+	// 2. 如果用户指定了 --prompt-file 参数，使用文件
 	if promptFileSpecified {
 		return prompt.LoadPromptsFromFile(flagPromptFile)
 	}
 
-	// 2. 如果用户明确指定了 --prompt 参数，则使用它
+	// 3. 如果用户明确指定了 --prompt 参数，则使用它
 	if promptSpecified {
 		return prompt.LoadPrompts(flagPrompt)
 	}
 
-	// 3. 检查是否有管道输入
+	// 4. 检查是否有管道输入
 	stdinPrompt, err := readPromptFromStdin()
 	if err == nil && stdinPrompt != "" {
 		return prompt.LoadPrompts(stdinPrompt)
 	}
 
-	// 4. 使用默认值
+	// 5. 使用默认值
 	return prompt.LoadPrompts(flagPrompt)
 }
 
@@ -335,6 +340,7 @@ func main() {
 	protocol := flag.String("protocol", "", "协议类型: openai 或 anthropic")
 	prompt := flag.String("prompt", "你好，介绍一下你自己。", "测试用 prompt 内容。未指定时支持管道输入")
 	promptFile := flag.String("prompt-file", "", "从文件读取 prompt。支持单文件路径或通配符 (如: prompts/*.txt)")
+	promptLength := flag.Int("prompt-length", 0, "生成指定长度的测试 prompt（字符数）。优先级高于其他 prompt 参数")
 	stream := flag.Bool("stream", true, "是否开启流模式")
 	concurrency := flag.Int("concurrency", 3, "并发数")
 	reportFlag := flag.Bool("report", false, "是否生成报告文件")
@@ -379,9 +385,10 @@ func main() {
 	// 解析模型列表
 	modelList := parseModelList(finalModels)
 
-	// 检查用户是否明确指定了 --prompt 和 --prompt-file 参数
+	// 检查用户是否明确指定了 --prompt、--prompt-file 和 --prompt-length 参数
 	promptSpecified := false
 	promptFileSpecified := false
+	promptLengthSpecified := false
 	flag.Visit(func(f *flag.Flag) {
 		if f.Name == "prompt" {
 			promptSpecified = true
@@ -389,10 +396,13 @@ func main() {
 		if f.Name == "prompt-file" {
 			promptFileSpecified = true
 		}
+		if f.Name == "prompt-length" {
+			promptLengthSpecified = true
+		}
 	})
 
-	// 解析最终的 prompt，优先级：prompt-file > prompt > 管道输入 > 默认值
-	promptSource, err := resolvePrompt(promptSpecified, *prompt, promptFileSpecified, *promptFile)
+	// 解析最终的 prompt，优先级：prompt-length > prompt-file > prompt > 管道输入 > 默认值
+	promptSource, err := resolvePrompt(promptLengthSpecified, *promptLength, promptSpecified, *prompt, promptFileSpecified, *promptFile)
 	if err != nil {
 		fmt.Printf("解析 prompt 失败: %v\n", err)
 		os.Exit(1)
