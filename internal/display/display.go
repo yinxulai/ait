@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"os"
 	"strconv"
+	"strings"
 	"sync"
 	"time"
 
@@ -306,6 +307,11 @@ func maskApiKey(apiKey string) string {
 
 // truncatePrompt 截断过长的提示词并显示长度信息
 func truncatePrompt(prompt string) string {
+	// 如果 prompt 已经包含长度信息（如生成内容的情况），直接返回
+	if strings.Contains(prompt, "(长度:") {
+		return prompt
+	}
+	
 	runes := []rune(prompt)
 	charCount := len(runes)
 	if charCount <= 50 {
