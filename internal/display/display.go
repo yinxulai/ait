@@ -26,6 +26,11 @@ const (
 	ColorBold   = "\033[1m"
 )
 
+const (
+	// lengthMarker 用于标识 prompt 文本中已包含长度信息
+	lengthMarker = "(长度:"
+)
+
 type Input struct {
 	TaskId      string // 任务 ID，随机生成的唯一标识符
 	Protocol    string
@@ -308,16 +313,16 @@ func maskApiKey(apiKey string) string {
 // truncatePrompt 截断过长的提示词并显示长度信息
 func truncatePrompt(prompt string) string {
 	// 如果 prompt 已经包含长度信息（如生成内容的情况），直接返回
-	if strings.Contains(prompt, "(长度:") {
+	if strings.Contains(prompt, lengthMarker) {
 		return prompt
 	}
 	
 	runes := []rune(prompt)
 	charCount := len(runes)
 	if charCount <= 50 {
-		return fmt.Sprintf("%s (长度: %d)", prompt, charCount)
+		return fmt.Sprintf("%s %s %d)", prompt, lengthMarker, charCount)
 	}
-	return fmt.Sprintf("%s... (长度: %d)", string(runes[:47]), charCount)
+	return fmt.Sprintf("%s... %s %d)", string(runes[:47]), lengthMarker, charCount)
 }
 
 // formatDuration 格式化时间显示，保留2位小数
