@@ -414,19 +414,20 @@ func main() {
 	displayer.ShowWelcome(Version)
 
 	displayer.ShowInput(&display.Input{
-		TaskId:      taskID,
-		Protocol:    finalProtocol,
-		BaseUrl:     finalBaseUrl,
-		ApiKey:      finalApiKey,
-		Models:      modelList,
-		Concurrency: *concurrency,
-		Count:       *count,
-		Stream:      *stream,
-		Thinking:    *thinking,
-		PromptText:  promptSource.DisplayText,
-		IsFile:      promptSource.IsFile,
-		Report:      *reportFlag,
-		Timeout:     *timeout,
+		TaskId:               taskID,
+		Protocol:             finalProtocol,
+		BaseUrl:              finalBaseUrl,
+		ApiKey:               finalApiKey,
+		Models:               modelList,
+		Concurrency:          *concurrency,
+		Count:                *count,
+		Stream:               *stream,
+		Thinking:             *thinking,
+		PromptText:           promptSource.DisplayText,
+		PromptShouldTruncate: promptSource.ShouldTruncate,
+		IsFile:               promptSource.IsFile,
+		Report:               *reportFlag,
+		Timeout:              *timeout,
 	})
 
 	// 执行多个模型的测试套件

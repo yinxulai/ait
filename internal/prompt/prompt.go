@@ -13,19 +13,21 @@ import (
 
 // PromptSource 表示prompt的来源信息
 type PromptSource struct {
-	IsFile      bool     // 是否来自文件
-	FilePaths   []string // 文件路径列表
-	Contents    []string // prompt内容列表（仅用于非文件内容）
-	DisplayText string   // 用于显示的文本
+	IsFile         bool     // 是否来自文件
+	FilePaths      []string // 文件路径列表
+	Contents       []string // prompt内容列表（仅用于非文件内容）
+	DisplayText    string   // 用于显示的文本
+	ShouldTruncate bool     // 是否需要截断显示（对于已经包含长度信息的内容，不需要再次处理）
 }
 
 // LoadPrompts 解析prompt参数，只处理字符串内容
 func LoadPrompts(promptArg string) (*PromptSource, error) {
 	return &PromptSource{
-		IsFile:      false,
-		FilePaths:   nil,
-		Contents:    []string{promptArg},
-		DisplayText: promptArg,
+		IsFile:         false,
+		FilePaths:      nil,
+		Contents:       []string{promptArg},
+		DisplayText:    promptArg,
+		ShouldTruncate: true,
 	}, nil
 }
 
@@ -49,10 +51,11 @@ func loadSingleFile(filePath string) (*PromptSource, error) {
 	}
 
 	return &PromptSource{
-		IsFile:      true,
-		FilePaths:   []string{filePath},
-		Contents:    nil, // 不预加载内容
-		DisplayText: fmt.Sprintf("文件: %s (1个)", filePath),
+		IsFile:         true,
+		FilePaths:      []string{filePath},
+		Contents:       nil, // 不预加载内容
+		DisplayText:    fmt.Sprintf("文件: %s (1个)", filePath),
+		ShouldTruncate: false, // 文件显示不需要截断
 	}, nil
 }
 
@@ -87,10 +90,11 @@ func loadMultipleFiles(pattern string) (*PromptSource, error) {
 	}
 
 	return &PromptSource{
-		IsFile:      true,
-		FilePaths:   filePaths,
-		Contents:    nil, // 不预加载内容
-		DisplayText: fmt.Sprintf("文件: %s (%d个)", pattern, len(filePaths)),
+		IsFile:         true,
+		FilePaths:      filePaths,
+		Contents:       nil, // 不预加载内容
+		DisplayText:    fmt.Sprintf("文件: %s (%d个)", pattern, len(filePaths)),
+		ShouldTruncate: false, // 文件显示不需要截断
 	}, nil
 }
 
@@ -205,10 +209,11 @@ func LoadPromptsFromPattern(pattern string) (*PromptSource, error) {
 	}
 
 	return &PromptSource{
-		IsFile:      true,
-		FilePaths:   filePaths,
-		Contents:    nil, // 不预加载内容
-		DisplayText: fmt.Sprintf("文件: %s (%d个)", pattern, len(filePaths)),
+		IsFile:         true,
+		FilePaths:      filePaths,
+		Contents:       nil, // 不预加载内容
+		DisplayText:    fmt.Sprintf("文件: %s (%d个)", pattern, len(filePaths)),
+		ShouldTruncate: false, // 文件显示不需要截断
 	}, nil
 }
 
@@ -266,9 +271,10 @@ func LoadPromptByLength(length int) (*PromptSource, error) {
 	actualLength := utf8.RuneCountInString(content)
 
 	return &PromptSource{
-		IsFile:      false,
-		FilePaths:   nil,
-		Contents:    []string{content},
-		DisplayText: fmt.Sprintf("生成内容 (长度: %d 字符)", actualLength),
+		IsFile:         false,
+		FilePaths:      nil,
+		Contents:       []string{content},
+		DisplayText:    fmt.Sprintf("生成内容 (长度: %d 字符)", actualLength),
+		ShouldTruncate: false, // 已经包含长度信息，不需要再次截断处理
 	}, nil
 }

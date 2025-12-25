@@ -26,19 +26,20 @@ const (
 )
 
 type Input struct {
-	TaskId      string // 任务 ID，随机生成的唯一标识符
-	Protocol    string
-	BaseUrl     string
-	ApiKey      string
-	Models      []string // 多个模型列表
-	Concurrency int
-	Count       int
-	Stream      bool
-	Thinking    bool   // 是否开启思考模式
-	PromptText  string // 用于显示的prompt文本
-	IsFile      bool   // 是否为文件类型输入
-	Report      bool   // 是否生成报告文件
-	Timeout     int    // 请求超时时间(秒)
+	TaskId             string // 任务 ID，随机生成的唯一标识符
+	Protocol           string
+	BaseUrl            string
+	ApiKey             string
+	Models             []string // 多个模型列表
+	Concurrency        int
+	Count              int
+	Stream             bool
+	Thinking           bool   // 是否开启思考模式
+	PromptText         string // 用于显示的prompt文本
+	PromptShouldTruncate bool   // 是否需要截断显示
+	IsFile             bool   // 是否为文件类型输入
+	Report             bool   // 是否生成报告文件
+	Timeout            int    // 请求超时时间(秒)
 }
 
 // Displayer 测试显示器
@@ -100,9 +101,9 @@ func (td *Displayer) ShowInput(data *Input) {
 	table.Append("🌊 流式模式", strconv.FormatBool(data.Stream), "是否启用流式响应")
 	table.Append("🧠 思考模式", strconv.FormatBool(data.Thinking), "是否启用思考模式（仅OpenAI协议支持）")
 
-	// 对于文件类型的 prompt，直接显示，不进行截断处理
+	// 对于不需要截断的内容（文件或已包含长度信息的生成内容），直接显示
 	var promptDisplay string
-	if data.IsFile {
+	if !data.PromptShouldTruncate {
 		promptDisplay = data.PromptText
 	} else {
 		promptDisplay = truncatePrompt(data.PromptText)
