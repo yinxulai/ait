@@ -4,6 +4,7 @@ import (
 	"testing"
 
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/tui/pages"
 	"github.com/yinxulai/ait/internal/types"
 )
 
@@ -43,22 +44,22 @@ func TestNewModel_InitialState(t *testing.T) {
 	}
 }
 
-// ─── Wizard: openWizard + buildTaskInput ──────────────────────────────────────
+// ─── Wizard: NewWizardState + BuildTaskConfig ──────────────────────────────────
 
 func TestOpenWizard_NewTask_Defaults(t *testing.T) {
 	m := NewModel(&stubServer{})
-	m.openWizard(nil)
+	m.wizard = pages.NewWizardState()
 	if m.wizard == nil {
-		t.Fatal("wizard should not be nil after openWizard")
+		t.Fatal("wizard should not be nil after NewWizardState")
 	}
-	if m.wizard.editingID != "" {
-		t.Errorf("new task wizard should have empty editingID, got %q", m.wizard.editingID)
+	if m.wizard.EditingID != "" {
+		t.Errorf("new task wizard should have empty EditingID, got %q", m.wizard.EditingID)
 	}
-	if m.wizard.concurrency <= 0 {
-		t.Errorf("default concurrency should be positive, got %d", m.wizard.concurrency)
+	if m.wizard.Concurrency <= 0 {
+		t.Errorf("default concurrency should be positive, got %d", m.wizard.Concurrency)
 	}
-	if m.wizard.promptMode != promptModeText {
-		t.Errorf("default promptMode = %q, want %q", m.wizard.promptMode, promptModeText)
+	if m.wizard.PromptMode != pages.PromptModeText {
+		t.Errorf("default PromptMode = %q, want %q", m.wizard.PromptMode, pages.PromptModeText)
 	}
 }
 
@@ -73,37 +74,38 @@ func TestOpenWizard_EditTask_Populate(t *testing.T) {
 			ApiKey:      "sk-test",
 			Concurrency: 5,
 			Count:       50,
-			PromptMode:  promptModeText,
+			PromptMode:  pages.PromptModeText,
 			PromptText:  "hello",
 		},
 	}
-	m.openWizard(&task)
+	m.wizard = pages.NewWizardStateEdit(&task)
 	if m.wizard == nil {
 		t.Fatal("wizard should not be nil")
 	}
-	if m.wizard.editingID != "task-123" {
-		t.Errorf("editingID = %q, want %q", m.wizard.editingID, "task-123")
+	if m.wizard.EditingID != "task-123" {
+		t.Errorf("EditingID = %q, want %q", m.wizard.EditingID, "task-123")
 	}
-	if m.wizard.model != "gpt-4" {
-		t.Errorf("model = %q, want %q", m.wizard.model, "gpt-4")
+	if m.wizard.Model != "gpt-4" {
+		t.Errorf("Model = %q, want %q", m.wizard.Model, "gpt-4")
 	}
-	if m.wizard.concurrency != 5 {
-		t.Errorf("concurrency = %d, want 5", m.wizard.concurrency)
+	if m.wizard.Concurrency != 5 {
+		t.Errorf("Concurrency = %d, want 5", m.wizard.Concurrency)
 	}
 }
 
 func TestBuildTaskInput_Standard(t *testing.T) {
 	m := NewModel(&stubServer{})
-	m.openWizard(nil)
+	m.wizard = pages.NewWizardState()
 	wz := m.wizard
-	wz.model = "gpt-4.1"
-	wz.apiKey = "sk-test"
-	wz.concurrency = 8
-	wz.count = 120
-	wz.promptMode = promptModeText
-	wz.promptText = "hello"
+	wz.Model = "gpt-4.1"
+	wz.APIKey = "sk-test"
+	wz.Concurrency = 8
+	wz.Count = 120
+	wz.PromptMode = pages.PromptModeText
+	wz.PromptText = "hello"
 
-	inp := m.buildTaskInput()
+	cfg := wz.BuildTaskConfig()
+	inp := cfg.Input
 	if inp.Model != "gpt-4.1" {
 		t.Errorf("model = %q, want gpt-4.1", inp.Model)
 	}
@@ -113,7 +115,7 @@ func TestBuildTaskInput_Standard(t *testing.T) {
 	if inp.Count != 120 {
 		t.Errorf("count = %d, want 120", inp.Count)
 	}
-	if inp.PromptMode != promptModeText || inp.PromptText != "hello" {
+	if inp.PromptMode != pages.PromptModeText || inp.PromptText != "hello" {
 		t.Errorf("unexpected prompt config: mode=%q text=%q", inp.PromptMode, inp.PromptText)
 	}
 	if inp.Turbo {
@@ -123,27 +125,28 @@ func TestBuildTaskInput_Standard(t *testing.T) {
 
 func TestBuildTaskInput_Turbo(t *testing.T) {
 	m := NewModel(&stubServer{})
-	m.openWizard(nil)
+	m.wizard = pages.NewWizardState()
 	wz := m.wizard
-	wz.model = "claude-3-7-sonnet"
-	wz.apiKey = "sk-ant"
-	wz.protocol = types.ProtocolAnthropicMessages
-	wz.turbo = true
-	wz.initConcurrency = 1
-	wz.maxConcurrency = 12
-	wz.stepSize = 2
-	wz.levelRequests = 20
-	wz.promptMode = promptModeGenerated
-	wz.promptLength = 256
+	wz.Model = "claude-3-7-sonnet"
+	wz.APIKey = "sk-ant"
+	wz.Protocol = types.ProtocolAnthropicMessages
+	wz.Turbo = true
+	wz.InitConcurrency = 1
+	wz.MaxConcurrency = 12
+	wz.StepSize = 2
+	wz.LevelRequests = 20
+	wz.PromptMode = pages.PromptModeGenerated
+	wz.PromptLength = 256
 
-	inp := m.buildTaskInput()
+	cfg := wz.BuildTaskConfig()
+	inp := cfg.Input
 	if !inp.Turbo {
 		t.Error("expected Turbo=true")
 	}
 	if inp.TurboConfig.MaxConcurrency != 12 {
 		t.Errorf("MaxConcurrency = %d, want 12", inp.TurboConfig.MaxConcurrency)
 	}
-	if inp.PromptMode != promptModeGenerated || inp.PromptLength != 256 {
+	if inp.PromptMode != pages.PromptModeGenerated || inp.PromptLength != 256 {
 		t.Errorf("unexpected prompt config: mode=%q len=%d", inp.PromptMode, inp.PromptLength)
 	}
 	if inp.Protocol != types.ProtocolAnthropicMessages {

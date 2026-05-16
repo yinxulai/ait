@@ -4,11 +4,11 @@ package tui
 
 import (
 	"fmt"
-	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/tui/pages"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // ─── 视图状态 ─────────────────────────────────────────────────────────────────
@@ -20,37 +20,40 @@ const (
 	viewTaskDetail viewState = "task-detail"
 	viewWizard     viewState = "wizard"
 	viewDashboard  viewState = "dashboard"
+	viewTurboDash  viewState = "turbo-dash"
 	viewReqDetail  viewState = "req-detail"
 )
 
 // ─── 根 Model ─────────────────────────────────────────────────────────────────
 
 // Model 是 BubbleTea 的根状态机。
-// 所有 Server 交互均通过 Client 发出 tea.Cmd；Model 不直接 import runner/task/turbo。
+// 所有 Server 交互均通过 Client 发出 tea.Cmd；Model 不直接 import runner/task/turbo 等下层包。
 type Model struct {
-	client  *Client
-	styles  styles
-	width   int
-	height  int
-	view    viewState
-	status  string
-	err     error
+	client    *Client
+	styles    pages.Styles
+	width     int
+	height    int
+	view      viewState
+	prevView  viewState // 向导叠加时记录背景视图
+	status    string
+	err       error
 
-	// 页面局部状态
-	taskList taskListState
-	hist     *historyState    // 任务详情页的历史
-	wizard   *wizardState     // nil = 向导未打开
-	dash     *dashboardState  // nil = 无活跃运行
-	reqDetail *reqDetailState // nil = 不在请求详情页
+	// 页面局部状态（由 pages 包管理）
+	taskList  *pages.TaskListState
+	detail    *pages.TaskDetailState
+	wizard    *pages.WizardState
+	dash      *pages.DashboardState
+	turboDash *pages.TurboDashState
+	reqDetail *pages.ReqDetailState
 }
 
 // NewModel 创建 Model。srv 不能为 nil。
 func NewModel(srv server.Server) *Model {
 	return &Model{
-		client: NewClient(srv),
-		styles: newStyles(),
-		view:   viewTaskList,
-		taskList: taskListState{selected: 0},
+		client:   NewClient(srv),
+		styles:   pages.NewStyles(),
+		view:     viewTaskList,
+		taskList: pages.NewTaskListState(),
 	}
 }
 
@@ -83,10 +86,12 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── 任务列表加载完成 ──
 	case TasksLoadedMsg:
-		m.taskList.tasks = msg.Tasks
-		// 调整选中项不越界
-		if m.taskList.selected >= len(msg.Tasks) {
-			m.taskList.selected = max(len(msg.Tasks)-1, 0)
+		if m.taskList == nil {
+			m.taskList = pages.NewTaskListState()
+		}
+		m.taskList.Tasks = msg.Tasks
+		if m.taskList.Selected >= len(msg.Tasks) {
+			m.taskList.Selected = max(len(msg.Tasks)-1, 0)
 		}
 		m.status = ""
 		m.err = nil
@@ -95,8 +100,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── 任务保存完成（新建或更新） ──
 	case TaskSavedMsg:
 		m.status = fmt.Sprintf("任务 %q 已保存", msg.Task.Name)
-		// 若 AutoStart 且无活跃运行，立刻发起运行
-		if msg.AutoStart && (m.dash == nil || !m.dash.isRunning()) {
+		if msg.AutoStart && (m.dash == nil || !m.dash.IsRunning()) {
 			return m, tea.Batch(
 				m.client.LoadTasksCmd(),
 				m.client.StartRunCmd(msg.Task.ID),
@@ -112,20 +116,30 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── 历史加载完成 ──
 	case HistoryLoadedMsg:
-		m.hist = &historyState{taskID: msg.TaskID, history: msg.History}
+		if m.detail != nil && m.detail.Task.ID == msg.TaskID {
+			autoExpand := m.view == viewTaskDetail && len(msg.History) > 0
+			m.detail = pages.UpdateTaskDetailHistory(m.detail, msg.History, autoExpand)
+		}
 		return m, nil
 
 	// ── 运行启动 ──
 	case RunStartedMsg:
 		ch, cancel, firstCmd := m.client.SubscribeCmd(msg.RunID)
-		m.dash = &dashboardState{
-			runID:    msg.RunID,
-			taskID:   msg.TaskID,
-			eventCh:  ch,
-			cancelFn: cancel,
-			reqSel:   -1,
+		taskMode := m.getTaskMode(msg.TaskID)
+		if taskMode == "turbo" {
+			m.turboDash = pages.NewTurboDashState(msg.RunID, msg.TaskID)
+			m.turboDash.EventCh = ch
+			m.turboDash.CancelFn = cancel
+			m.view = viewTurboDash
+		} else {
+			m.dash = pages.NewDashboardState(msg.RunID, msg.TaskID)
+			m.dash.EventCh = ch
+			m.dash.CancelFn = cancel
+			m.view = viewDashboard
 		}
-		m.view = viewDashboard
+		if m.taskList != nil {
+			m.taskList.ActiveRuns[msg.TaskID] = nil
+		}
 		m.status = ""
 		return m, firstCmd
 
@@ -135,8 +149,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── 运行状态快照（重入仪表盘时） ──
 	case RunStateMsg:
-		if m.dash != nil && msg.State != nil && m.dash.runID == msg.State.RunID {
-			m.dash.runState = msg.State
+		if m.dash != nil && msg.State != nil && m.dash.RunID == msg.State.RunID {
+			m.dash.RunState = msg.State
+		}
+		if m.turboDash != nil && msg.State != nil && m.turboDash.RunID == msg.State.RunID {
+			m.turboDash.RunState = msg.State
 		}
 		return m, nil
 
@@ -157,15 +174,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 func (m *Model) View() string {
 	switch m.view {
 	case viewTaskList:
-		return m.renderTaskList()
+		return pages.RenderTaskList(m.taskList, m.styles, m.width, m.height)
 	case viewTaskDetail:
-		return m.renderTaskDetail()
+		return pages.RenderTaskDetail(m.detail, m.styles, m.width, m.height)
 	case viewWizard:
-		return m.renderWizard()
+		bg := m.renderBgForWizard()
+		return pages.RenderWizard(m.wizard, bg, m.styles, m.width, m.height)
 	case viewDashboard:
-		return m.renderDashboard()
+		return pages.RenderDashboard(m.dash, m.dashTaskName(), m.styles, m.width, m.height)
+	case viewTurboDash:
+		return pages.RenderTurboDash(m.turboDash, m.turboDashTaskName(), m.styles, m.width, m.height)
 	case viewReqDetail:
-		return m.renderReqDetail()
+		return pages.RenderReqDetail(m.reqDetail, m.reqDetailTaskName(), m.styles, m.width, m.height)
 	}
 	return "未知视图"
 }
@@ -175,142 +195,293 @@ func (m *Model) View() string {
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch m.view {
 	case viewTaskList:
-		return m.handleTaskListKey(msg)
+		newState, cmd, nav := pages.HandleTaskListKey(m.taskList, msg, m.client)
+		m.taskList = newState
+		navCmd := m.handleNav(nav)
+		return m, tea.Batch(cmd, navCmd)
+
 	case viewTaskDetail:
-		return m, m.handleTaskDetailKey(msg)
+		newState, cmd, nav := pages.HandleTaskDetailKey(m.detail, msg, m.client)
+		m.detail = newState
+		navCmd := m.handleNav(nav)
+		return m, tea.Batch(cmd, navCmd)
+
 	case viewWizard:
-		return m.handleWizardKey(msg)
+		newState, cmd, nav := pages.HandleWizardKey(m.wizard, msg, m.client)
+		m.wizard = newState
+		navCmd := m.handleNav(nav)
+		return m, tea.Batch(cmd, navCmd)
+
 	case viewDashboard:
-		return m.handleDashboardKey(msg)
+		newState, cmd, nav := pages.HandleDashboardKey(m.dash, msg, m.client)
+		m.dash = newState
+		navCmd := m.handleNav(nav)
+		return m, tea.Batch(cmd, navCmd)
+
+	case viewTurboDash:
+		newState, cmd, nav := pages.HandleTurboDashKey(m.turboDash, msg, m.client)
+		m.turboDash = newState
+		navCmd := m.handleNav(nav)
+		return m, tea.Batch(cmd, navCmd)
+
 	case viewReqDetail:
-		return m.handleReqDetailKey(msg)
+		newState, nav := pages.HandleReqDetailKey(m.reqDetail, msg)
+		m.reqDetail = newState
+		return m, m.handleNav(nav)
 	}
+
 	return m, nil
+}
+
+// ─── 导航处理 ─────────────────────────────────────────────────────────────────
+
+func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
+	switch nav.To {
+	case pages.NavNone:
+		return nil
+
+	case pages.NavTaskList:
+		m.view = viewTaskList
+		return m.client.LoadTasksCmd()
+
+	case pages.NavTaskDetail:
+		task := m.findTask(nav.TaskID)
+		if task != nil {
+			m.detail = pages.NewTaskDetailState(*task)
+		} else if m.detail == nil {
+			return nil
+		}
+		m.view = viewTaskDetail
+		if m.detail != nil {
+			return m.client.LoadHistoryCmd(m.detail.Task.ID, 10)
+		}
+		return nil
+
+	case pages.NavWizard:
+		if nav.EditTask != nil {
+			m.wizard = pages.NewWizardStateEdit(nav.EditTask)
+		} else {
+			m.wizard = pages.NewWizardState()
+		}
+		m.prevView = m.view
+		m.view = viewWizard
+		return nil
+
+	case pages.NavDashboard:
+		if m.dash != nil {
+			m.view = viewDashboard
+		}
+		return nil
+
+	case pages.NavTurboDash:
+		if m.turboDash != nil {
+			m.view = viewTurboDash
+		}
+		return nil
+
+	case pages.NavReqDetail:
+		reqs := m.collectRequests()
+		m.reqDetail = pages.NewReqDetailState(m.currentRunID(), reqs, nav.ReqIndex)
+		m.view = viewReqDetail
+		return nil
+
+	case pages.NavQuit:
+		return tea.Quit
+	}
+	return nil
 }
 
 // ─── Server 事件处理 ──────────────────────────────────────────────────────────
 
 func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
-	if m.dash == nil {
-		return m, nil
-	}
 	e := msg.Event
 
+	isDash := m.dash != nil && m.dash.RunID == e.RunID
+	isTurbo := m.turboDash != nil && m.turboDash.RunID == e.RunID
+
+	if !isDash && !isTurbo {
+		return m, nil
+	}
+
 	switch e.Kind {
-	case server.EventProgressTick:
+	case server.EventProgressTick, server.EventRequestDone, server.EventLevelDone:
 		if rs, ok := e.Payload.(*server.RunState); ok {
-			m.dash.runState = rs
-		}
-
-	case server.EventRequestDone:
-		if rs, ok := e.Payload.(*server.RunState); ok {
-			m.dash.runState = rs
-		}
-
-	case server.EventLevelDone:
-		if rs, ok := e.Payload.(*server.RunState); ok {
-			m.dash.runState = rs
+			if isDash {
+				m.dash.RunState = rs
+			} else {
+				m.turboDash.RunState = rs
+			}
+			m.injectRunState(rs)
 		}
 
 	case server.EventRunComplete:
 		if rs, ok := e.Payload.(*server.RunState); ok {
-			m.dash.runState = rs
+			if isDash {
+				m.dash.RunState = rs
+			} else {
+				m.turboDash.RunState = rs
+			}
 		}
-		// 运行结束后保留 dash 供用户查阅，切换到详情页
+		taskID := m.currentRunTaskID(isDash)
+		if m.taskList != nil {
+			delete(m.taskList.ActiveRuns, taskID)
+		}
+		task := m.findTask(taskID)
+		if task != nil {
+			m.detail = pages.NewTaskDetailState(*task)
+		}
 		m.view = viewTaskDetail
 		return m, tea.Batch(
 			m.client.LoadTasksCmd(),
-			m.client.LoadHistoryCmd(m.dash.taskID, 10),
+			m.client.LoadHistoryCmd(taskID, 10),
 		)
 
 	case server.EventRunFailed:
+		var errorMsg string
 		if rs, ok := e.Payload.(*server.RunState); ok {
-			m.dash.runState = rs
+			if isDash {
+				m.dash.RunState = rs
+			} else {
+				m.turboDash.RunState = rs
+			}
+			errorMsg = rs.ErrorMsg
 		}
-		m.err = fmt.Errorf("运行失败: %s", m.dash.runState.ErrorMsg)
+		if errorMsg == "" {
+			errorMsg = "运行异常终止"
+		}
+		m.err = fmt.Errorf("运行失败: %s", errorMsg)
+		taskID := m.currentRunTaskID(isDash)
+		if m.taskList != nil {
+			delete(m.taskList.ActiveRuns, taskID)
+		}
+		task := m.findTask(taskID)
+		if task != nil {
+			m.detail = pages.NewTaskDetailState(*task)
+		}
 		m.view = viewTaskDetail
 		return m, tea.Batch(
 			m.client.LoadTasksCmd(),
-			m.client.LoadHistoryCmd(m.dash.taskID, 10),
+			m.client.LoadHistoryCmd(taskID, 10),
 		)
 	}
 
-	// 若 eventCh 还在，继续等待下一条事件
-	if m.dash.eventCh != nil {
-		return m, WaitEventCmd(m.dash.eventCh)
+	// 继续等待下一条事件
+	var ch <-chan server.Event
+	if isDash && m.dash.EventCh != nil {
+		ch = m.dash.EventCh
+	} else if isTurbo && m.turboDash.EventCh != nil {
+		ch = m.turboDash.EventCh
+	}
+	if ch != nil {
+		return m, WaitEventCmd(ch)
 	}
 	return m, nil
 }
 
-// ─── 共享渲染工具 ─────────────────────────────────────────────────────────────
+// ─── 辅助方法 ─────────────────────────────────────────────────────────────────
 
-// renderHeader 渲染顶部状态栏（全宽，左侧标题 + 右侧信息）。
-func (m *Model) renderHeader(title, right string) string {
-	w := m.width
-	if w < 1 {
-		w = 80
+func (m *Model) getTaskMode(taskID string) string {
+	t := m.findTask(taskID)
+	if t != nil && t.Input.Turbo {
+		return "turbo"
 	}
-	titleW := lipgloss.Width(title)
-	rightW := lipgloss.Width(right)
-	pad := w - titleW - rightW - 2
-	if pad < 1 {
-		pad = 1
-	}
-	line := " " + title + strings.Repeat(" ", pad) + right + " "
-	// 截断
-	if lipgloss.Width(line) > w {
-		line = line[:w]
-	}
-	return m.styles.header.Width(w).Render(line)
+	return "standard"
 }
 
-// renderFooter 渲染底部状态栏（全宽）。
-func (m *Model) renderFooter(parts ...string) string {
-	w := m.width
-	if w < 1 {
-		w = 80
+func (m *Model) findTask(taskID string) *types.TaskDefinition {
+	if m.taskList == nil {
+		return nil
 	}
-	var visible []string
-	for _, p := range parts {
-		if p != "" {
-			visible = append(visible, p)
+	for i := range m.taskList.Tasks {
+		if m.taskList.Tasks[i].ID == taskID {
+			return &m.taskList.Tasks[i]
 		}
 	}
-	line := "  " + strings.Join(visible, "  │  ")
-	return m.styles.footer.Width(w).Render(line)
+	return nil
 }
 
-// dualColumnLayout 将左右内容放入双列布局，高度限制为 maxH。
-func (m *Model) dualColumnLayout(left, right string, leftW, rightW, maxH int) string {
-	leftLines := strings.Split(left, "\n")
-	rightLines := strings.Split(right, "\n")
+func (m *Model) injectRunState(rs *server.RunState) {
+	if m.taskList == nil || rs == nil {
+		return
+	}
+	if rs.Status == server.RunStatusRunning {
+		m.taskList.ActiveRuns[rs.TaskID] = rs
+	} else {
+		delete(m.taskList.ActiveRuns, rs.TaskID)
+	}
+}
 
-	// 裁剪至 maxH
-	if len(leftLines) > maxH {
-		leftLines = leftLines[:maxH]
+func (m *Model) renderBgForWizard() string {
+	if m.prevView == viewTaskDetail {
+		return pages.RenderTaskDetail(m.detail, m.styles, m.width, m.height)
 	}
-	if len(rightLines) > maxH {
-		rightLines = rightLines[:maxH]
-	}
-	// 补齐行数
-	for len(leftLines) < maxH {
-		leftLines = append(leftLines, "")
-	}
-	for len(rightLines) < maxH {
-		rightLines = append(rightLines, "")
-	}
+	return pages.RenderTaskList(m.taskList, m.styles, m.width, m.height)
+}
 
-	var rows []string
-	for i := 0; i < maxH; i++ {
-		lLine := leftLines[i]
-		rLine := rightLines[i]
-		lW := lipgloss.Width(lLine)
-		if lW < leftW {
-			lLine += strings.Repeat(" ", leftW-lW)
+func (m *Model) dashTaskName() string {
+	if m.dash == nil {
+		return "─"
+	}
+	t := m.findTask(m.dash.TaskID)
+	if t != nil {
+		return t.Name
+	}
+	return m.dash.TaskID
+}
+
+func (m *Model) turboDashTaskName() string {
+	if m.turboDash == nil {
+		return "─"
+	}
+	t := m.findTask(m.turboDash.TaskID)
+	if t != nil {
+		return t.Name
+	}
+	return m.turboDash.TaskID
+}
+
+func (m *Model) reqDetailTaskName() string {
+	if m.dash != nil {
+		if t := m.findTask(m.dash.TaskID); t != nil {
+			return t.Name
 		}
-		rows = append(rows, lLine+"  "+rLine)
 	}
-	return strings.Join(rows, "\n")
+	if m.turboDash != nil {
+		if t := m.findTask(m.turboDash.TaskID); t != nil {
+			return t.Name
+		}
+	}
+	return "─"
+}
+
+func (m *Model) currentRunID() server.RunID {
+	if m.dash != nil {
+		return m.dash.RunID
+	}
+	if m.turboDash != nil {
+		return m.turboDash.RunID
+	}
+	return ""
+}
+
+func (m *Model) currentRunTaskID(isDash bool) string {
+	if isDash && m.dash != nil {
+		return m.dash.TaskID
+	}
+	if m.turboDash != nil {
+		return m.turboDash.TaskID
+	}
+	return ""
+}
+
+func (m *Model) collectRequests() []*server.RequestMetrics {
+	if m.dash != nil && m.dash.RunState != nil {
+		return m.dash.RunState.Requests
+	}
+	if m.turboDash != nil && m.turboDash.RunState != nil {
+		return m.turboDash.RunState.Requests
+	}
+	return nil
 }
 
 // ─── 工具 ─────────────────────────────────────────────────────────────────────
