@@ -106,15 +106,16 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 		ctxBarH = 1
 	}
 	footerH := 1
-	contentH := height - headerH - ctxBarH - footerH
+	contentH := height - headerH - ctxBarH - footerH - 2 // -2 for panel border
 	if contentH < 6 {
 		contentH = 6
 	}
 
 	// ── 内容构建 ──
-	content := buildTaskDetailContent(s, st, t, inp, width, contentH)
+	content := buildTaskDetailContent(s, st, t, inp, width-2, contentH)
+	panel := wrapPanel(st, content, width)
 
-	parts := []string{header, content}
+	parts := []string{header, panel}
 	if ctxBar != "" {
 		parts = append(parts, ctxBar)
 	}

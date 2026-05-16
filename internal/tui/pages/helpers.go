@@ -277,3 +277,11 @@ func boolLabel(b bool) string {
 func labelValue(st Styles, label, value string) string {
 	return st.Label.Render(label) + "  " + st.Value.Render(value)
 }
+
+// wrapPanel 用带边框的 Panel 包裹内容，outerW 为包含边框的总宽度。
+func wrapPanel(st Styles, content string, outerW int) string {
+	if outerW < 4 {
+		return content
+	}
+	return st.Panel.Width(outerW - 2).Render(content)
+}

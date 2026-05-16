@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yinxulai/ait/internal/server"
 )
 
@@ -131,6 +132,7 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 	footer := renderFooter(st, width, "[b/Esc] 返回仪表盘", "[↑↓] 滚动", "[←→] 上/下一条请求")
 
 	// ── 计算高度 ──
+	// 布局：header(2) + split面板(splitH) + 输入面板(inputH+2) + 输出面板(outputH+2) + ctxBarH + footer(1)
 	headerH := 2
 	ctxBarH := 0
 	if ctxBar != "" {
@@ -139,26 +141,29 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 	footerH := 1
 	splitH := 9
 	inputH := 5
-	outputH := height - headerH - ctxBarH - footerH - splitH - inputH - 3 // -3 for dividers
+	outputH := height - headerH - ctxBarH - footerH - splitH - inputH - 2 - 2 // -2 for input panel border, -2 for output panel border
 	if outputH < 4 {
 		outputH = 4
 	}
 
-	// ── 双栏（性能指标 ║ 网络指标）──
-	leftW := (width - 2) * 50 / 100
-	rightW := width - 2 - leftW - 1
-	leftContent := buildReqPerfPanel(r, st, splitH-1, leftW)
-	rightContent := buildReqNetworkPanel(r, st, splitH-1, rightW)
-	splitDiv := dividerLine(st, width)
-	split := dualColumnLayout(st, leftContent, rightContent, leftW, rightW, splitH)
+	// ── 双栏面板（性能指标 | 网络指标）──
+	leftW := width * 50 / 100
+	rightW := width - leftW
+	leftContent := buildReqPerfPanel(r, st, splitH-2, leftW-2)
+	rightContent := buildReqNetworkPanel(r, st, splitH-2, rightW-2)
+	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
+	rightPanel := st.Panel.Width(rightW - 2).Render(rightContent)
+	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	// ── 输入区 ──
-	inputSection := buildInputSection(r, st, width, inputH)
+	// ── 输入区面板 ──
+	inputSection := buildInputSection(r, st, width-2, inputH)
+	inputPanelStr := wrapPanel(st, inputSection, width)
 
-	// ── 输出区 ──
-	outputSection := buildOutputSection(r, s.ScrollY, st, width, outputH)
+	// ── 输出区面板 ──
+	outputSection := buildOutputSection(r, s.ScrollY, st, width-2, outputH)
+	outputPanelStr := wrapPanel(st, outputSection, width)
 
-	parts := []string{header, splitDiv, split, splitDiv, inputSection, splitDiv, outputSection}
+	parts := []string{header, split, inputPanelStr, outputPanelStr}
 	if ctxBar != "" {
 		parts = append(parts, ctxBar)
 	}

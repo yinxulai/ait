@@ -172,22 +172,32 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m *Model) View() string {
+	if m.width < 4 || m.height < 4 {
+		return "..."
+	}
+	innerW := m.width - 2
+	innerH := m.height - 2
+
+	var content string
 	switch m.view {
 	case viewTaskList:
-		return pages.RenderTaskList(m.taskList, m.styles, m.width, m.height)
+		content = pages.RenderTaskList(m.taskList, m.styles, innerW, innerH)
 	case viewTaskDetail:
-		return pages.RenderTaskDetail(m.detail, m.styles, m.width, m.height)
+		content = pages.RenderTaskDetail(m.detail, m.styles, innerW, innerH)
 	case viewWizard:
 		bg := m.renderBgForWizard()
-		return pages.RenderWizard(m.wizard, bg, m.styles, m.width, m.height)
+		content = pages.RenderWizard(m.wizard, bg, m.styles, innerW, innerH)
 	case viewDashboard:
-		return pages.RenderDashboard(m.dash, m.dashTaskName(), m.styles, m.width, m.height)
+		content = pages.RenderDashboard(m.dash, m.dashTaskName(), m.styles, innerW, innerH)
 	case viewTurboDash:
-		return pages.RenderTurboDash(m.turboDash, m.turboDashTaskName(), m.styles, m.width, m.height)
+		content = pages.RenderTurboDash(m.turboDash, m.turboDashTaskName(), m.styles, innerW, innerH)
 	case viewReqDetail:
-		return pages.RenderReqDetail(m.reqDetail, m.reqDetailTaskName(), m.styles, m.width, m.height)
+		content = pages.RenderReqDetail(m.reqDetail, m.reqDetailTaskName(), m.styles, innerW, innerH)
+	default:
+		content = "未知视图"
 	}
-	return "未知视图"
+
+	return m.styles.AppBorder.Width(innerW).Height(innerH).Render(content)
 }
 
 // ─── 键盘分发 ─────────────────────────────────────────────────────────────────
@@ -412,10 +422,12 @@ func (m *Model) injectRunState(rs *server.RunState) {
 }
 
 func (m *Model) renderBgForWizard() string {
+	innerW := m.width - 2
+	innerH := m.height - 2
 	if m.prevView == viewTaskDetail {
-		return pages.RenderTaskDetail(m.detail, m.styles, m.width, m.height)
+		return pages.RenderTaskDetail(m.detail, m.styles, innerW, innerH)
 	}
-	return pages.RenderTaskList(m.taskList, m.styles, m.width, m.height)
+	return pages.RenderTaskList(m.taskList, m.styles, innerW, innerH)
 }
 
 func (m *Model) dashTaskName() string {

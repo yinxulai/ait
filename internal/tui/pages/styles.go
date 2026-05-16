@@ -24,6 +24,8 @@ const (
 
 // Styles 汇聚所有 TUI 样式，由 NewStyles() 初始化。
 type Styles struct {
+	AppBorder   lipgloss.Style
+	Panel       lipgloss.Style
 	Header      lipgloss.Style
 	HeaderInfo  lipgloss.Style
 	Footer      lipgloss.Style
@@ -126,5 +128,11 @@ func NewStyles() Styles {
 			Padding(0, 2),
 		Divider: lipgloss.NewStyle().
 			Foreground(colorDivider),
+		AppBorder: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPurple),
+		Panel: lipgloss.NewStyle().
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(colorDivider),
 	}
 }

@@ -5,6 +5,7 @@ import (
 	"strings"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/charmbracelet/lipgloss"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -167,6 +168,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	footer := renderFooter(st, width, "[s] 停止", "[b] 后台运行", "[m] 标记极限", "[r] 提前报告", "[q] 退出")
 
 	// ── 计算高度 ──
+	// 布局：header(2) + split面板(splitH) + 进度面板(3) + 级别面板(levelListH+2) + ctxBarH + footer(1)
 	headerH := 2
 	ctxBarH := 0
 	if ctxBar != "" {
@@ -174,29 +176,30 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	}
 	footerH := 1
 	splitH := 9
-	progressH := 1
-	divH := 3
-	levelListH := height - headerH - ctxBarH - footerH - splitH - progressH - divH
+	progressPanel := 3
+	levelListH := height - headerH - ctxBarH - footerH - splitH - progressPanel - 2
 	if levelListH < 3 {
 		levelListH = 3
 	}
 
-	// ── 双栏（任务参数 ║ 当前级别指标）──
-	leftW := (width - 2) * 45 / 100
-	rightW := width - 2 - leftW - 1
-	leftContent := buildTurboDashParams(rs, st, splitH-1, leftW)
-	rightContent := buildTurboDashMetrics(rs, st, splitH-1, rightW)
-	splitDiv := dividerLine(st, width)
-	split := dualColumnLayout(st, leftContent, rightContent, leftW, rightW, splitH)
+	// ── 双栏面板（任务参数 | 当前级别指标）──
+	leftW := width * 45 / 100
+	rightW := width - leftW
+	leftContent := buildTurboDashParams(rs, st, splitH-2, leftW-2)
+	rightContent := buildTurboDashMetrics(rs, st, splitH-2, rightW-2)
+	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
+	rightPanel := st.Panel.Width(rightW - 2).Render(rightContent)
+	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	// ── 进度条 ──
-	progressLine := buildTurboProgressLine(rs, st, width)
+	// ── 进度条面板 ──
+	progressLine := buildTurboProgressLine(rs, st, width-2)
+	progressPanelStr := wrapPanel(st, progressLine, width)
 
-	// ── 级别列表 ──
-	levelDiv := dividerLine(st, width)
-	levelList := buildLevelList(d, rs, st, width, levelListH)
+	// ── 级别列表面板 ──
+	levelList := buildLevelList(d, rs, st, width-2, levelListH)
+	levelPanelStr := wrapPanel(st, levelList, width)
 
-	parts := []string{header, splitDiv, split, splitDiv, progressLine, levelDiv, levelList}
+	parts := []string{header, split, progressPanelStr, levelPanelStr}
 	if ctxBar != "" {
 		parts = append(parts, ctxBar)
 	}

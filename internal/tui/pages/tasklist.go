@@ -172,15 +172,16 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 		ctxBarH = 1
 	}
 	footerH := 1
-	contentH := height - headerH - ctxBarH - footerH
+	contentH := height - headerH - ctxBarH - footerH - 2 // -2 for panel border
 	if contentH < 4 {
 		contentH = 4
 	}
 
 	// ── 内容区 ──
-	content := buildTaskListContent(s, st, width, contentH)
+	content := buildTaskListContent(s, st, width-2, contentH)
+	panel := wrapPanel(st, content, width)
 
-	parts := []string{header, content}
+	parts := []string{header, panel}
 	if ctxBar != "" {
 		parts = append(parts, ctxBar)
 	}

@@ -191,36 +191,38 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	footer := renderFooter(st, width, "[s] 停止", "[b] 后台运行", "[r] 提前报告", "[q] 退出")
 
 	// ── 计算高度 ──
+	// 布局：header(2) + split面板(splitH) + 进度面板(3) + 请求面板(reqListH+2) + ctxBarH + footer(1)
 	headerH := 2
 	ctxBarH := 0
 	if ctxBar != "" {
 		ctxBarH = 1
 	}
 	footerH := 1
-	splitH := 9  // 上方双栏区域高度
-	progressH := 1 // 进度条行高
-	divH := 3   // 分隔线总行数（3条分隔线各占1行）
-	reqListH := height - headerH - ctxBarH - footerH - splitH - progressH - divH
+	splitH := 9  // 双栏面板外部总高度（含面板边框）
+	progressPanel := 3 // 进度条面板外部高度（1内容+2边框）
+	reqListH := height - headerH - ctxBarH - footerH - splitH - progressPanel - 2 // -2 for req panel border
 	if reqListH < 3 {
 		reqListH = 3
 	}
 
-	// ── 双栏（任务参数 ║ 实时指标）──
-	leftW := (width - 2) * 45 / 100
-	rightW := width - 2 - leftW - 1 // -1 for separator │
-	leftContent := buildDashParamsPanel(d, rs, st, splitH-1, leftW)
-	rightContent := buildDashMetricsPanel(rs, st, splitH-1, rightW)
-	splitDiv := dividerLine(st, width)
-	split := dualColumnLayout(st, leftContent, rightContent, leftW, rightW, splitH)
+	// ── 双栏面板（任务参数 | 实时指标）──
+	leftW := width * 45 / 100
+	rightW := width - leftW
+	leftContent := buildDashParamsPanel(d, rs, st, splitH-2, leftW-2)
+	rightContent := buildDashMetricsPanel(rs, st, splitH-2, rightW-2)
+	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
+	rightPanel := st.Panel.Width(rightW - 2).Render(rightContent)
+	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
-	// ── 进度条 ──
-	progressLine := buildProgressLine(rs, st, width)
+	// ── 进度条面板 ──
+	progressLine := buildProgressLine(rs, st, width-2)
+	progressPanelStr := wrapPanel(st, progressLine, width)
 
-	// ── 请求列表 ──
-	reqDiv := dividerLine(st, width)
-	reqList := buildRequestList(d, rs, st, width, reqListH)
+	// ── 请求列表面板 ──
+	reqList := buildRequestList(d, rs, st, width-2, reqListH)
+	reqPanelStr := wrapPanel(st, reqList, width)
 
-	parts := []string{header, splitDiv, split, splitDiv, progressLine, reqDiv, reqList}
+	parts := []string{header, split, progressPanelStr, reqPanelStr}
 	if ctxBar != "" {
 		parts = append(parts, ctxBar)
 	}
