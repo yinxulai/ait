@@ -20,3 +20,7 @@ type turboCompleteMsg struct {
 type asyncErrorMsg struct {
 	err error
 }
+
+type requestLogMsg struct {
+	entry string
+}

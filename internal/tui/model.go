@@ -66,7 +66,8 @@ type wizardState struct {
 	lastRunAt       *time.Time
 	lastRunSummary  *types.TaskRunSummary
 	fromView        viewState
-	current         int
+	step            int // 0=基本信息 1=测试参数 2=确认保存
+	fieldIndex      int // active field within current step
 	input           textinput.Model
 	values          map[string]string
 	protocolIndex   int
@@ -90,14 +91,16 @@ type Model struct {
 	height       int
 	status       string
 	err          error
-	program      *tea.Program
-	runningTask  *types.TaskDefinition
-	runStartedAt time.Time
+	program        *tea.Program
+	runningTask    *types.TaskDefinition
+	runningTaskID  string
+	runStartedAt   time.Time
 	progress     types.StatsData
 	runResult    *types.ReportData
 	turboResult  *types.TurboResult
 	activeRunner *runner.Runner
 	activeTurbo  *turbo.Engine
+	requestLog   []string
 }
 
 func NewModel(store *task.TaskStore, cfg *config.Config) *Model {
@@ -139,21 +142,34 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case progressMsg:
 		m.progress = msg.stats
 		return m, nil
+	case requestLogMsg:
+		m.requestLog = append(m.requestLog, msg.entry)
+		if len(m.requestLog) > 60 {
+			m.requestLog = m.requestLog[len(m.requestLog)-60:]
+		}
+		return m, nil
 	case runCompleteMsg:
 		m.activeRunner = nil
+		m.runningTaskID = ""
 		m.runResult = msg.result
-		m.view = viewResult
+		if m.view == viewDashboard {
+			m.view = viewResult
+		}
 		m.status = fmt.Sprintf("标准模式完成，共 %d 请求", msg.result.TotalRequests)
 		m.persistStandardRun(msg.taskID, msg.result, msg.reportPaths)
 		return m, nil
 	case turboCompleteMsg:
 		m.activeTurbo = nil
+		m.runningTaskID = ""
 		m.turboResult = msg.result
-		m.view = viewTurboResult
+		if m.view == viewDashboard {
+			m.view = viewTurboResult
+		}
 		m.status = fmt.Sprintf("Turbo 完成，最大稳定并发 %d", msg.result.MaxStableConcurrency)
 		m.persistTurboRun(msg.taskID, msg.result)
 		return m, nil
 	case asyncErrorMsg:
+		m.runningTaskID = ""
 		m.err = msg.err
 		m.status = msg.err.Error()
 		return m, nil
@@ -230,13 +246,21 @@ func (m *Model) handleTaskListKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 			m.status = "任务已删除"
 		}
 	case "enter":
-		if _, ok := m.currentTask(); ok {
-			m.reloadHistoryForSelectedTask()
-			m.view = viewTaskDetail
+		if taskDef, ok := m.currentTask(); ok {
+			if taskDef.ID == m.runningTaskID {
+				m.view = viewDashboard
+			} else {
+				m.reloadHistoryForSelectedTask()
+				m.view = viewTaskDetail
+			}
 		}
 	case "r":
 		if taskDef, ok := m.currentTask(); ok {
-			m.startTaskRun(taskDef)
+			if m.runningTaskID != "" {
+				m.status = "已有任务正在运行中，请等待完成或进入仪表盘停止"
+			} else {
+				m.startTaskRun(taskDef)
+			}
 		}
 	case "q":
 		return m, tea.Quit
@@ -272,39 +296,92 @@ func (m *Model) handleTaskDetailKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		}
 		m.view = viewTaskList
 	case "enter", "r":
-		m.startTaskRun(taskDef)
+		if m.runningTaskID != "" && m.runningTaskID != taskDef.ID {
+			m.status = "已有任务正在运行中"
+		} else {
+			m.startTaskRun(taskDef)
+			if m.runningTaskID == taskDef.ID {
+				m.view = viewDashboard
+			}
+		}
 	}
 
 	return m, nil
 }
 
 func (m *Model) handleWizardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
-	field := m.currentWizardField()
-	switch msg.String() {
-	case "esc":
-		m.view = m.wizard.fromView
-		m.wizard = nil
+	if m.wizard == nil {
 		return m, nil
-	case "tab", "enter":
-		if field.kind == fieldText {
-			m.wizard.values[field.key] = m.wizard.input.Value()
-		}
-		if m.wizard.current == len(m.wizardFields())-1 {
+	}
+
+	// Step 2 (confirm): only action keys, no text input
+	if m.wizard.step == 2 {
+		switch msg.String() {
+		case "esc":
+			m.wizard.step = 1
+			m.wizard.fieldIndex = len(m.wizardStepFields(1)) - 1
+			m.refreshWizardInput()
+		case "enter":
 			if err := m.saveWizard(); err != nil {
 				m.err = err
 				m.status = err.Error()
 			}
-			return m, nil
+		case "r":
+			if err := m.saveWizard(); err != nil {
+				m.err = err
+				m.status = err.Error()
+				return m, nil
+			}
+			if taskDef, ok := m.currentTask(); ok {
+				m.startTaskRun(taskDef)
+				if m.runningTaskID == taskDef.ID {
+					m.view = viewDashboard
+				}
+			}
 		}
-		m.wizard.current++
-		m.refreshWizardInput()
 		return m, nil
-	case "shift+tab", "up":
-		if m.wizard.current > 0 {
+	}
+
+	fields := m.wizardStepFields(m.wizard.step)
+	field := fields[m.wizard.fieldIndex]
+
+	switch msg.String() {
+	case "esc":
+		if m.wizard.step > 0 {
+			m.wizard.step--
+			m.wizard.fieldIndex = len(m.wizardStepFields(m.wizard.step)) - 1
+			m.refreshWizardInput()
+		} else {
+			m.view = m.wizard.fromView
+			m.wizard = nil
+		}
+		return m, nil
+	case "tab", "down", "j":
+		if field.kind == fieldText {
 			m.wizard.values[field.key] = m.wizard.input.Value()
-			m.wizard.current--
+		}
+		m.advanceWizardField(1)
+		return m, nil
+	case "enter":
+		if field.kind == fieldText {
+			m.wizard.values[field.key] = m.wizard.input.Value()
+		}
+		if m.wizard.fieldIndex == len(fields)-1 {
+			m.wizard.step++
+			m.wizard.fieldIndex = 0
+			if m.wizard.step < 2 {
+				m.refreshWizardInput()
+			}
+		} else {
+			m.wizard.fieldIndex++
 			m.refreshWizardInput()
 		}
+		return m, nil
+	case "shift+tab", "up", "k":
+		if field.kind == fieldText {
+			m.wizard.values[field.key] = m.wizard.input.Value()
+		}
+		m.advanceWizardField(-1)
 		return m, nil
 	case "left", "h":
 		m.cycleWizardField(-1)
@@ -324,13 +401,18 @@ func (m *Model) handleWizardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 
 func (m *Model) handleDashboardKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	switch msg.String() {
-	case "s", "q", "esc":
+	case "s":
 		if m.activeRunner != nil {
 			m.activeRunner.Stop()
 		}
 		if m.activeTurbo != nil {
 			m.activeTurbo.Stop()
 		}
+	case "b", "esc":
+		// 返回列表，任务继续在后台运行
+		m.view = viewTaskList
+	case "q":
+		return m, tea.Quit
 	}
 	return m, nil
 }
@@ -353,180 +435,908 @@ func (m *Model) View() string {
 }
 
 func (m *Model) renderTaskList() string {
-	var rows []string
-	for i, taskDef := range m.tasks {
-		mode := modeStandard
-		if taskDef.Input.Turbo {
-			mode = modeTurbo
-		}
-		summary := "从未运行"
-		if taskDef.LastRunSummary != nil {
-			summary = fmt.Sprintf("上次 %.1f%% · %.1f tok/s", taskDef.LastRunSummary.SuccessRate, taskDef.LastRunSummary.AvgTPS)
-		}
-		line := fmt.Sprintf("%s  %s  %s  %s", taskDef.Name, taskDef.Input.Model, mode, summary)
-		if i == m.selected {
-			line = m.styles.selected.Render("▶ " + line)
-		} else {
-			line = "  " + line
-		}
-		rows = append(rows, line)
+	if m.width == 0 {
+		return "加载中..."
 	}
-	if len(rows) == 0 {
-		rows = append(rows, m.styles.muted.Render("暂无任务，按 a 新建"))
+	lastRunStr := ""
+	for _, t := range m.tasks {
+		if t.LastRunAt != nil {
+			lastRunStr = "最近: " + timeAgo(*t.LastRunAt)
+			break
+		}
 	}
+	header := m.renderHeader(
+		"AIT  任务中心",
+		fmt.Sprintf("已保存任务: %d  %s", len(m.tasks), lastRunStr),
+	)
+	footer := m.renderFooter(
+		"[↑↓] 选择", "[Enter] 详情", "[a] 新建", "[r] 运行",
+		"[e] 编辑", "[d] 删除", "[y] 复制", "[q] 退出",
+	)
+	contentH := m.height - 2
+	if contentH < 4 {
+		contentH = 4
+	}
+	panelH := contentH - 2
+	leftW := (m.width - 4) * 57 / 100
+	rightW := m.width - 4 - leftW
+	leftContent := m.buildTaskListLeft(panelH, leftW)
+	rightContent := m.buildTaskListRight(panelH)
+	mid := m.dualColumnLayout(leftContent, rightContent, leftW, rightW, panelH)
+	return lipgloss.JoinVertical(lipgloss.Left, header, mid, footer)
+}
 
-	content := []string{
-		m.styles.title.Render("AIT 任务中心"),
-		m.styles.subtitle.Render(fmt.Sprintf("已保存任务: %d", len(m.tasks))),
-		m.styles.panel.Render(strings.Join(rows, "\n")),
-		m.footer("[↑↓] 选择", "[Enter] 详情", "[a] 新建", "[r] 运行", "[e] 编辑", "[d] 删除", "[q] 退出"),
+func (m *Model) buildTaskListLeft(maxH, width int) string {
+	var lines []string
+	lines = append(lines, m.styles.tableHead.Render(
+		fmt.Sprintf("  %-28s %-9s %-14s %s", "任务名称", "模式", "协议", "上次结果"),
+	))
+	lines = append(lines, m.styles.muted.Render(strings.Repeat("─", width)))
+	if len(m.tasks) == 0 {
+		lines = append(lines, "")
+		lines = append(lines, m.styles.muted.Render("  暂无任务  按 [a] 新建"))
+		return strings.Join(lines, "\n")
+	}
+	for i, t := range m.tasks {
+		if len(lines) >= maxH-1 {
+			break
+		}
+		// Mode: color-coded tag text with manual padding to 9 visual columns
+		var modeRendered string
+		if t.Input.Turbo {
+			modeRendered = m.styles.tagTurbo.Render("Turbo")
+		} else {
+			modeRendered = m.styles.tagStd.Render("标准")
+		}
+		modePad := 9 - lipgloss.Width(modeRendered)
+		if modePad < 0 {
+			modePad = 0
+		}
+		modeCol := modeRendered + strings.Repeat(" ", modePad)
+		proto := shortProtocol(t.Input.NormalizedProtocol())
+		lastResult := m.styles.muted.Render("从未运行")
+		if t.LastRunSummary != nil {
+			pct := t.LastRunSummary.SuccessRate
+			if pct >= 99 {
+				lastResult = m.styles.ok.Render(fmt.Sprintf("%.1f%%", pct))
+			} else if pct >= 90 {
+				lastResult = m.styles.metricVal.Render(fmt.Sprintf("%.1f%%", pct))
+			} else {
+				lastResult = m.styles.errStyle.Render(fmt.Sprintf("%.1f%%", pct))
+			}
+		}
+		nameStr := truncate(t.Name, 28)
+		// Build row from parts so ANSI in modeCol doesn't break alignment
+		nameCol := fmt.Sprintf("%-28s ", nameStr)
+		protoCol := fmt.Sprintf("%-14s ", proto)
+		mainRow := "  " + nameCol + modeCol + " " + protoCol + lastResult
+		if i == m.selected {
+			plainRow := "  " + nameCol + fmt.Sprintf("%-9s ", func() string {
+				if t.Input.Turbo {
+					return "Turbo"
+				}
+				return "标准"
+			}()) + protoCol + lastResult
+			lines = append(lines, m.styles.tableRowSel.Width(width).Render("▶"+plainRow[1:]))
+		} else {
+			lines = append(lines, mainRow)
+		}
+		var sub string
+		if t.Input.Turbo {
+			tc := t.Input.TurboConfig
+			sub = fmt.Sprintf("     %s  %d→%d +%d 每级%d",
+				truncate(t.Input.Model, 18),
+				tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize, tc.LevelRequests)
+		} else {
+			sub = fmt.Sprintf("     %s  并发%d/请求%d",
+				truncate(t.Input.Model, 20), t.Input.Concurrency, t.Input.Count)
+		}
+		if i == m.selected {
+			lines = append(lines, m.styles.tableRowSel.Width(width).Render(sub))
+		} else {
+			lines = append(lines, m.styles.muted.Render(sub))
+		}
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildTaskListRight(maxH int) string {
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("快捷操作"))
+	lines = append(lines, "")
+	lines = append(lines, " "+m.styles.key.Render("[a]")+"  新建任务")
+	lines = append(lines, " "+m.styles.key.Render("[Enter]")+"  查看详情")
+	lines = append(lines, " "+m.styles.key.Render("[r]")+"  直接运行选中任务")
+	lines = append(lines, " "+m.styles.key.Render("[e]")+"  编辑  "+m.styles.key.Render("[d]")+"  删除  "+m.styles.key.Render("[y]")+"  复制")
+	lines = append(lines, "")
+	lines = append(lines, m.styles.muted.Render(strings.Repeat("─", 28)))
+	lines = append(lines, "")
+	lines = append(lines, m.styles.sectionHead.Render("最近执行"))
+	lines = append(lines, "")
+	count := 0
+	for _, t := range m.tasks {
+		if t.LastRunSummary == nil {
+			continue
+		}
+		s := t.LastRunSummary
+		statusIcon := m.styles.ok.Render("✓")
+		if s.SuccessRate < 90 {
+			statusIcon = m.styles.errStyle.Render("✗")
+		}
+		lines = append(lines, fmt.Sprintf(" %s %-16s %.1f%%  %.0f tok/s",
+			statusIcon, truncate(t.Name, 16), s.SuccessRate, s.AvgTPS))
+		count++
+		if count >= 5 || len(lines) >= maxH-2 {
+			break
+		}
+	}
+	if count == 0 {
+		lines = append(lines, m.styles.muted.Render("  暂无记录"))
 	}
 	if m.status != "" {
-		content = append(content, m.styles.muted.Render(m.status))
+		lines = append(lines, "")
+		lines = append(lines, m.styles.muted.Render(m.status))
 	}
-	return strings.Join(content, "\n")
+	if m.err != nil {
+		lines = append(lines, m.styles.errStyle.Render("错误: "+m.err.Error()))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) renderTaskDetail() string {
+	if m.width == 0 {
+		return "加载中..."
+	}
 	taskDef, ok := m.currentTask()
 	if !ok {
-		return m.styles.error.Render("任务不存在")
+		return m.styles.errStyle.Render("任务不存在")
 	}
-	lastRun := "从未运行"
+	updatedStr := ""
+	if !taskDef.UpdatedAt.IsZero() {
+		updatedStr = "更新: " + taskDef.UpdatedAt.Format("01-02 15:04")
+	}
+	lastRunStr := "从未运行"
 	if taskDef.LastRunAt != nil {
-		lastRun = taskDef.LastRunAt.Format(time.RFC3339)
+		lastRunStr = "上次: " + timeAgo(*taskDef.LastRunAt)
 	}
-	mode := modeStandard
-	if taskDef.Input.Turbo {
-		mode = modeTurbo
+	header := m.renderHeader(
+		"AIT  任务详情 — "+truncate(taskDef.Name, 24),
+		updatedStr+"   "+lastRunStr,
+	)
+	footer := m.renderFooter("[Enter/r] 运行", "[e] 编辑", "[d] 删除", "[b] 返回")
+	contentH := m.height - 2
+	histH := 9
+	topH := contentH - histH
+	if topH < 6 {
+		topH = 6
 	}
-	left := []string{
-		fmt.Sprintf("名称: %s", taskDef.Name),
-		fmt.Sprintf("协议: %s", taskDef.Input.NormalizedProtocol()),
-		fmt.Sprintf("接口: %s", taskDef.Input.ResolvedEndpointURL()),
-		fmt.Sprintf("模型: %s", taskDef.Input.Model),
-		fmt.Sprintf("模式: %s", mode),
-		fmt.Sprintf("Prompt: %s", promptSummary(taskDef.Input)),
-		fmt.Sprintf("最近运行: %s", lastRun),
-	}
+	panelH := topH - 2
+	leftW := (m.width - 4) * 57 / 100
+	rightW := m.width - 4 - leftW
+	leftContent := m.buildDetailLeft(taskDef, panelH, leftW)
+	rightContent := m.buildDetailRight(taskDef)
+	top := m.dualColumnLayout(leftContent, rightContent, leftW, rightW, panelH)
+	histPanelH := histH - 2
+	histContent := m.buildHistoryContent(histPanelH, m.width-4)
+	histPanel := lipgloss.NewStyle().
+		Width(m.width - 2).Height(histPanelH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Render(histContent)
+	return lipgloss.JoinVertical(lipgloss.Left, header, top, histPanel, footer)
+}
 
-	historyLines := []string{m.styles.label.Render("最近运行记录")}
-	if len(m.history) == 0 {
-		historyLines = append(historyLines, m.styles.muted.Render("暂无历史"))
+func (m *Model) buildDetailLeft(t types.TaskDefinition, h, w int) string {
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("配置摘要"))
+	lines = append(lines, "")
+	maxURLLen := w - 14
+	if maxURLLen < 20 {
+		maxURLLen = 20
+	}
+	rows := [][2]string{
+		{"协议", t.Input.NormalizedProtocol()},
+		{"接口地址", truncate(t.Input.ResolvedEndpointURL(), maxURLLen)},
+		{"模型", t.Input.Model},
+	}
+	if t.Input.Turbo {
+		tc := t.Input.TurboConfig
+		rows = append(rows,
+			[2]string{"模式", "Turbo 模式"},
+			[2]string{"爬坡", fmt.Sprintf("%d → %d  步进+%d  每级%d",
+				tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize, tc.LevelRequests)},
+			[2]string{"停止条件", fmt.Sprintf("成功率<%.0f%%  或延迟>%s",
+				tc.MinSuccessRate*100, tc.MaxLatency)},
+		)
 	} else {
-		for _, item := range m.history {
-			historyLines = append(historyLines, fmt.Sprintf("%s  %s  %.1f%%  %.1f tok/s  cache %.1f%%", item.FinishedAt.Format("2006-01-02 15:04:05"), item.Mode, item.SuccessRate, item.AvgTPS, item.CacheHitRate))
-		}
+		rows = append(rows,
+			[2]string{"模式", "标准模式"},
+			[2]string{"并发", fmt.Sprintf("%d", t.Input.Concurrency)},
+			[2]string{"请求数", fmt.Sprintf("%d", t.Input.Count)},
+			[2]string{"超时", t.Input.Timeout.String()},
+		)
 	}
+	rows = append(rows,
+		[2]string{"流式", boolLabel(t.Input.Stream)},
+		[2]string{"Prompt", promptSummary(t.Input)},
+	)
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			m.styles.label.Render(fmt.Sprintf("%-8s", row[0])),
+			m.styles.value.Render(row[1])))
+	}
+	return strings.Join(lines, "\n")
+}
 
-	return strings.Join([]string{
-		m.styles.title.Render("AIT 任务详情"),
-		m.styles.panel.Render(strings.Join(left, "\n")),
-		m.styles.panel.Render(strings.Join(historyLines, "\n")),
-		m.footer("[Enter] 运行", "[e] 编辑", "[d] 删除", "[b] 返回"),
-	}, "\n")
+func (m *Model) buildDetailRight(t types.TaskDefinition) string {
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("最近一次结果"))
+	lines = append(lines, "")
+	if t.LastRunSummary == nil {
+		lines = append(lines, m.styles.muted.Render("  从未运行"))
+		return strings.Join(lines, "\n")
+	}
+	s := t.LastRunSummary
+	statusStr := m.styles.ok.Render("✓ 完成")
+	if s.SuccessRate < 90 {
+		statusStr = m.styles.errStyle.Render("✗ 异常")
+	}
+	rows := [][2]string{
+		{"状态", statusStr},
+		{"成功率", fmt.Sprintf("%.1f%%", s.SuccessRate)},
+		{"avg TTFT", s.AvgTTFT.Truncate(time.Millisecond).String()},
+		{"avg TPS", fmt.Sprintf("%.1f tok/s", s.AvgTPS)},
+		{"缓存命中", fmt.Sprintf("%.1f%%", s.CacheHitRate)},
+	}
+	if s.MaxStableConcurrency > 0 {
+		rows = append(rows, [2]string{"最大稳定并发", fmt.Sprintf("%d", s.MaxStableConcurrency)})
+	}
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			m.styles.label.Render(fmt.Sprintf("%-10s", row[0])),
+			row[1]))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildHistoryContent(maxH, width int) string {
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("最近运行记录")+"  "+
+		m.styles.tableHead.Render(fmt.Sprintf("%-19s %-6s %-8s %-12s %-10s %-8s",
+			"时间", "模式", "成功率", "TTFT", "TPS", "Cache")))
+	lines = append(lines, m.styles.muted.Render(strings.Repeat("─", width-2)))
+	if len(m.history) == 0 {
+		lines = append(lines, m.styles.muted.Render("  暂无历史记录"))
+		return strings.Join(lines, "\n")
+	}
+	for _, run := range m.history {
+		if len(lines) >= maxH {
+			break
+		}
+		status := m.styles.ok.Render("✓")
+		if run.SuccessRate < 90 {
+			status = m.styles.errStyle.Render("✗")
+		}
+		modeShort := run.Mode
+		if len(modeShort) > 5 {
+			modeShort = modeShort[:5]
+		}
+		lines = append(lines, fmt.Sprintf("  %s  %-19s %-6s %-8.1f%% %-12s %-10.1f %-8.1f%%",
+			status,
+			run.FinishedAt.Format("2006-01-02 15:04"),
+			modeShort,
+			run.SuccessRate,
+			run.AvgTTFT.Truncate(time.Millisecond),
+			run.AvgTPS,
+			run.CacheHitRate))
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) renderWizard() string {
-	fields := m.wizardFields()
-	field := fields[m.wizard.current]
-	var lines []string
-	for i, f := range fields {
-		marker := "  "
-		if i == m.wizard.current {
-			marker = "▶ "
-		}
-		lines = append(lines, marker+fmt.Sprintf("%s: %s", f.label, m.displayWizardValue(f)))
+	if m.width == 0 || m.wizard == nil {
+		return "加载中..."
 	}
-
-	editor := ""
-	if field.kind == fieldText {
-		editor = m.styles.panel.Render(m.wizard.input.View())
+	stepTitles := []string{"1/3 · 基本信息", "2/3 · 测试参数", "3/3 · 确认保存"}
+	header := m.renderHeader("AIT  任务向导", "步骤 "+stepTitles[m.wizard.step])
+	var footer string
+	if m.wizard.step < 2 {
+		footer = m.renderFooter("[Tab/↓] 下一项", "[↑] 上一项", "[←→] 切换选项", "[Enter] 下一步", "[Esc] 返回")
 	} else {
-		editor = m.styles.panel.Render(m.displayWizardValue(field))
+		footer = m.renderFooter("[Enter] 保存任务", "[r] 保存并运行", "[Esc] 返回修改")
 	}
+	contentH := m.height - 2
+	dialogW := m.width - 6
+	if dialogW > 78 {
+		dialogW = 78
+	}
+	if dialogW < 40 {
+		dialogW = 40
+	}
+	dialogContentW := dialogW - 6 // -2 border -4 padding
+	var content string
+	switch m.wizard.step {
+	case 0:
+		content = m.renderWizardStep0(dialogContentW)
+	case 1:
+		content = m.renderWizardStep1(dialogContentW)
+	case 2:
+		content = m.renderWizardStep2(dialogContentW)
+	}
+	dialog := m.styles.dialog.Width(dialogContentW).Render(content)
+	dialogH := lipgloss.Height(dialog)
+	padTop := (contentH - dialogH) / 2
+	if padTop < 0 {
+		padTop = 0
+	}
+	centeredDialog := lipgloss.Place(m.width, contentH,
+		lipgloss.Center, lipgloss.Top,
+		strings.Repeat("\n", padTop)+dialog)
+	return lipgloss.JoinVertical(lipgloss.Left, header, centeredDialog, footer)
+}
 
-	return strings.Join([]string{
-		m.styles.title.Render("AIT 任务向导"),
-		m.styles.subtitle.Render(fmt.Sprintf("步骤 %d/%d", m.wizard.current+1, len(fields))),
-		m.styles.panel.Render(strings.Join(lines, "\n")),
-		editor,
-		m.footer("[Enter/Tab] 下一项或保存", "[←→/Space] 切换选项", "[Esc] 取消"),
-	}, "\n")
+func (m *Model) renderWizardStep0(w int) string {
+	fields := m.wizardStepFields(0)
+	var lines []string
+	// Step indicator: ● ○ ○
+	lines = append(lines, m.styles.stepActive.Render("●")+" "+
+		m.styles.stepTodo.Render("○")+" "+
+		m.styles.stepTodo.Render("○")+"  "+
+		m.styles.sectionHead.Render("基本信息"))
+	lines = append(lines, "")
+	for i, field := range fields {
+		active := i == m.wizard.fieldIndex
+		lines = append(lines, m.renderWizardField(field, active))
+		if field.key == "protocol" {
+			for pi, p := range protocolOptions {
+				bullet := "  ○ "
+				if pi == m.wizard.protocolIndex {
+					bullet = "  " + m.styles.ok.Render("●") + " "
+				}
+				lines = append(lines, "                  "+bullet+p)
+			}
+		}
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) renderWizardStep1(w int) string {
+	fields := m.wizardStepFields(1)
+	var lines []string
+	// Step indicator: ✓ ● ○
+	lines = append(lines, m.styles.stepDone.Render("✓")+" "+
+		m.styles.stepActive.Render("●")+" "+
+		m.styles.stepTodo.Render("○")+"  "+
+		m.styles.sectionHead.Render("测试参数"))
+	lines = append(lines, "")
+	for i, field := range fields {
+		active := i == m.wizard.fieldIndex
+		lines = append(lines, m.renderWizardField(field, active))
+		if field.key == "mode" {
+			opts := []string{modeStandard, modeTurbo}
+			labels := []string{"标准模式", "Turbo 模式"}
+			for oi, opt := range opts {
+				bullet := "  ○ "
+				if opt == m.wizard.mode {
+					bullet = "  " + m.styles.ok.Render("●") + " "
+				}
+				lines = append(lines, "                  "+bullet+labels[oi])
+			}
+		}
+		if field.key == "prompt_mode" {
+			pmLabels := []string{"直接输入", "文件路径", "按长度生成"}
+			for pi, pl := range pmLabels {
+				bullet := "  ○ "
+				if pi == m.wizard.promptModeIndex {
+					bullet = "  " + m.styles.ok.Render("●") + " "
+				}
+				lines = append(lines, "                  "+bullet+pl)
+			}
+		}
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) renderWizardStep2(w int) string {
+	var lines []string
+	// Step indicator: ✓ ✓ ●
+	lines = append(lines, m.styles.stepDone.Render("✓")+" "+
+		m.styles.stepDone.Render("✓")+" "+
+		m.styles.stepActive.Render("●")+"  "+
+		m.styles.sectionHead.Render("确认保存"))
+	lines = append(lines, "")
+	d, err := buildTaskDefinition(m.wizard)
+	if err != nil {
+		lines = append(lines, m.styles.errStyle.Render("配置有误: "+err.Error()))
+		lines = append(lines, "")
+		lines = append(lines, m.styles.muted.Render("按 [Esc] 返回修改"))
+		return strings.Join(lines, "\n")
+	}
+	rows := [][2]string{
+		{"任务名称", d.Name},
+		{"协议", d.Input.NormalizedProtocol()},
+		{"接口地址", truncate(d.Input.ResolvedEndpointURL(), w-16)},
+		{"API 密钥", maskAPIKey(d.Input.ApiKey)},
+		{"测试模型", d.Input.Model},
+	}
+	if d.Input.Turbo {
+		tc := d.Input.TurboConfig
+		rows = append(rows,
+			[2]string{"测试模式", "Turbo 模式"},
+			[2]string{"并发爬坡", fmt.Sprintf("%d → %d  步进+%d  每级%d",
+				tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize, tc.LevelRequests)},
+			[2]string{"停止条件", fmt.Sprintf("成功率<%.0f%%  或延迟>%s",
+				tc.MinSuccessRate*100, tc.MaxLatency)},
+		)
+	} else {
+		rows = append(rows,
+			[2]string{"测试模式", "标准模式"},
+			[2]string{"并发/请求", fmt.Sprintf("%d / %d", d.Input.Concurrency, d.Input.Count)},
+			[2]string{"超时", d.Input.Timeout.String()},
+		)
+	}
+	rows = append(rows,
+		[2]string{"流式", boolLabel(d.Input.Stream)},
+		[2]string{"Prompt", promptSummary(d.Input)},
+	)
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			m.styles.label.Render(fmt.Sprintf("%-10s", row[0])),
+			row[1]))
+	}
+	lines = append(lines, "")
+	lines = append(lines, m.styles.ok.Render("  ▶ 按 [Enter] 保存，[r] 保存并立即运行"))
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) renderWizardField(field wizardField, active bool) string {
+	var val string
+	if field.kind == fieldText && active {
+		val = m.wizard.input.View()
+	} else {
+		val = m.displayWizardValue(field)
+	}
+	labelStr := fmt.Sprintf("%-12s", field.label)
+	if active {
+		return m.styles.cursor.Render("▶") + " " +
+			m.styles.fieldActive.Render(labelStr) + "  " + val
+	}
+	return "  " + m.styles.fieldIdle.Render(labelStr) + "  " + m.styles.muted.Render(val)
 }
 
 func (m *Model) renderDashboard() string {
-	title := "AIT 正在运行"
-	if m.runningTask != nil && m.runningTask.Input.Turbo {
-		title = "AIT Turbo 正在探测"
+	if m.width == 0 {
+		return "加载中..."
 	}
-	stats := []string{
-		fmt.Sprintf("完成: %d", m.progress.CompletedCount),
-		fmt.Sprintf("失败: %d", m.progress.FailedCount),
-		fmt.Sprintf("运行时长: %s", m.progress.ElapsedTime.Truncate(100*time.Millisecond)),
+	taskName, protocol, modelName := "", "", ""
+	isTurbo := false
+	totalReqs, concurrency := 0, 0
+	if m.runningTask != nil {
+		taskName = m.runningTask.Name
+		protocol = shortProtocol(m.runningTask.Input.NormalizedProtocol())
+		modelName = m.runningTask.Input.Model
+		isTurbo = m.runningTask.Input.Turbo
+		totalReqs = m.runningTask.Input.Count
+		concurrency = m.runningTask.Input.Concurrency
+		if isTurbo {
+			totalReqs = m.runningTask.Input.TurboConfig.LevelRequests
+			concurrency = m.runningTask.Input.TurboConfig.InitConcurrency
+		}
 	}
-	if len(m.progress.CacheHitRates) > 0 {
-		stats = append(stats, fmt.Sprintf("最近缓存命中率: %.1f%%", m.progress.CacheHitRates[len(m.progress.CacheHitRates)-1]*100))
+	title := "AIT  正在测试 — " + modelName
+	if isTurbo {
+		title = "AIT  Turbo 探测 — " + modelName
 	}
-	return strings.Join([]string{
-		m.styles.title.Render(title),
-		m.styles.panel.Render(strings.Join(stats, "\n")),
-		m.footer("[s] 停止"),
-	}, "\n")
+	header := m.renderHeader(title,
+		fmt.Sprintf("任务: %s  协议: %s", truncate(taskName, 20), protocol))
+	footer := m.renderFooter("[s] 停止", "[q] 退出")
+	contentH := m.height - 2
+	logH := 7
+	topH := contentH - logH
+	if topH < 6 {
+		topH = 6
+	}
+	panelH := topH - 2
+	leftW := (m.width - 4) * 50 / 100
+	rightW := m.width - 4 - leftW
+	var leftContent, rightContent string
+	if isTurbo {
+		leftContent = m.buildTurboDashLeft(panelH)
+		rightContent = m.buildTurboDashRight(panelH)
+	} else {
+		leftContent = m.buildStdDashLeft(panelH, totalReqs, concurrency)
+		rightContent = m.buildStdDashRight(panelH)
+	}
+	top := m.dualColumnLayout(leftContent, rightContent, leftW, rightW, panelH)
+	logPanelH := logH - 2
+	logContent := m.buildLogPanel(logPanelH, m.width-4)
+	logPanel := lipgloss.NewStyle().
+		Width(m.width - 2).Height(logPanelH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Render(logContent)
+	return lipgloss.JoinVertical(lipgloss.Left, header, top, logPanel, footer)
+}
+
+func (m *Model) buildStdDashLeft(h, total, concurrency int) string {
+	p := m.progress
+	completed := p.CompletedCount
+	failed := p.FailedCount
+	elapsed := time.Duration(0)
+	if !p.StartTime.IsZero() {
+		elapsed = time.Since(p.StartTime)
+	}
+	var estRemaining string
+	if completed > 0 && total > completed && elapsed > 0 {
+		rate := float64(completed) / elapsed.Seconds()
+		remaining := float64(total-completed) / rate
+		estRemaining = "~" + time.Duration(remaining*float64(time.Second)).Truncate(time.Second).String()
+	}
+	barW := 20
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("进度"))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("  %s  %s  %d",
+		m.styles.label.Render("完成"), progressBar(completed, total, barW), completed))
+	lines = append(lines, fmt.Sprintf("  %s  %s  %d",
+		m.styles.errStyle.Render("失败"), progressBarRed(failed, total, barW), failed))
+	lines = append(lines, fmt.Sprintf("  %s  %s  %d",
+		m.styles.muted.Render("总计"), progressBar(total, total, barW), total))
+	lines = append(lines, "")
+	lines = append(lines, fmt.Sprintf("  %-10s %s",
+		m.styles.label.Render("已用时"),
+		elapsed.Truncate(100*time.Millisecond)))
+	if estRemaining != "" {
+		lines = append(lines, fmt.Sprintf("  %-10s %s",
+			m.styles.label.Render("预计剩余"),
+			estRemaining))
+	}
+	lines = append(lines, fmt.Sprintf("  %-10s %d 活跃",
+		m.styles.label.Render("并发槽"),
+		concurrency))
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildStdDashRight(h int) string {
+	p := m.progress
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("实时指标"))
+	lines = append(lines, "")
+	successRate := 0.0
+	if p.CompletedCount > 0 {
+		successRate = float64(p.CompletedCount-p.FailedCount) / float64(p.CompletedCount) * 100
+	}
+	srBar := progressBar(int(successRate), 100, 16)
+	lines = append(lines, fmt.Sprintf("  成功率  %s  %.1f%%", srBar, successRate))
+	lines = append(lines, "")
+	avgTPS := 0.0
+	if len(p.OutputTokenCounts) > 0 && len(p.TotalTimes) > 0 {
+		totalTokens := 0
+		for _, tok := range p.OutputTokenCounts {
+			totalTokens += tok
+		}
+		totalTimeS := 0.0
+		for _, d := range p.TotalTimes {
+			totalTimeS += d.Seconds()
+		}
+		if totalTimeS > 0 {
+			avgTPS = float64(totalTokens) / totalTimeS
+		}
+	}
+	avgTTFT := time.Duration(0)
+	if len(p.TTFTs) > 0 {
+		sum := time.Duration(0)
+		for _, d := range p.TTFTs {
+			sum += d
+		}
+		avgTTFT = sum / time.Duration(len(p.TTFTs))
+	}
+	avgTotal := time.Duration(0)
+	if len(p.TotalTimes) > 0 {
+		sum := time.Duration(0)
+		for _, d := range p.TotalTimes {
+			sum += d
+		}
+		avgTotal = sum / time.Duration(len(p.TotalTimes))
+	}
+	avgCache := 0.0
+	if len(p.CacheHitRates) > 0 {
+		sum := 0.0
+		for _, r := range p.CacheHitRates {
+			sum += r
+		}
+		avgCache = sum / float64(len(p.CacheHitRates)) * 100
+	}
+	rows := [][2]string{
+		{"avg TPS", fmt.Sprintf("%.1f tok/s", avgTPS)},
+		{"avg TTFT", avgTTFT.Truncate(time.Millisecond).String()},
+		{"缓存命中率", fmt.Sprintf("%.1f%%", avgCache)},
+		{"avg 总耗时", avgTotal.Truncate(time.Millisecond).String()},
+	}
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("  %-12s %s",
+			m.styles.label.Render(row[0]),
+			m.styles.metricVal.Render(row[1])))
+	}
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildTurboDashLeft(h int) string {
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("Turbo 探测中"))
+	lines = append(lines, "")
+	elapsed := time.Since(m.runStartedAt)
+	lines = append(lines, fmt.Sprintf("  %s  %s",
+		m.styles.label.Render("已用时"),
+		elapsed.Truncate(time.Second)))
+	lines = append(lines, "")
+	lines = append(lines, m.styles.muted.Render("  正在逐级探测最大稳定并发..."))
+	lines = append(lines, m.styles.muted.Render("  完成后将自动显示结果"))
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildTurboDashRight(h int) string {
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("探测状态"))
+	lines = append(lines, "")
+	lines = append(lines, "  "+m.styles.ok.Render("●")+"  测试运行中")
+	lines = append(lines, m.styles.muted.Render("  等待完成..."))
+	return strings.Join(lines, "\n")
+}
+
+func (m *Model) buildLogPanel(maxH, width int) string {
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render("请求日志"))
+	if len(m.requestLog) == 0 {
+		lines = append(lines, m.styles.muted.Render("  等待请求完成..."))
+		return strings.Join(lines, "\n")
+	}
+	start := 0
+	if len(m.requestLog) > maxH-1 {
+		start = len(m.requestLog) - (maxH - 1)
+	}
+	for _, entry := range m.requestLog[start:] {
+		// Color log entries based on their leading status marker
+		if strings.HasPrefix(entry, "✓") || strings.HasPrefix(entry, "✔") {
+			lines = append(lines, "  "+m.styles.logOk.Render(entry))
+		} else if strings.HasPrefix(entry, "✗") || strings.HasPrefix(entry, "✘") || strings.HasPrefix(entry, "ERR") {
+			lines = append(lines, "  "+m.styles.logErr.Render(entry))
+		} else {
+			lines = append(lines, "  "+m.styles.muted.Render(entry))
+		}
+	}
+	return strings.Join(lines, "\n")
 }
 
 func (m *Model) renderResult() string {
+	if m.width == 0 {
+		return "加载中..."
+	}
+	header := m.renderHeader("AIT  测试完成", "标准模式结果")
+	footer := m.renderFooter("[b/Esc] 返回详情")
 	if m.runResult == nil {
-		return m.styles.error.Render("结果为空")
+		return lipgloss.JoinVertical(lipgloss.Left, header,
+			m.styles.errStyle.Render("结果为空"), footer)
 	}
-	result := m.runResult
-	lines := []string{
-		fmt.Sprintf("协议: %s", result.Protocol),
-		fmt.Sprintf("接口: %s", result.EndpointURL),
-		fmt.Sprintf("成功率: %.1f%%", result.SuccessRate),
-		fmt.Sprintf("平均 TTFT: %s", result.AvgTTFT),
-		fmt.Sprintf("平均 TPS: %.2f", result.AvgTPS),
-		fmt.Sprintf("缓存命中率: %.1f%%", result.AvgCacheHitRate*100),
-		fmt.Sprintf("平均总耗时: %s", result.AvgTotalTime),
+	r := m.runResult
+	panelW := m.width - 4
+	panelH := m.height - 4
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render(fmt.Sprintf("任务完成 — %s", r.Model)))
+	lines = append(lines, "")
+	rows := [][2]string{
+		{"协议", r.Protocol},
+		{"接口地址", truncate(r.EndpointURL, panelW-16)},
+		{"模型", r.Model},
+		{"成功率", fmt.Sprintf("%.1f%%", r.SuccessRate)},
+		{"总请求数", fmt.Sprintf("%d", r.TotalRequests)},
+		{"avg TTFT", r.AvgTTFT.Truncate(time.Millisecond).String()},
+		{"avg TPS", fmt.Sprintf("%.2f tok/s", r.AvgTPS)},
+		{"缓存命中率", fmt.Sprintf("%.1f%%", r.AvgCacheHitRate*100)},
+		{"avg 总耗时", r.AvgTotalTime.Truncate(time.Millisecond).String()},
+		{"总测试时长", r.TotalTime.Truncate(time.Second).String()},
 	}
-	return strings.Join([]string{
-		m.styles.title.Render("AIT 标准模式结果"),
-		m.styles.panel.Render(strings.Join(lines, "\n")),
-		m.footer("[b] 返回详情"),
-	}, "\n")
+	for _, row := range rows {
+		lines = append(lines, fmt.Sprintf("  %s  %s",
+			m.styles.label.Render(fmt.Sprintf("%-12s", row[0])),
+			m.styles.value.Render(row[1])))
+	}
+	content := strings.Join(lines, "\n")
+	panel := lipgloss.NewStyle().
+		Width(panelW).Height(panelH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Render(content)
+	return lipgloss.JoinVertical(lipgloss.Left, header, panel, footer)
 }
 
 func (m *Model) renderTurboResult() string {
+	if m.width == 0 {
+		return "加载中..."
+	}
+	header := m.renderHeader("AIT  Turbo 完成", "Turbo 模式结果")
+	footer := m.renderFooter("[b/Esc] 返回详情")
 	if m.turboResult == nil {
-		return m.styles.error.Render("Turbo 结果为空")
+		return lipgloss.JoinVertical(lipgloss.Left, header,
+			m.styles.errStyle.Render("Turbo 结果为空"), footer)
 	}
-	lines := []string{
-		fmt.Sprintf("协议: %s", m.turboResult.Protocol),
-		fmt.Sprintf("接口: %s", m.turboResult.EndpointURL),
-		fmt.Sprintf("最大稳定并发: %d", m.turboResult.MaxStableConcurrency),
-		fmt.Sprintf("峰值平均 TPS: %.2f", m.turboResult.PeakTPS),
-		fmt.Sprintf("停止原因: %s", m.turboResult.StopReason),
-	}
-	for _, level := range m.turboResult.Levels {
-		status := "✓"
+	r := m.turboResult
+	panelW := m.width - 4
+	panelH := m.height - 4
+	var lines []string
+	lines = append(lines, m.styles.sectionHead.Render(fmt.Sprintf(
+		"Turbo 完成 — %s  最大稳定并发: %d  峰值 TPS: %.1f",
+		r.Model, r.MaxStableConcurrency, r.PeakTPS)))
+	lines = append(lines, "")
+	lines = append(lines, m.styles.tableHead.Render(fmt.Sprintf(
+		"  %-6s %-8s %-10s %-10s %-8s %-8s %s",
+		"并发", "成功率", "TPS", "TTFT", "Cache", "总耗时", "状态")))
+	lines = append(lines, m.styles.muted.Render(strings.Repeat("─", panelW-4)))
+	for _, level := range r.Levels {
+		status := m.styles.ok.Render("✓ 稳定")
 		if !level.Stable {
-			status = "✗"
+			status = m.styles.errStyle.Render("✗ 不稳定")
 		}
-		lines = append(lines, fmt.Sprintf("%s 并发 %d  成功率 %.1f%%  avgTPS %.2f  cache %.1f%%", status, level.Concurrency, level.SuccessRate*100, level.AvgTPS, level.CacheHitRate*100))
+		marker := "  "
+		if level.Concurrency == r.MaxStableConcurrency {
+			marker = m.styles.cursor.Render("▶ ")
+		}
+		lines = append(lines, fmt.Sprintf("%s%-6d %-8.1f%% %-10.1f %-10s %-8.1f%% %-8s %s",
+			marker,
+			level.Concurrency,
+			level.SuccessRate*100,
+			level.AvgTPS,
+			level.AvgTTFT.Truncate(time.Millisecond),
+			level.CacheHitRate*100,
+			level.AvgTotalTime.Truncate(time.Millisecond),
+			status))
 	}
-	return strings.Join([]string{
-		m.styles.title.Render("AIT Turbo 结果"),
-		m.styles.panel.Render(strings.Join(lines, "\n")),
-		m.footer("[b] 返回详情"),
-	}, "\n")
+	lines = append(lines, "")
+	lines = append(lines, m.styles.muted.Render("  停止原因: "+r.StopReason))
+	content := strings.Join(lines, "\n")
+	panel := lipgloss.NewStyle().
+		Width(panelW).Height(panelH).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorPurple).
+		Render(content)
+	return lipgloss.JoinVertical(lipgloss.Left, header, panel, footer)
 }
 
-func (m *Model) footer(parts ...string) string {
-	styled := make([]string, 0, len(parts))
-	for _, part := range parts {
-		styled = append(styled, m.styles.key.Render(part+"  "))
+func (m *Model) renderHeader(left, right string) string {
+	if m.width == 0 {
+		return ""
 	}
-	return lipgloss.JoinHorizontal(lipgloss.Left, styled...)
+	// Each part gets the same header background so the bar spans the full width.
+	leftStyled := lipgloss.NewStyle().
+		Background(colorHeaderBg).Bold(true).Foreground(colorPink).
+		Render(" ◆ " + left)
+	rightStyled := lipgloss.NewStyle().
+		Background(colorHeaderBg).Foreground(colorHeaderFg).
+		Render(right + " ")
+	lw := lipgloss.Width(leftStyled)
+	rw := lipgloss.Width(rightStyled)
+	gap := m.width - lw - rw
+	if gap < 0 {
+		gap = 0
+	}
+	spacer := lipgloss.NewStyle().Background(colorHeaderBg).Render(strings.Repeat(" ", gap))
+	return leftStyled + spacer + rightStyled
+}
+
+func (m *Model) renderFooter(hints ...string) string {
+	if m.width == 0 {
+		return ""
+	}
+	// Left: colored AIT brand badge
+	leftBadge := lipgloss.NewStyle().
+		Background(colorPurple).Foreground(colorWhite).Bold(true).
+		Render(" ◆ AIT ")
+	// Right: dim version badge
+	rightBadge := lipgloss.NewStyle().
+		Background(colorHeaderBg).Foreground(colorHeaderFg).
+		Render(" v0.1 ")
+	// Middle: key hints in pink on footer bg
+	var parts []string
+	for _, h := range hints {
+		parts = append(parts, lipgloss.NewStyle().Foreground(colorPink).Render(h))
+	}
+	hintsStr := "  " + strings.Join(parts, "  ")
+	lw := lipgloss.Width(leftBadge)
+	rw := lipgloss.Width(rightBadge)
+	hw := lipgloss.Width(hintsStr)
+	gap := m.width - lw - rw - hw
+	if gap < 0 {
+		gap = 0
+	}
+	middle := lipgloss.NewStyle().
+		Background(colorFooterBg).Foreground(colorMuted).
+		Render(hintsStr + strings.Repeat(" ", gap))
+	return leftBadge + middle + rightBadge
+}
+
+func (m *Model) dualColumnLayout(leftContent, rightContent string, leftW, rightW, h int) string {
+	bc := colorPurple
+	leftPane := lipgloss.NewStyle().
+		Width(leftW).Height(h).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(bc).
+		Render(leftContent)
+	rightPane := lipgloss.NewStyle().
+		Width(rightW).Height(h).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(bc).
+		Render(rightContent)
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftPane, rightPane)
+}
+
+func progressBar(current, total, width int) string {
+	if total <= 0 || width <= 0 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("░", width))
+	}
+	filled := current * width / total
+	if filled > width {
+		filled = width
+	}
+	bar := lipgloss.NewStyle().Foreground(colorGreen).Render(strings.Repeat("█", filled))
+	empty := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("░", width-filled))
+	return bar + empty
+}
+
+// progressBarRed renders a red-tinted progress bar for failure/error metrics.
+func progressBarRed(current, total, width int) string {
+	if total <= 0 || width <= 0 {
+		return lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("░", width))
+	}
+	filled := current * width / total
+	if filled > width {
+		filled = width
+	}
+	bar := lipgloss.NewStyle().Foreground(colorRed).Render(strings.Repeat("█", filled))
+	empty := lipgloss.NewStyle().Foreground(lipgloss.Color("238")).Render(strings.Repeat("░", width-filled))
+	return bar + empty
+}
+
+func truncate(s string, n int) string {
+	if n <= 0 || len(s) <= n {
+		return s
+	}
+	if n <= 3 {
+		return s[:n]
+	}
+	return s[:n-3] + "..."
+}
+
+func timeAgo(t time.Time) string {
+	d := time.Since(t)
+	if d < time.Minute {
+		return fmt.Sprintf("%ds 前", int(d.Seconds()))
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%dm 前", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%dh 前", int(d.Hours()))
+	}
+	return t.Format("01-02 15:04")
+}
+
+func shortProtocol(p string) string {
+	p = strings.ReplaceAll(p, "openai-", "")
+	p = strings.ReplaceAll(p, "anthropic-", "")
+	return p
+}
+
+func maskAPIKey(key string) string {
+	if len(key) == 0 {
+		return "(空)"
+	}
+	if len(key) <= 8 {
+		return strings.Repeat("•", len(key))
+	}
+	return key[:4] + strings.Repeat("•", len(key)-8) + key[len(key)-4:]
 }
 
 func (m *Model) currentTask() (types.TaskDefinition, bool) {
@@ -626,39 +1436,74 @@ func protocolIndex(protocol string) int {
 	return 0
 }
 
-func (m *Model) wizardFields() []wizardField {
-	fields := []wizardField{
-		{key: "name", label: "任务名称", kind: fieldText},
-		{key: "protocol", label: "协议类型", kind: fieldSelect},
-		{key: "endpoint", label: "完整接口地址", kind: fieldText},
-		{key: "apiKey", label: "API 密钥", kind: fieldText},
-		{key: "model", label: "测试模型", kind: fieldText},
-		{key: "mode", label: "运行模式", kind: fieldSelect},
-	}
-	if m.wizard.mode == modeTurbo {
+func (m *Model) wizardStepFields(step int) []wizardField {
+	switch step {
+	case 0:
+		return []wizardField{
+			{key: "name", label: "任务名称", kind: fieldText},
+			{key: "protocol", label: "协议类型", kind: fieldSelect},
+			{key: "endpoint", label: "完整接口地址", kind: fieldText},
+			{key: "apiKey", label: "API 密钥", kind: fieldText},
+			{key: "model", label: "测试模型", kind: fieldText},
+		}
+	case 1:
+		fields := []wizardField{
+			{key: "mode", label: "运行模式", kind: fieldSelect},
+		}
+		if m.wizard.mode == modeTurbo {
+			fields = append(fields,
+				wizardField{key: "turbo_init", label: "初始并发", kind: fieldText},
+				wizardField{key: "turbo_max", label: "最大并发", kind: fieldText},
+				wizardField{key: "turbo_step", label: "步进值", kind: fieldText},
+				wizardField{key: "turbo_level_requests", label: "每级请求数", kind: fieldText},
+				wizardField{key: "turbo_min_success", label: "最小成功率", kind: fieldText},
+				wizardField{key: "turbo_max_latency", label: "最大平均延迟", kind: fieldText},
+			)
+		} else {
+			fields = append(fields,
+				wizardField{key: "concurrency", label: "并发数", kind: fieldText},
+				wizardField{key: "count", label: "请求总数", kind: fieldText},
+				wizardField{key: "timeout", label: "超时时间", kind: fieldText},
+			)
+		}
 		fields = append(fields,
-			wizardField{key: "turbo_init", label: "初始并发", kind: fieldText},
-			wizardField{key: "turbo_max", label: "最大并发", kind: fieldText},
-			wizardField{key: "turbo_step", label: "步进值", kind: fieldText},
-			wizardField{key: "turbo_level_requests", label: "每级请求数", kind: fieldText},
-			wizardField{key: "turbo_min_success", label: "最小成功率", kind: fieldText},
-			wizardField{key: "turbo_max_latency", label: "最大平均延迟", kind: fieldText},
+			wizardField{key: "stream", label: "流式模式", kind: fieldToggle},
+			wizardField{key: "thinking", label: "Thinking 模式", kind: fieldToggle},
+			wizardField{key: "report", label: "生成报告", kind: fieldToggle},
+			wizardField{key: "prompt_mode", label: "Prompt 方式", kind: fieldSelect},
+			wizardField{key: "prompt_value", label: promptValueLabel(m.wizard.promptModeIndex), kind: fieldText},
 		)
-	} else {
-		fields = append(fields,
-			wizardField{key: "concurrency", label: "并发数", kind: fieldText},
-			wizardField{key: "count", label: "请求总数", kind: fieldText},
-			wizardField{key: "timeout", label: "超时时间", kind: fieldText},
-		)
+		return fields
+	default:
+		return nil
 	}
-	fields = append(fields,
-		wizardField{key: "stream", label: "流式模式", kind: fieldToggle},
-		wizardField{key: "thinking", label: "Thinking 模式", kind: fieldToggle},
-		wizardField{key: "report", label: "生成报告", kind: fieldToggle},
-		wizardField{key: "prompt_mode", label: "Prompt 输入方式", kind: fieldSelect},
-		wizardField{key: "prompt_value", label: promptValueLabel(m.wizard.promptModeIndex), kind: fieldText},
-	)
-	return fields
+}
+
+func (m *Model) advanceWizardField(delta int) {
+	if m.wizard == nil {
+		return
+	}
+	fields := m.wizardStepFields(m.wizard.step)
+	next := m.wizard.fieldIndex + delta
+	if next < 0 {
+		if m.wizard.step > 0 {
+			m.wizard.step--
+			prevFields := m.wizardStepFields(m.wizard.step)
+			m.wizard.fieldIndex = len(prevFields) - 1
+			m.refreshWizardInput()
+		}
+		return
+	}
+	if next >= len(fields) {
+		m.wizard.step++
+		m.wizard.fieldIndex = 0
+		if m.wizard.step < 2 {
+			m.refreshWizardInput()
+		}
+		return
+	}
+	m.wizard.fieldIndex = next
+	m.refreshWizardInput()
 }
 
 func promptValueLabel(promptModeIndex int) string {
@@ -673,7 +1518,14 @@ func promptValueLabel(promptModeIndex int) string {
 }
 
 func (m *Model) currentWizardField() wizardField {
-	return m.wizardFields()[m.wizard.current]
+	if m.wizard == nil {
+		return wizardField{}
+	}
+	fields := m.wizardStepFields(m.wizard.step)
+	if len(fields) == 0 || m.wizard.fieldIndex >= len(fields) {
+		return wizardField{}
+	}
+	return fields[m.wizard.fieldIndex]
 }
 
 func (m *Model) refreshWizardInput() {
@@ -696,6 +1548,9 @@ func (m *Model) refreshWizardInput() {
 }
 
 func (m *Model) cycleWizardField(delta int) {
+	if m.wizard == nil {
+		return
+	}
 	field := m.currentWizardField()
 	switch field.key {
 	case "protocol":
@@ -718,7 +1573,11 @@ func (m *Model) cycleWizardField(delta int) {
 	default:
 		return
 	}
-	m.wizard.current = min(m.wizard.current, len(m.wizardFields())-1)
+	// Clamp fieldIndex in case field count changed (e.g. mode switch)
+	fields := m.wizardStepFields(m.wizard.step)
+	if m.wizard.fieldIndex >= len(fields) && len(fields) > 0 {
+		m.wizard.fieldIndex = len(fields) - 1
+	}
 	m.refreshWizardInput()
 }
 
@@ -756,13 +1615,6 @@ func wrapIndex(index, length int) int {
 		index += length
 	}
 	return index % length
-}
-
-func min(a, b int) int {
-	if a < b {
-		return a
-	}
-	return b
 }
 
 func buildTaskDefinition(state *wizardState) (types.TaskDefinition, error) {
@@ -887,9 +1739,10 @@ func (m *Model) saveWizard() error {
 			break
 		}
 	}
+	m.reloadHistoryForSelectedTask()
 	m.status = "任务已保存"
 	m.wizard = nil
-	m.view = viewTaskList
+	m.view = viewTaskDetail
 	return nil
 }
 
