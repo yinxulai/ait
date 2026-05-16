@@ -15,7 +15,7 @@ import (
 // createTestConfig 创建用于测试的标准配置
 func createTestConfig(baseUrl, apiKey, model string, timeout time.Duration, thinking bool) types.Input {
 	return types.Input{
-		Protocol: "anthropic",
+		Protocol: types.ProtocolAnthropicMessages,
 		BaseUrl:  baseUrl,
 		ApiKey:   apiKey,
 		Model:    model,
@@ -115,7 +115,7 @@ func TestNewAnthropicClient(t *testing.T) {
 		{
 			name: "valid anthropic client",
 			config: types.Input{
-				Protocol: "anthropic",
+				Protocol: types.ProtocolAnthropicMessages,
 				BaseUrl:  "https://api.anthropic.com",
 				ApiKey:   "test-key",
 				Model:    "claude-3-sonnet-20240229",
@@ -123,10 +123,10 @@ func TestNewAnthropicClient(t *testing.T) {
 				Thinking: false,
 			},
 			want: &AnthropicClient{
-				BaseUrl:  "https://api.anthropic.com",
+				EndpointURL: "https://api.anthropic.com/v1/messages",
 				ApiKey:   "test-key",
 				Model:    "claude-3-sonnet-20240229",
-				Provider: "anthropic",
+				Provider: types.ProtocolAnthropicMessages,
 				Thinking: false,
 			},
 		},
@@ -136,8 +136,8 @@ func TestNewAnthropicClient(t *testing.T) {
 		t.Run(tt.name, func(t *testing.T) {
 			got := NewAnthropicClient(tt.config)
 
-			if got.BaseUrl != tt.want.BaseUrl {
-				t.Errorf("NewAnthropicClient().BaseUrl = %v, want %v", got.BaseUrl, tt.want.BaseUrl)
+			if got.EndpointURL != tt.want.EndpointURL {
+				t.Errorf("NewAnthropicClient().EndpointURL = %v, want %v", got.EndpointURL, tt.want.EndpointURL)
 			}
 
 			if got.ApiKey != tt.want.ApiKey {
@@ -162,8 +162,8 @@ func TestNewAnthropicClient(t *testing.T) {
 func TestAnthropicClient_GetProtocol(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
-	if got := client.GetProtocol(); got != "anthropic" {
-		t.Errorf("AnthropicClient.GetProtocol() = %v, want %v", got, "anthropic")
+	if got := client.GetProtocol(); got != types.ProtocolAnthropicMessages {
+		t.Errorf("AnthropicClient.GetProtocol() = %v, want %v", got, types.ProtocolAnthropicMessages)
 	}
 }
 
@@ -395,7 +395,7 @@ func TestNewAnthropicClientTimeout(t *testing.T) {
 		{
 			name: "with custom timeout",
 			config: types.Input{
-				Protocol: "anthropic",
+				Protocol: types.ProtocolAnthropicMessages,
 				BaseUrl:  "https://api.anthropic.com",
 				ApiKey:   "test-key",
 				Model:    "claude-3-sonnet",
@@ -407,7 +407,7 @@ func TestNewAnthropicClientTimeout(t *testing.T) {
 		{
 			name: "with zero timeout",
 			config: types.Input{
-				Protocol: "anthropic",
+				Protocol: types.ProtocolAnthropicMessages,
 				BaseUrl:  "https://api.anthropic.com",
 				ApiKey:   "test-key",
 				Model:    "claude-3-opus",
@@ -419,7 +419,7 @@ func TestNewAnthropicClientTimeout(t *testing.T) {
 		{
 			name: "with long timeout",
 			config: types.Input{
-				Protocol: "anthropic",
+				Protocol: types.ProtocolAnthropicMessages,
 				BaseUrl:  "https://custom.api.com",
 				ApiKey:   "test-key",
 				Model:    "claude-3-haiku",
@@ -1308,16 +1308,16 @@ func TestAnthropicClientWithConfig(t *testing.T) {
 			}
 			
 			// 验证其他基本字段
-			if client.BaseUrl != "https://api.anthropic.com" {
-				t.Errorf("Expected BaseUrl = https://api.anthropic.com, got %s", client.BaseUrl)
+			if client.EndpointURL != "https://api.anthropic.com/v1/messages" {
+				t.Errorf("Expected EndpointURL = https://api.anthropic.com/v1/messages, got %s", client.EndpointURL)
 			}
 			
 			if client.Model != "claude-3-sonnet" {
 				t.Errorf("Expected Model = claude-3-sonnet, got %s", client.Model)
 			}
 			
-			if client.Provider != "anthropic" {
-				t.Errorf("Expected Provider = anthropic, got %s", client.Provider)
+			if client.Provider != types.ProtocolAnthropicMessages {
+				t.Errorf("Expected Provider = %s, got %s", types.ProtocolAnthropicMessages, client.Provider)
 			}
 		})
 	}

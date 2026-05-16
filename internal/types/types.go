@@ -2,8 +2,79 @@ package types
 
 import (
 	"encoding/json"
+	"strings"
 	"time"
 )
+
+const (
+	ProtocolOpenAICompletions = "openai-completions"
+	ProtocolOpenAIResponses   = "openai-responses"
+	ProtocolAnthropicMessages = "anthropic-messages"
+)
+
+func NormalizeProtocol(protocol string) string {
+	switch strings.ToLower(strings.TrimSpace(protocol)) {
+	case "", "openai", ProtocolOpenAICompletions:
+		return ProtocolOpenAICompletions
+	case ProtocolOpenAIResponses:
+		return ProtocolOpenAIResponses
+	case "anthropic", ProtocolAnthropicMessages:
+		return ProtocolAnthropicMessages
+	default:
+		return strings.TrimSpace(protocol)
+	}
+}
+
+func DefaultEndpointURL(protocol string) string {
+	switch NormalizeProtocol(protocol) {
+	case ProtocolOpenAICompletions:
+		return "https://api.openai.com/v1/chat/completions"
+	case ProtocolOpenAIResponses:
+		return "https://api.openai.com/v1/responses"
+	case ProtocolAnthropicMessages:
+		return "https://api.anthropic.com/v1/messages"
+	default:
+		return ""
+	}
+}
+
+func ResolveEndpointURL(protocol, endpointURL, baseURL string) string {
+	resolved := strings.TrimSpace(endpointURL)
+	if resolved != "" {
+		return resolved
+	}
+
+	resolved = strings.TrimRight(strings.TrimSpace(baseURL), "/")
+	if resolved == "" {
+		return DefaultEndpointURL(protocol)
+	}
+
+	switch NormalizeProtocol(protocol) {
+	case ProtocolOpenAICompletions:
+		if strings.HasSuffix(resolved, "/chat/completions") {
+			return resolved
+		}
+		if strings.HasSuffix(resolved, "/v1") {
+			return resolved + "/chat/completions"
+		}
+		return resolved + "/v1/chat/completions"
+	case ProtocolOpenAIResponses:
+		if strings.HasSuffix(resolved, "/responses") {
+			return resolved
+		}
+		if strings.HasSuffix(resolved, "/v1") {
+			return resolved + "/responses"
+		}
+		return resolved + "/v1/responses"
+	case ProtocolAnthropicMessages:
+		if strings.HasSuffix(resolved, "/v1/messages") {
+			return resolved
+		}
+		return resolved + "/v1/messages"
+	default:
+		return resolved
+	}
+}
 
 // PromptSource 需要前向声明，实际定义在 prompt 包中
 type PromptSource interface {
@@ -14,18 +85,33 @@ type PromptSource interface {
 
 // Input 测试配置信息 - 统一的配置结构
 type Input struct {
-	Protocol     string
-	BaseUrl      string
-	ApiKey       string
-	Model        string // 多个模型列表
-	Concurrency  int
-	Count        int
-	Stream       bool
-	Thinking     bool          // 是否开启 thinking 模式（仅支持 OpenAI 协议）
-	PromptSource PromptSource  // 改为使用PromptSource而不是简单字符串
-	Report       bool          // 是否生成报告文件
-	Timeout      time.Duration // 请求超时时间
-	Log          bool          // 是否开启详细日志记录
+	Protocol     string        `json:"protocol"`
+	EndpointURL  string        `json:"endpoint_url,omitempty"`
+	BaseUrl      string        `json:"base_url,omitempty"`
+	ApiKey       string        `json:"api_key,omitempty"`
+	Model        string        `json:"model"`
+	Concurrency  int           `json:"concurrency,omitempty"`
+	Count        int           `json:"count,omitempty"`
+	Stream       bool          `json:"stream,omitempty"`
+	Thinking     bool          `json:"thinking,omitempty"` // 是否开启 thinking 模式（仅支持 OpenAI 协议）
+	Turbo        bool          `json:"turbo,omitempty"` // 是否启用 Turbo 模式
+	TurboConfig  TurboConfig   `json:"turbo_config,omitempty"` // Turbo 模式配置
+	PromptMode   string        `json:"prompt_mode,omitempty"`
+	PromptText   string        `json:"prompt_text,omitempty"`
+	PromptFile   string        `json:"prompt_file,omitempty"`
+	PromptLength int           `json:"prompt_length,omitempty"`
+	PromptSource PromptSource  `json:"-"` // 运行态字段，不直接持久化
+	Report       bool          `json:"report,omitempty"` // 是否生成报告文件
+	Timeout      time.Duration `json:"timeout,omitempty"` // 请求超时时间
+	Log          bool          `json:"log,omitempty"` // 是否开启详细日志记录
+}
+
+func (i Input) NormalizedProtocol() string {
+	return NormalizeProtocol(i.Protocol)
+}
+
+func (i Input) ResolvedEndpointURL() string {
+	return ResolveEndpointURL(i.Protocol, i.EndpointURL, i.BaseUrl)
 }
 
 // StatsData 实时测试统计数据 - runner 内部使用的统计结构
@@ -45,9 +131,11 @@ type StatsData struct {
 	TLSHandshakeTimes []time.Duration // 所有TLS握手时间
 
 	// 服务性能指标 - 原始数据收集（与 ReportData 命名对齐）
-	InputTokenCounts  []int // 所有 prompt/input token 数量
-	OutputTokenCounts []int // 所有 completion/output token 数量 (用于TPS计算)
+	InputTokenCounts    []int // 所有 prompt/input token 数量
+	CachedInputTokenCounts []int // 所有缓存命中的输入 token 数量
+	OutputTokenCounts   []int // 所有 completion/output token 数量 (用于TPS计算)
 	ThinkingTokenCounts []int // 所有思考/推理 token 数量
+	CacheHitRates       []float64 // 所有请求的缓存命中率
 
 	// 错误信息
 	ErrorMessages []string // 所有错误信息
@@ -72,6 +160,7 @@ type ReportData struct {
 	Timestamp string `json:"timestamp"` // 测试时间戳
 	Protocol  string `json:"protocol"`  // 协议类型
 	Model     string `json:"model"`     // 模型名称
+	EndpointURL string `json:"endpoint_url,omitempty"` // 完整接口地址
 	BaseUrl   string `json:"base_url"`  // 基础URL
 
 	// 时间性能指标 - 统计结果
@@ -101,12 +190,18 @@ type ReportData struct {
 	AvgInputTokenCount  int           `json:"avg_input_token_count"`  // 平均输入token数量
 	MinInputTokenCount  int           `json:"min_input_token_count"`  // 最小输入token数量
 	MaxInputTokenCount  int           `json:"max_input_token_count"`  // 最大输入token数量
+	AvgCachedInputTokenCount int       `json:"avg_cached_input_token_count"` // 平均缓存命中的输入 token 数量
+	MinCachedInputTokenCount int       `json:"min_cached_input_token_count"` // 最小缓存命中的输入 token 数量
+	MaxCachedInputTokenCount int       `json:"max_cached_input_token_count"` // 最大缓存命中的输入 token 数量
 	AvgOutputTokenCount int           `json:"avg_output_token_count"` // 平均输出token数量
 	MinOutputTokenCount int           `json:"min_output_token_count"` // 最小输出token数量
 	MaxOutputTokenCount int           `json:"max_output_token_count"` // 最大输出token数量
 	AvgThinkingTokenCount int          `json:"avg_thinking_token_count"` // 平均思考token数量
 	MinThinkingTokenCount int          `json:"min_thinking_token_count"` // 最小思考token数量
 	MaxThinkingTokenCount int          `json:"max_thinking_token_count"` // 最大思考token数量
+	AvgCacheHitRate     float64       `json:"avg_cache_hit_rate"`      // 平均缓存命中率
+	MinCacheHitRate     float64       `json:"min_cache_hit_rate"`      // 最小缓存命中率
+	MaxCacheHitRate     float64       `json:"max_cache_hit_rate"`      // 最大缓存命中率
 	AvgTPS              float64       `json:"avg_tps"`                // 平均输出 TPS (仅输出 tokens per second)
 	MinTPS              float64       `json:"min_tps"`                // 最小输出 TPS
 	MaxTPS              float64       `json:"max_tps"`                // 最大输出 TPS
@@ -121,14 +216,82 @@ type ReportData struct {
 	StdDevTTFT             time.Duration `json:"stddev_ttft"`                // TTFT 标准差
 	StdDevTPOT             time.Duration `json:"stddev_tpot"`                // TPOT 标准差
 	StdDevInputTokenCount  float64       `json:"stddev_input_token_count"`   // 输入 Token 数标准差
+	StdDevCachedInputTokenCount float64  `json:"stddev_cached_input_token_count"` // 缓存命中输入 Token 数标准差
 	StdDevOutputTokenCount float64       `json:"stddev_output_token_count"`  // 输出 Token 数标准差
 	StdDevThinkingTokenCount float64     `json:"stddev_thinking_token_count"` // 思考 Token 数标准差
+	StdDevCacheHitRate     float64       `json:"stddev_cache_hit_rate"`      // 缓存命中率标准差
 	StdDevTPS              float64       `json:"stddev_tps"`                 // 输出 TPS 标准差
 	StdDevTotalThroughputTPS float64     `json:"stddev_total_throughput_tps"` // 吞吐 TPS 标准差
 
 	// 可靠性指标 - 统计结果
 	ErrorRate   float64 `json:"error_rate"`   // 错误率 (%)
 	SuccessRate float64 `json:"success_rate"` // 成功率 (%)
+}
+
+type TaskDefinition struct {
+	ID             string          `json:"id"`
+	Name           string          `json:"name"`
+	Input          Input           `json:"input"`
+	CreatedAt      time.Time       `json:"created_at"`
+	UpdatedAt      time.Time       `json:"updated_at"`
+	LastRunAt      *time.Time      `json:"last_run_at,omitempty"`
+	LastRunSummary *TaskRunSummary `json:"last_run_summary,omitempty"`
+}
+
+type TaskRunSummary struct {
+	RunID                string        `json:"run_id"`
+	TaskID               string        `json:"task_id"`
+	Mode                 string        `json:"mode"`
+	Status               string        `json:"status"`
+	Protocol             string        `json:"protocol"`
+	Model                string        `json:"model"`
+	StartedAt            time.Time     `json:"started_at"`
+	FinishedAt           time.Time     `json:"finished_at"`
+	SuccessRate          float64       `json:"success_rate"`
+	AvgTTFT              time.Duration `json:"avg_ttft"`
+	AvgTPS               float64       `json:"avg_tps"`
+	CacheHitRate         float64       `json:"cache_hit_rate"`
+	MaxStableConcurrency int           `json:"max_stable_concurrency,omitempty"`
+	ReportJSONPath       string        `json:"report_json_path,omitempty"`
+	ReportCSVPath        string        `json:"report_csv_path,omitempty"`
+	ErrorSummary         string        `json:"error_summary,omitempty"`
+}
+
+type TurboConfig struct {
+	InitConcurrency int           `json:"init_concurrency"`
+	MaxConcurrency  int           `json:"max_concurrency"`
+	StepSize        int           `json:"step_size"`
+	LevelRequests   int           `json:"level_requests"`
+	MinSuccessRate  float64       `json:"min_success_rate"`
+	MaxLatency      time.Duration `json:"max_latency"`
+}
+
+type TurboLevelResult struct {
+	Concurrency   int           `json:"concurrency"`
+	TotalRequests int           `json:"total_requests"`
+	SuccessCount  int           `json:"success_count"`
+	SuccessRate   float64       `json:"success_rate"`
+	AvgTPS        float64       `json:"avg_tps"`
+	PeakTPS       float64       `json:"peak_tps"`
+	AvgTTFT       time.Duration `json:"avg_ttft"`
+	CacheHitRate  float64       `json:"cache_hit_rate"`
+	AvgTotalTime  time.Duration `json:"avg_total_time"`
+	StdDevTPS     float64       `json:"stddev_tps"`
+	Stable        bool          `json:"stable"`
+	StopReason    string        `json:"stop_reason,omitempty"`
+}
+
+type TurboResult struct {
+	Config               TurboConfig        `json:"config"`
+	Levels               []TurboLevelResult `json:"levels"`
+	MaxStableConcurrency int                `json:"max_stable_concurrency"`
+	PeakTPS              float64            `json:"peak_tps"`
+	StopReason           string             `json:"stop_reason"`
+	ProbeDuration        time.Duration      `json:"probe_duration"`
+	Model                string             `json:"model"`
+	Protocol             string             `json:"protocol"`
+	EndpointURL          string             `json:"endpoint_url"`
+	Timestamp            string             `json:"timestamp"`
 }
 
 // MarshalJSON 自定义 JSON 序列化，将 time.Duration 转换为字符串

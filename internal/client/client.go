@@ -22,6 +22,7 @@ type ResponseMetrics struct {
 	
 	// 内容指标
 	PromptTokens     int           // 输入 token 数量
+	CachedInputTokens int          // 缓存命中的输入 token 数量
 	ThinkingTokens   int           // 思考/推理 token 数量
 	CompletionTokens int           // 输出 token 数量 (用于TPS计算)
 	
@@ -39,12 +40,12 @@ type ModelClient interface {
 
 // NewClient 根据配置创建客户端
 func NewClient(config types.Input, logger *logger.Logger) (ModelClient, error) {
-	switch config.Protocol {
-	case "openai":
+	switch config.NormalizedProtocol() {
+	case types.ProtocolOpenAICompletions, types.ProtocolOpenAIResponses:
 		client := NewOpenAIClient(config)
 		client.SetLogger(logger)
 		return client, nil
-	case "anthropic":
+	case types.ProtocolAnthropicMessages:
 		client := NewAnthropicClient(config)
 		client.SetLogger(logger)
 		return client, nil

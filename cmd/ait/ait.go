@@ -13,6 +13,7 @@ import (
 	"github.com/yinxulai/ait/internal/prompt"
 	"github.com/yinxulai/ait/internal/report"
 	"github.com/yinxulai/ait/internal/runner"
+	"github.com/yinxulai/ait/internal/tui"
 	"github.com/yinxulai/ait/internal/types"
 )
 
@@ -332,6 +333,7 @@ func executeModelsTestSuite(taskID string, modelList []string, finalProtocol, fi
 func main() {
 	taskID := generateTaskID()
 	versionFlag := flag.Bool("version", false, "显示版本信息")
+	interactiveFlag := flag.Bool("interactive", false, "启动交互式 TUI")
 	baseUrl := flag.String("baseUrl", "", "服务地址")
 	apiKey := flag.String("apiKey", "", "API 密钥")
 	count := flag.Int("count", 10, "请求总数")
@@ -355,6 +357,14 @@ func main() {
 		fmt.Printf("Git Commit: %s\n", GitCommit)
 		fmt.Printf("Build Time: %s\n", BuildTime)
 		os.Exit(0)
+	}
+
+	if *interactiveFlag {
+		if err := tui.Run(); err != nil {
+			fmt.Printf("启动交互式 TUI 失败: %v\n", err)
+			os.Exit(1)
+		}
+		return
 	}
 
 	// 合并 --model 和 --models 参数

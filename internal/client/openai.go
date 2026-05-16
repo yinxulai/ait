@@ -34,10 +34,18 @@ type ThinkingOptions struct {
 	Type string `json:"type"`
 }
 
+type ResponsesReasoningOptions struct {
+	Effort string `json:"effort,omitempty"`
+}
+
 // CompletionTokensDetails represents detailed completion token usage breakdown
 type CompletionTokensDetails struct {
 	ReasoningTokens int `json:"reasoning_tokens"`
 	ThinkingTokens  int `json:"thinking_tokens"`
+}
+
+type PromptTokensDetails struct {
+	CachedTokens int `json:"cached_tokens"`
 }
 
 // ChatCompletionRequest represents the request payload for chat completion
@@ -47,6 +55,13 @@ type ChatCompletionRequest struct {
 	Stream        bool                    `json:"stream,omitempty"`
 	StreamOptions *StreamOptions          `json:"stream_options,omitempty"`
 	Thinking      *ThinkingOptions        `json:"thinking,omitempty"`
+}
+
+type ResponsesAPIRequest struct {
+	Model     string                     `json:"model"`
+	Input     string                     `json:"input"`
+	Stream    bool                       `json:"stream,omitempty"`
+	Reasoning *ResponsesReasoningOptions `json:"reasoning,omitempty"`
 }
 
 // ChatCompletionResponse represents the response from chat completion
@@ -64,10 +79,33 @@ type ChatCompletionResponse struct {
 		FinishReason string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
+		PromptTokens            int                      `json:"prompt_tokens"`
+		CompletionTokens        int                      `json:"completion_tokens"`
+		TotalTokens             int                      `json:"total_tokens"`
+		PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
 		CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
+	} `json:"usage"`
+}
+
+type ResponsesAPIResponse struct {
+	ID        string `json:"id"`
+	Object    string `json:"object"`
+	CreatedAt int64  `json:"created_at"`
+	Model     string `json:"model"`
+	Output    []struct {
+		Type    string `json:"type"`
+		Role    string `json:"role"`
+		Content []struct {
+			Type string `json:"type"`
+			Text string `json:"text,omitempty"`
+		} `json:"content"`
+	} `json:"output"`
+	Usage struct {
+		InputTokens         int                      `json:"input_tokens"`
+		OutputTokens        int                      `json:"output_tokens"`
+		TotalTokens         int                      `json:"total_tokens"`
+		InputTokensDetails  *PromptTokensDetails     `json:"input_tokens_details,omitempty"`
+		OutputTokensDetails *CompletionTokensDetails `json:"output_tokens_details,omitempty"`
 	} `json:"usage"`
 }
 
@@ -96,10 +134,24 @@ type StreamResponseChunk struct {
 		FinishReason *string `json:"finish_reason"`
 	} `json:"choices"`
 	Usage *struct {
-		PromptTokens     int `json:"prompt_tokens"`
-		CompletionTokens int `json:"completion_tokens"`
-		TotalTokens      int `json:"total_tokens"`
+		PromptTokens            int                      `json:"prompt_tokens"`
+		CompletionTokens        int                      `json:"completion_tokens"`
+		TotalTokens             int                      `json:"total_tokens"`
+		PromptTokensDetails     *PromptTokensDetails     `json:"prompt_tokens_details,omitempty"`
 		CompletionTokensDetails *CompletionTokensDetails `json:"completion_tokens_details,omitempty"`
+	} `json:"usage,omitempty"`
+}
+
+type ResponsesAPIStreamEvent struct {
+	Type     string                `json:"type"`
+	Delta    string                `json:"delta,omitempty"`
+	Response *ResponsesAPIResponse `json:"response,omitempty"`
+	Usage    *struct {
+		InputTokens         int                      `json:"input_tokens"`
+		OutputTokens        int                      `json:"output_tokens"`
+		TotalTokens         int                      `json:"total_tokens"`
+		InputTokensDetails  *PromptTokensDetails     `json:"input_tokens_details,omitempty"`
+		OutputTokensDetails *CompletionTokensDetails `json:"output_tokens_details,omitempty"`
 	} `json:"usage,omitempty"`
 }
 
@@ -113,65 +165,24 @@ func extractThinkingTokens(details *CompletionTokensDetails) int {
 	return details.ReasoningTokens
 }
 
-// OpenAIClient OpenAI 协议客户端
-type OpenAIClient struct {
-	httpClient *http.Client
-	baseURL    string
-	apiKey     string
-	Model      string
-	Provider   string
-	Thinking   bool // 是否开启 thinking 模式
-	logger     *logger.Logger
+func extractCachedInputTokens(details *PromptTokensDetails) int {
+	if details == nil {
+		return 0
+	}
+	return details.CachedTokens
 }
 
-// NewOpenAIClient 根据配置创建 OpenAI 客户端
-//
-// 重要配置说明：
-//   - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
-//     这对于准确的性能测量至关重要，因为连接复用会跳过 DNS 解析和 TCP 连接建立时间，
-//     导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
-//     网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
-//   - DisableCompression=false: 启用压缩以节省带宽
-func NewOpenAIClient(config types.Input) *OpenAIClient {
-	baseUrl := config.BaseUrl
-	if baseUrl == "" {
-		baseUrl = "https://api.openai.com"
-	}
-
-	// 禁用连接复用以确保每个请求都是独立的
-	transport := &http.Transport{
-		DisableKeepAlives:  true,
-		DisableCompression: false,
-	}
-
-	return &OpenAIClient{
-		httpClient: &http.Client{
-			Transport: transport,
-			Timeout:   config.Timeout,
-		},
-		baseURL:  baseUrl,
-		apiKey:   config.ApiKey,
-		Model:    config.Model,
-		Provider: "openai",
-		Thinking: config.Thinking,
-		logger:   nil,
-	}
-}
-
-// SetLogger 设置日志记录器
-func (c *OpenAIClient) SetLogger(l *logger.Logger) {
-	c.logger = l
-}
-
-// Request 发送 OpenAI 协议请求（支持流式和非流式）
-func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
-	// 记录请求开始日志
-	if c.logger != nil && c.logger.IsEnabled() {
-		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
-			"stream":   stream,
-			"protocol": c.Provider,
-			"base_url": c.baseURL,
-		})
+func (c *OpenAIClient) buildRequestBody(prompt string, stream bool) ([]byte, error) {
+	if c.Provider == types.ProtocolOpenAIResponses {
+		reqBody := ResponsesAPIRequest{
+			Model:  c.Model,
+			Input:  prompt,
+			Stream: stream,
+		}
+		if c.Thinking {
+			reqBody.Reasoning = &ResponsesReasoningOptions{Effort: "medium"}
+		}
+		return json.Marshal(reqBody)
 	}
 
 	reqBody := ChatCompletionRequest{
@@ -185,21 +196,191 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		Stream: stream,
 	}
 
-	// 当启用流模式时，添加 stream_options 参数
 	if stream {
 		reqBody.StreamOptions = &StreamOptions{
 			IncludeUsage: true,
 		}
 	}
 
-	// 当启用 thinking 模式时，添加 reasoning 参数
 	if c.Thinking {
 		reqBody.Thinking = &ThinkingOptions{
 			Type: "enabled",
 		}
 	}
 
-	jsonData, err := json.Marshal(reqBody)
+	return json.Marshal(reqBody)
+}
+
+func (c *OpenAIClient) parseResponsesStream(resp *http.Response, t0 time.Time, dnsTime, connectTime, tlsTime time.Duration, targetIP string) (*ResponseMetrics, error) {
+	scanner := bufio.NewScanner(resp.Body)
+	firstTokenTime := time.Duration(0)
+	gotFirst := false
+	var completionTokens int
+	var promptTokens int
+	var cachedInputTokens int
+	var thinkingTokens int
+	var streamChunks []string
+
+	for scanner.Scan() {
+		line := scanner.Text()
+		if !strings.HasPrefix(line, "data: ") {
+			continue
+		}
+		data := strings.TrimPrefix(line, "data: ")
+		if data == "[DONE]" {
+			break
+		}
+		if c.logger != nil && c.logger.IsEnabled() {
+			streamChunks = append(streamChunks, data)
+		}
+
+		var event ResponsesAPIStreamEvent
+		if err := json.Unmarshal([]byte(data), &event); err != nil {
+			continue
+		}
+
+		if !gotFirst && event.Delta != "" {
+			firstTokenTime = time.Since(t0)
+			gotFirst = true
+		}
+
+		if event.Usage != nil {
+			promptTokens = event.Usage.InputTokens
+			completionTokens = event.Usage.OutputTokens
+			cachedInputTokens = extractCachedInputTokens(event.Usage.InputTokensDetails)
+			thinkingTokens = extractThinkingTokens(event.Usage.OutputTokensDetails)
+		}
+
+		if event.Response != nil {
+			promptTokens = event.Response.Usage.InputTokens
+			completionTokens = event.Response.Usage.OutputTokens
+			cachedInputTokens = extractCachedInputTokens(event.Response.Usage.InputTokensDetails)
+			thinkingTokens = extractThinkingTokens(event.Response.Usage.OutputTokensDetails)
+		}
+	}
+
+	if err := scanner.Err(); err != nil {
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.Error(c.Model, "Responses stream scanning failed", err)
+		}
+		return nil, err
+	}
+
+	totalTime := time.Since(t0)
+	if c.logger != nil && c.logger.IsEnabled() {
+		c.logger.LogResponse(c.Model, logger.ResponseData{
+			StatusCode:   resp.StatusCode,
+			StreamChunks: streamChunks,
+		})
+	}
+
+	return &ResponseMetrics{
+		TimeToFirstToken:  firstTokenTime,
+		TotalTime:         totalTime,
+		DNSTime:           dnsTime,
+		ConnectTime:       connectTime,
+		TLSHandshakeTime:  tlsTime,
+		TargetIP:          targetIP,
+		PromptTokens:      promptTokens,
+		CachedInputTokens: cachedInputTokens,
+		CompletionTokens:  completionTokens,
+		ThinkingTokens:    thinkingTokens,
+		ErrorMessage:      "",
+	}, nil
+}
+
+func (c *OpenAIClient) parseResponsesNonStream(responseData []byte, totalTime, dnsTime, connectTime, tlsTime time.Duration, targetIP string) (*ResponseMetrics, error) {
+	var apiResp ResponsesAPIResponse
+	if err := json.Unmarshal(responseData, &apiResp); err != nil {
+		if c.logger != nil && c.logger.IsEnabled() {
+			c.logger.Error(c.Model, "Failed to parse responses API JSON", err)
+		}
+		return &ResponseMetrics{
+			TimeToFirstToken: 0,
+			TotalTime:        totalTime,
+			DNSTime:          dnsTime,
+			ConnectTime:      connectTime,
+			TLSHandshakeTime: tlsTime,
+			TargetIP:         targetIP,
+			CompletionTokens: 0,
+			ErrorMessage:     fmt.Sprintf("JSON parsing error: %s", err.Error()),
+		}, err
+	}
+
+	return &ResponseMetrics{
+		TimeToFirstToken:  totalTime,
+		TotalTime:         totalTime,
+		DNSTime:           dnsTime,
+		ConnectTime:       connectTime,
+		TLSHandshakeTime:  tlsTime,
+		TargetIP:          targetIP,
+		PromptTokens:      apiResp.Usage.InputTokens,
+		CachedInputTokens: extractCachedInputTokens(apiResp.Usage.InputTokensDetails),
+		CompletionTokens:  apiResp.Usage.OutputTokens,
+		ThinkingTokens:    extractThinkingTokens(apiResp.Usage.OutputTokensDetails),
+		ErrorMessage:      "",
+	}, nil
+}
+
+// OpenAIClient OpenAI 协议客户端
+type OpenAIClient struct {
+	httpClient  *http.Client
+	endpointURL string
+	apiKey      string
+	Model       string
+	Provider    string
+	Thinking    bool // 是否开启 thinking 模式
+	logger      *logger.Logger
+}
+
+// NewOpenAIClient 根据配置创建 OpenAI 客户端
+//
+// 重要配置说明：
+//   - DisableKeepAlives=true: 禁用 HTTP 连接复用，确保每个请求都建立新连接
+//     这对于准确的性能测量至关重要，因为连接复用会跳过 DNS 解析和 TCP 连接建立时间，
+//     导致测量结果不能反映真实的网络性能。在性能基准测试工具中，我们需要测量完整的
+//     网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
+//   - DisableCompression=false: 启用压缩以节省带宽
+func NewOpenAIClient(config types.Input) *OpenAIClient {
+	endpointURL := config.ResolvedEndpointURL()
+
+	// 禁用连接复用以确保每个请求都是独立的
+	transport := &http.Transport{
+		DisableKeepAlives:  true,
+		DisableCompression: false,
+	}
+
+	return &OpenAIClient{
+		httpClient: &http.Client{
+			Transport: transport,
+			Timeout:   config.Timeout,
+		},
+		endpointURL: endpointURL,
+		apiKey:      config.ApiKey,
+		Model:       config.Model,
+		Provider:    config.NormalizedProtocol(),
+		Thinking:    config.Thinking,
+		logger:      nil,
+	}
+}
+
+// SetLogger 设置日志记录器
+func (c *OpenAIClient) SetLogger(l *logger.Logger) {
+	c.logger = l
+}
+
+// Request 发送 OpenAI 协议请求（支持流式和非流式）
+func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
+	// 记录请求开始日志
+	if c.logger != nil && c.logger.IsEnabled() {
+		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
+			"stream":       stream,
+			"protocol":     c.Provider,
+			"endpoint_url": c.endpointURL,
+		})
+	}
+
+	jsonData, err := c.buildRequestBody(prompt, stream)
 	if err != nil {
 		// 记录错误日志
 		if c.logger != nil && c.logger.IsEnabled() {
@@ -208,8 +389,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		return nil, err
 	}
 
-	url := fmt.Sprintf("%s/chat/completions", c.baseURL)
-	req, err := http.NewRequestWithContext(context.Background(), "POST", url, bytes.NewBuffer(jsonData))
+	req, err := http.NewRequestWithContext(context.Background(), "POST", c.endpointURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		// 记录错误日志
 		if c.logger != nil && c.logger.IsEnabled() {
@@ -350,12 +530,17 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			}, fmt.Errorf(errorMessage)
 		}
 
+		if c.Provider == types.ProtocolOpenAIResponses {
+			return c.parseResponsesStream(resp, t0, dnsTime, connectTime, tlsTime, targetIP)
+		}
+
 		scanner := bufio.NewScanner(resp.Body)
 		firstTokenTime := time.Duration(0)
 		gotFirst := false
 		var fullContent strings.Builder
 		var completionTokens int
 		var promptTokens int
+		var cachedInputTokens int
 		var thinkingTokens int
 		var streamChunks []string // 用于记录所有流式数据块
 
@@ -408,6 +593,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				if chunk.Usage != nil {
 					promptTokens = chunk.Usage.PromptTokens
 					completionTokens = chunk.Usage.CompletionTokens
+					cachedInputTokens = extractCachedInputTokens(chunk.Usage.PromptTokensDetails)
 					thinkingTokens = extractThinkingTokens(chunk.Usage.CompletionTokensDetails)
 				}
 			}
@@ -434,6 +620,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 				"total_time":          totalTime.String(),
 				"time_to_first_token": firstTokenTime.String(),
 				"prompt_tokens":       promptTokens,
+				"cached_input_tokens": cachedInputTokens,
 				"completion_tokens":   completionTokens,
 				"thinking_tokens":     thinkingTokens,
 				"full_content":        fullContent.String(),
@@ -441,16 +628,17 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		}
 
 		return &ResponseMetrics{
-			TimeToFirstToken: firstTokenTime,
-			TotalTime:        totalTime,
-			DNSTime:          dnsTime,
-			ConnectTime:      connectTime,
-			TLSHandshakeTime: tlsTime,
-			TargetIP:         targetIP,
-			PromptTokens:     promptTokens,
-			CompletionTokens: completionTokens,
-			ThinkingTokens:   thinkingTokens,
-			ErrorMessage:     "",
+			TimeToFirstToken:  firstTokenTime,
+			TotalTime:         totalTime,
+			DNSTime:           dnsTime,
+			ConnectTime:       connectTime,
+			TLSHandshakeTime:  tlsTime,
+			TargetIP:          targetIP,
+			PromptTokens:      promptTokens,
+			CachedInputTokens: cachedInputTokens,
+			CompletionTokens:  completionTokens,
+			ThinkingTokens:    thinkingTokens,
+			ErrorMessage:      "",
 		}, nil
 	} else {
 		// 非流式请求
@@ -532,6 +720,10 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			}, fmt.Errorf("empty response body")
 		}
 
+		if c.Provider == types.ProtocolOpenAIResponses {
+			return c.parseResponsesNonStream(responseData, totalTime, dnsTime, connectTime, tlsTime, targetIP)
+		}
+
 		var chatResp ChatCompletionResponse
 		if err := json.Unmarshal(responseData, &chatResp); err != nil {
 			// 记录JSON解析错误日志
@@ -553,17 +745,18 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		thinkingTokens := extractThinkingTokens(chatResp.Usage.CompletionTokensDetails)
 
 		return &ResponseMetrics{
-			TimeToFirstToken: totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
-			TotalTime:        totalTime,
-			DNSTime:          dnsTime,
-			ConnectTime:      connectTime,
-			TLSHandshakeTime: tlsTime,
-			TargetIP:         targetIP,
-			PromptTokens:     chatResp.Usage.PromptTokens,
-			CompletionTokens: chatResp.Usage.CompletionTokens,
-			ThinkingTokens:   thinkingTokens,
-			ErrorMessage:     "",
-		}, nil
+			TimeToFirstToken:  totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
+			TotalTime:         totalTime,
+			DNSTime:           dnsTime,
+			ConnectTime:       connectTime,
+			TLSHandshakeTime:  tlsTime,
+			TargetIP:          targetIP,
+			PromptTokens:      chatResp.Usage.PromptTokens,
+			CachedInputTokens: extractCachedInputTokens(chatResp.Usage.PromptTokensDetails),
+			CompletionTokens:  chatResp.Usage.CompletionTokens,
+			ThinkingTokens:    thinkingTokens,
+			ErrorMessage:      "",
+ 		}, nil
 	}
 }
 

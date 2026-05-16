@@ -28,8 +28,9 @@ type AnthropicResponse struct {
 	} `json:"content"`
 	Model string `json:"model"`
 	Usage struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens          int `json:"input_tokens"`
+		CacheReadInputTokens int `json:"cache_read_input_tokens"`
+		OutputTokens         int `json:"output_tokens"`
 	} `json:"usage"`
 }
 
@@ -53,14 +54,15 @@ type AnthropicStreamChunk struct {
 		PartialJSON *string `json:"partial_json,omitempty"`
 	} `json:"delta,omitempty"`
 	Usage *struct {
-		InputTokens  int `json:"input_tokens"`
-		OutputTokens int `json:"output_tokens"`
+		InputTokens          int `json:"input_tokens"`
+		CacheReadInputTokens int `json:"cache_read_input_tokens"`
+		OutputTokens         int `json:"output_tokens"`
 	} `json:"usage,omitempty"`
 }
 
 // AnthropicClient Anthropic 协议客户端
 type AnthropicClient struct {
-	BaseUrl    string
+	EndpointURL string
 	ApiKey     string
 	Model      string
 	Provider   string
@@ -85,10 +87,10 @@ func NewAnthropicClient(config types.Input) *AnthropicClient {
 	}
 
 	return &AnthropicClient{
-		BaseUrl:  config.BaseUrl,
+		EndpointURL: config.ResolvedEndpointURL(),
 		ApiKey:   config.ApiKey,
 		Model:    config.Model,
-		Provider: "anthropic",
+		Provider: config.NormalizedProtocol(),
 		Thinking: config.Thinking,
 		httpClient: &http.Client{
 			Transport: transport,
@@ -110,7 +112,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
 			"stream":     stream,
 			"protocol":   c.Provider,
-			"base_url":   c.BaseUrl,
+			"endpoint_url": c.EndpointURL,
 		})
 	}
 
@@ -152,7 +154,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		}, err
 	}
 
-	req, err := http.NewRequest("POST", c.BaseUrl+"/v1/messages", bytes.NewBuffer(reqBodyBytes))
+	req, err := http.NewRequest("POST", c.EndpointURL, bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
 		// 记录错误日志
 		if c.logger != nil && c.logger.IsEnabled() {
@@ -300,6 +302,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		var fullContent strings.Builder
 		var outputTokens int
 		var inputTokens int
+		var cachedInputTokens int
 		var streamChunks []string // 用于记录所有流式数据块
 		
 		// 记录流式响应开始日志
@@ -357,6 +360,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 				// 获取 token 统计信息
 				if chunk.Usage != nil {
 					inputTokens = chunk.Usage.InputTokens
+					cachedInputTokens = chunk.Usage.CacheReadInputTokens
 					outputTokens = chunk.Usage.OutputTokens
 				}
 			}
@@ -383,6 +387,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 				"total_time":         totalTime.String(),
 				"time_to_first_token": firstTokenTime.String(),
 				"input_tokens":       inputTokens,
+				"cached_input_tokens": cachedInputTokens,
 				"output_tokens":      outputTokens,
 				"full_content":       fullContent.String(),
 			})
@@ -396,6 +401,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
 			PromptTokens:     inputTokens,
+			CachedInputTokens: cachedInputTokens,
 			CompletionTokens: outputTokens,
 			ErrorMessage:     "",
 		}, nil
@@ -482,6 +488,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 				"total_time":     totalTime.String(),
 				"output_tokens":  anthropicResp.Usage.OutputTokens,
 				"input_tokens":   anthropicResp.Usage.InputTokens,
+				"cached_input_tokens": anthropicResp.Usage.CacheReadInputTokens,
 				"response_id":    anthropicResp.ID,
 				"content_length": len(contentText),
 			})
@@ -495,6 +502,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
 			PromptTokens:     anthropicResp.Usage.InputTokens,
+			CachedInputTokens: anthropicResp.Usage.CacheReadInputTokens,
 			CompletionTokens: anthropicResp.Usage.OutputTokens,
 			ErrorMessage:     "",
 		}, nil

@@ -103,6 +103,7 @@ func NewRunnerWithClient(input types.Input, client client.ModelClient) *Runner {
 		input: input,
 		client: client,
 		upload: upload.New(),
+		stopCh: make(chan struct{}),
 	}
 }
 
