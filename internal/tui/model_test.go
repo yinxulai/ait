@@ -2,72 +2,151 @@ package tui
 
 import (
 	"testing"
-	"time"
 
-	"github.com/yinxulai/ait/internal/config"
+	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
 
-func TestBuildTaskDefinitionStandardMode(t *testing.T) {
-	state := newWizardState(nil, viewTaskList, &config.Config{DefaultProtocol: types.ProtocolOpenAIResponses})
-	state.values["name"] = "nightly-openai"
-	state.values["endpoint"] = "https://api.openai.com/v1/responses"
-	state.values["apiKey"] = "sk-test"
-	state.values["model"] = "gpt-4.1"
-	state.values["concurrency"] = "8"
-	state.values["count"] = "120"
-	state.values["timeout"] = "45s"
-	state.values["prompt_value"] = "hello"
+// stubServer 是 server.Server 的测试桩，所有方法都返回零值。
+type stubServer struct{}
 
-	taskDef, err := buildTaskDefinition(state)
-	if err != nil {
-		t.Fatalf("buildTaskDefinition() returned unexpected error: %v", err)
+func (s *stubServer) ListTasks() []types.TaskDefinition                                    { return nil }
+func (s *stubServer) GetTask(id string) (types.TaskDefinition, bool)                       { return types.TaskDefinition{}, false }
+func (s *stubServer) CreateTask(cfg server.TaskConfig) (types.TaskDefinition, error)       { return types.TaskDefinition{}, nil }
+func (s *stubServer) UpdateTask(id string, cfg server.TaskConfig) (types.TaskDefinition, error) {
+	return types.TaskDefinition{}, nil
+}
+func (s *stubServer) DeleteTask(id string) error                                            { return nil }
+func (s *stubServer) CopyTask(id string) (types.TaskDefinition, error)                    { return types.TaskDefinition{}, nil }
+func (s *stubServer) StartRun(taskID string) (server.RunID, error)                        { return "", nil }
+func (s *stubServer) StopRun(runID server.RunID) error                                     { return nil }
+func (s *stubServer) GetRunState(runID server.RunID) (*server.RunState, bool)              { return nil, false }
+func (s *stubServer) Subscribe(runID server.RunID) (<-chan server.Event, server.CancelFunc) {
+	ch := make(chan server.Event)
+	close(ch)
+	return ch, func() {}
+}
+func (s *stubServer) GetHistory(taskID string, limit int) ([]types.TaskRunSummary, error) { return nil, nil }
+func (s *stubServer) GenerateReport(runID server.RunID, fmt server.ReportFormat) (string, error) {
+	return "", nil
+}
+
+// ─── NewModel ─────────────────────────────────────────────────────────────────
+
+func TestNewModel_InitialState(t *testing.T) {
+	m := NewModel(&stubServer{})
+	if m == nil {
+		t.Fatal("NewModel returned nil")
 	}
-	if taskDef.Input.Protocol != types.ProtocolOpenAIResponses {
-		t.Fatalf("expected protocol %s, got %s", types.ProtocolOpenAIResponses, taskDef.Input.Protocol)
-	}
-	if taskDef.Input.EndpointURL != "https://api.openai.com/v1/responses" {
-		t.Fatalf("unexpected endpoint: %s", taskDef.Input.EndpointURL)
-	}
-	if taskDef.Input.Concurrency != 8 || taskDef.Input.Count != 120 || taskDef.Input.Timeout != 45*time.Second {
-		t.Fatalf("unexpected standard input fields: %+v", taskDef.Input)
-	}
-	if taskDef.Input.PromptMode != promptModeText || taskDef.Input.PromptText != "hello" {
-		t.Fatalf("unexpected prompt fields: %+v", taskDef.Input)
+	if m.view != viewTaskList {
+		t.Errorf("initial view = %q, want %q", m.view, viewTaskList)
 	}
 }
 
-func TestBuildTaskDefinitionTurboMode(t *testing.T) {
-	state := newWizardState(nil, viewTaskList, &config.Config{})
-	state.mode = modeTurbo
-	state.protocolIndex = 2
-	state.promptModeIndex = 2
-	state.values["name"] = "turbo-anthropic"
-	state.values["endpoint"] = "https://api.anthropic.com/v1/messages"
-	state.values["apiKey"] = "sk-ant"
-	state.values["model"] = "claude-3-7-sonnet"
-	state.values["turbo_init"] = "1"
-	state.values["turbo_max"] = "12"
-	state.values["turbo_step"] = "2"
-	state.values["turbo_level_requests"] = "20"
-	state.values["turbo_min_success"] = "0.92"
-	state.values["turbo_max_latency"] = "6s"
-	state.values["prompt_value"] = "256"
+// ─── Wizard: openWizard + buildTaskInput ──────────────────────────────────────
 
-	taskDef, err := buildTaskDefinition(state)
-	if err != nil {
-		t.Fatalf("buildTaskDefinition() returned unexpected error: %v", err)
+func TestOpenWizard_NewTask_Defaults(t *testing.T) {
+	m := NewModel(&stubServer{})
+	m.openWizard(nil)
+	if m.wizard == nil {
+		t.Fatal("wizard should not be nil after openWizard")
 	}
-	if !taskDef.Input.Turbo {
-		t.Fatal("expected Turbo to be enabled")
+	if m.wizard.editingID != "" {
+		t.Errorf("new task wizard should have empty editingID, got %q", m.wizard.editingID)
 	}
-	if taskDef.Input.TurboConfig.MaxConcurrency != 12 || taskDef.Input.TurboConfig.MaxLatency != 6*time.Second {
-		t.Fatalf("unexpected turbo config: %+v", taskDef.Input.TurboConfig)
+	if m.wizard.concurrency <= 0 {
+		t.Errorf("default concurrency should be positive, got %d", m.wizard.concurrency)
 	}
-	if taskDef.Input.PromptMode != promptModeGenerated || taskDef.Input.PromptLength != 256 {
-		t.Fatalf("unexpected generated prompt config: %+v", taskDef.Input)
+	if m.wizard.promptMode != promptModeText {
+		t.Errorf("default promptMode = %q, want %q", m.wizard.promptMode, promptModeText)
 	}
-	if taskDef.Input.Protocol != types.ProtocolAnthropicMessages {
-		t.Fatalf("expected anthropic protocol, got %s", taskDef.Input.Protocol)
+}
+
+func TestOpenWizard_EditTask_Populate(t *testing.T) {
+	m := NewModel(&stubServer{})
+	task := types.TaskDefinition{
+		ID:   "task-123",
+		Name: "my-task",
+		Input: types.Input{
+			Model:       "gpt-4",
+			Protocol:    types.ProtocolOpenAICompletions,
+			ApiKey:      "sk-test",
+			Concurrency: 5,
+			Count:       50,
+			PromptMode:  promptModeText,
+			PromptText:  "hello",
+		},
+	}
+	m.openWizard(&task)
+	if m.wizard == nil {
+		t.Fatal("wizard should not be nil")
+	}
+	if m.wizard.editingID != "task-123" {
+		t.Errorf("editingID = %q, want %q", m.wizard.editingID, "task-123")
+	}
+	if m.wizard.model != "gpt-4" {
+		t.Errorf("model = %q, want %q", m.wizard.model, "gpt-4")
+	}
+	if m.wizard.concurrency != 5 {
+		t.Errorf("concurrency = %d, want 5", m.wizard.concurrency)
+	}
+}
+
+func TestBuildTaskInput_Standard(t *testing.T) {
+	m := NewModel(&stubServer{})
+	m.openWizard(nil)
+	wz := m.wizard
+	wz.model = "gpt-4.1"
+	wz.apiKey = "sk-test"
+	wz.concurrency = 8
+	wz.count = 120
+	wz.promptMode = promptModeText
+	wz.promptText = "hello"
+
+	inp := m.buildTaskInput()
+	if inp.Model != "gpt-4.1" {
+		t.Errorf("model = %q, want gpt-4.1", inp.Model)
+	}
+	if inp.Concurrency != 8 {
+		t.Errorf("concurrency = %d, want 8", inp.Concurrency)
+	}
+	if inp.Count != 120 {
+		t.Errorf("count = %d, want 120", inp.Count)
+	}
+	if inp.PromptMode != promptModeText || inp.PromptText != "hello" {
+		t.Errorf("unexpected prompt config: mode=%q text=%q", inp.PromptMode, inp.PromptText)
+	}
+	if inp.Turbo {
+		t.Error("turbo should be false in standard mode")
+	}
+}
+
+func TestBuildTaskInput_Turbo(t *testing.T) {
+	m := NewModel(&stubServer{})
+	m.openWizard(nil)
+	wz := m.wizard
+	wz.model = "claude-3-7-sonnet"
+	wz.apiKey = "sk-ant"
+	wz.protocol = types.ProtocolAnthropicMessages
+	wz.turbo = true
+	wz.initConcurrency = 1
+	wz.maxConcurrency = 12
+	wz.stepSize = 2
+	wz.levelRequests = 20
+	wz.promptMode = promptModeGenerated
+	wz.promptLength = 256
+
+	inp := m.buildTaskInput()
+	if !inp.Turbo {
+		t.Error("expected Turbo=true")
+	}
+	if inp.TurboConfig.MaxConcurrency != 12 {
+		t.Errorf("MaxConcurrency = %d, want 12", inp.TurboConfig.MaxConcurrency)
+	}
+	if inp.PromptMode != promptModeGenerated || inp.PromptLength != 256 {
+		t.Errorf("unexpected prompt config: mode=%q len=%d", inp.PromptMode, inp.PromptLength)
+	}
+	if inp.Protocol != types.ProtocolAnthropicMessages {
+		t.Errorf("protocol = %q, want anthropic-messages", inp.Protocol)
 	}
 }
