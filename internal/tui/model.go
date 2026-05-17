@@ -146,13 +146,20 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ServerEventMsg:
 		return m.handleServerEvent(msg)
 
-	// ── 运行状态快照（重入仪表盘时） ──
+	// ── 运行状态快照（重入仪表盘时 / 从历史导航时） ──
 	case RunStateMsg:
-		if m.dash != nil && msg.State != nil && m.dash.RunID == msg.State.RunID {
-			m.dash.RunState = msg.State
+		if msg.State == nil {
+			return m, nil
 		}
-		if m.turboDash != nil && msg.State != nil && m.turboDash.RunID == msg.State.RunID {
+		if m.dash != nil && m.dash.RunID == msg.State.RunID {
+			m.dash.RunState = msg.State
+		} else if m.turboDash != nil && m.turboDash.RunID == msg.State.RunID {
 			m.turboDash.RunState = msg.State
+		} else if msg.FromHistory {
+			// 从历史记录导航过来：用加载到的 RunState 新建 dash 并切换视图
+			m.dash = pages.NewDashboardState(msg.State.RunID, msg.State.TaskID)
+			m.dash.RunState = msg.State
+			m.view = viewDashboard
 		}
 		return m, nil
 
@@ -285,6 +292,10 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 			m.view = viewTurboDash
 		}
 		return nil
+
+	case pages.NavRunDetail:
+		// 从历史记录进入某次运行的仪表盘
+		return m.client.GetRunStateForHistoryCmd(nav.RunID)
 
 	case pages.NavReqDetail:
 		reqs := m.collectRequests()

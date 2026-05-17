@@ -16,6 +16,7 @@ type PromptSource struct {
 	IsFile         bool     // 是否来自文件
 	FilePaths      []string // 文件路径列表
 	Contents       []string // prompt内容列表（仅用于非文件内容）
+	SystemContent  string   // 固定的系统消息内容（仅 generated 模式使用，用于触发前缀缓存）
 	DisplayText    string   // 用于显示的文本
 	ShouldTruncate bool     // 是否需要截断显示（对于已经包含长度信息的内容，不需要再次处理）
 }
@@ -98,6 +99,12 @@ func loadMultipleFiles(pattern string) (*PromptSource, error) {
 	}, nil
 }
 
+// GetSystemContent 返回系统消息内容（固定的大段上下文，用于前缀缓存）。
+// 非 generated 模式返回空字符串，不影响原有请求结构。
+func (ps *PromptSource) GetSystemContent() string {
+	return ps.SystemContent
+}
+
 // GetRandomContent 随机获取一个prompt内容
 func (ps *PromptSource) GetRandomContent() string {
 	// 如果不是文件源，直接返回内容
@@ -144,10 +151,14 @@ func (ps *PromptSource) GetRandomContent() string {
 func (ps *PromptSource) GetContentByIndex(index int) string {
 	// 如果不是文件源，直接返回内容
 	if !ps.IsFile {
-		if index < 0 || index >= len(ps.Contents) {
+		if len(ps.Contents) == 0 {
 			return ps.GetRandomContent()
 		}
-		return ps.Contents[index]
+		if index < 0 {
+			return ps.GetRandomContent()
+		}
+		// 用取模循环，确保多个请求在有限 Contents 上均匀分布
+		return ps.Contents[index%len(ps.Contents)]
 	}
 
 	// 文件源：根据索引读取对应文件
@@ -261,20 +272,46 @@ func GeneratePromptByLength(length int) string {
 	return builder.String()
 }
 
-// LoadPromptByLength 创建指定长度的 PromptSource
+// LoadPromptByLength 创建指定长度的 PromptSource。
+//
+// 为了让测试中部分请求满足前缀缓存条件（Prefix Cache），内容被拆分为两部分：
+//   - SystemContent（约 90% 长度）：固定不变的大段上下文，作为 system 消息发送；
+//     同一批次所有请求共享相同的 system 消息，API 侧命中前缀缓存后可大幅降低延迟。
+//   - Contents（user 消息候选列表）：多条短问题，每个请求按 index 取模轮流使用，
+//     既保证请求内容有差异，又确保 system 前缀不变以触发缓存。
 func LoadPromptByLength(length int) (*PromptSource, error) {
 	if length <= 0 {
 		return nil, fmt.Errorf("prompt 长度必须大于 0")
 	}
 
-	content := GeneratePromptByLength(length)
-	actualLength := utf8.RuneCountInString(content)
+	// 90% 作为 system 消息（固定，供缓存命中）
+	systemLen := length * 9 / 10
+	if systemLen < 1 {
+		systemLen = 1
+	}
+	systemContent := GeneratePromptByLength(systemLen)
+	actualSystemLen := utf8.RuneCountInString(systemContent)
+
+	// 短而多样的 user 消息，各请求轮流使用（保证差异 + 共享 system 前缀）
+	userQuestions := []string{
+		"请帮我总结一下上述内容的核心要点。",
+		"根据以上信息，有什么值得特别关注的地方？",
+		"上述内容中最重要的信息是什么？",
+		"请对以上内容进行简短分析。",
+		"上述内容的主要主题是什么，请概括。",
+		"从以上内容中能得出哪些结论？",
+		"以上内容有哪些值得深入探讨的点？",
+		"请提炼上述内容的关键信息。",
+		"对以上内容你有什么看法？",
+		"上述内容对实际应用有什么启示？",
+	}
 
 	return &PromptSource{
 		IsFile:         false,
 		FilePaths:      nil,
-		Contents:       []string{content},
-		DisplayText:    fmt.Sprintf("生成内容 (长度: %d 字符)", actualLength),
-		ShouldTruncate: false, // 已经包含长度信息，不需要再次截断处理
+		Contents:       userQuestions,
+		SystemContent:  systemContent,
+		DisplayText:    fmt.Sprintf("生成内容 (系统消息: %d 字符，轮换用户问题 x%d)", actualSystemLen, len(userQuestions)),
+		ShouldTruncate: false,
 	}, nil
 }

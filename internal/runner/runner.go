@@ -87,9 +87,10 @@ func (r *Runner) Run() (*types.ReportData, error) {
 			defer func() { <-ch }()
 
 			// 获取当前请求使用的prompt
-			currentPrompt := r.input.PromptSource.GetRandomContent()
+			systemPrompt := r.input.PromptSource.GetSystemContent()
+			userPrompt := r.input.PromptSource.GetContentByIndex(idx)
 			
-			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
+			metrics, err := r.client.Request(systemPrompt, userPrompt, r.input.Stream)
 			if err != nil {
 				// 即使有错误，也尝试保存 metrics（如果有的话）
 				if metrics != nil {
@@ -129,8 +130,9 @@ func (r *Runner) RunWithCallback(cb RequestDoneCallback) (*types.ReportData, err
 			defer wg.Done()
 			defer func() { <-ch }()
 
-			currentPrompt := r.input.PromptSource.GetRandomContent()
-			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
+			systemPrompt := r.input.PromptSource.GetSystemContent()
+			userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+			metrics, err := r.client.Request(systemPrompt, userPrompt, r.input.Stream)
 			if metrics != nil {
 				results[idx] = metrics
 			}
@@ -231,9 +233,10 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			defer func() { <-ch }()
 
 			// 获取当前请求使用的prompt
-			currentPrompt := r.input.PromptSource.GetRandomContent()
+			systemPrompt := r.input.PromptSource.GetSystemContent()
+			userPrompt := r.input.PromptSource.GetContentByIndex(idx)
 			
-			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
+			metrics, err := r.client.Request(systemPrompt, userPrompt, r.input.Stream)
 			if err != nil {
 				ttftsMutex.Lock()
 				errorMessages = append(errorMessages, err.Error())
@@ -540,9 +543,12 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		}
 	}
 
+	// successCount 基于真正成功的请求（有输出 token 且无错误）
+	// validCount 可能是 successCount 的 fallback 集，仅用于计算平均指标，不参与成功率
+	successCount := len(successResults)
 	validCount := len(validResults)
-	errorRate := float64(requestCount-validCount) / float64(requestCount) * 100
-	successRate := float64(validCount) / float64(requestCount) * 100
+	errorRate := float64(requestCount-successCount) / float64(requestCount) * 100
+	successRate := float64(successCount) / float64(requestCount) * 100
 	resolvedEndpoint := r.input.ResolvedEndpointURL()
 
 	if validCount == 0 {

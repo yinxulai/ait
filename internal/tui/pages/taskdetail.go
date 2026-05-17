@@ -44,8 +44,11 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 		}
 
 	case "enter":
-		if len(s.History) > 0 {
-			s.LatestExpanded = !s.LatestExpanded
+		if s.HistorySel >= 0 && s.HistorySel < len(s.History) {
+			runID := strings.TrimSpace(s.History[s.HistorySel].RunID)
+			if runID != "" {
+				nav = NavAction{To: NavRunDetail, RunID: server.RunID(runID)}
+			}
 		}
 
 	case "left", "esc", "b":

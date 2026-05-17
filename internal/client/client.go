@@ -36,7 +36,8 @@ type ResponseMetrics struct {
 
 // ModelClient 定义统一的模型客户端接口
 type ModelClient interface {
-	Request(prompt string, stream bool) (*ResponseMetrics, error)
+	// Request 发送请求。systemPrompt 为空时行为与原来相同（不添加 system 消息）。
+	Request(systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error)
 	GetProtocol() string
 	GetModel() string
 	SetLogger(logger *logger.Logger) // 设置日志记录器

@@ -40,7 +40,8 @@ type ServerEventMsg struct {
 
 // RunStateMsg server.GetRunState 的轮询结果（用于后台运行恢复仪表盘）。
 type RunStateMsg struct {
-	State *server.RunState
+	State       *server.RunState
+	FromHistory bool // true = 从历史记录导航过来，需新建 dash 并切换视图
 }
 
 // ReportGeneratedMsg 报告文件生成完成。

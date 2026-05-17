@@ -19,6 +19,7 @@ const (
 	NavWizard               // 打开向导（EditTask == nil 为新建）
 	NavDashboard            // 进入仪表盘（需 RunID + TaskID）
 	NavTurboDash            // 进入 Turbo 仪表盘（需 RunID + TaskID）
+	NavRunDetail            // 从历史记录进入某次运行的仪表盘（需 RunID）
 	NavReqDetail            // 进入请求详情（需 ReqIndex）
 	NavQuit                 // 退出程序
 )
@@ -49,5 +50,6 @@ type Client interface {
 	// 历史 & 报告
 	LoadHistoryCmd(taskID string, limit int) tea.Cmd
 	GetRunStateCmd(runID server.RunID) tea.Cmd
+	GetRunStateForHistoryCmd(runID server.RunID) tea.Cmd
 	GenerateReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd
 }

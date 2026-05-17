@@ -106,10 +106,10 @@ func (c *AnthropicClient) SetLogger(l *logger.Logger) {
 }
 
 // Request 发送 Anthropic 协议请求（支持流式和非流式）
-func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
+func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error) {
 	// 记录请求开始日志
 	if c.logger != nil && c.logger.IsEnabled() {
-		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
+		c.logger.LogTestStart(c.Model, userPrompt, map[string]interface{}{
 			"stream":     stream,
 			"protocol":   c.Provider,
 			"endpoint_url": c.EndpointURL,
@@ -122,10 +122,15 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		"messages": []map[string]interface{}{
 			{
 				"role":    "user",
-				"content": prompt,
+				"content": userPrompt,
 			},
 		},
 		"stream": stream,
+	}
+
+	// 如果有 system prompt，添加顶层 system 字段（Anthropic API 规范）
+	if systemPrompt != "" {
+		requestBody["system"] = systemPrompt
 	}
 
 	// 如果启用了 thinking 模式，添加 thinking 配置

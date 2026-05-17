@@ -78,6 +78,7 @@ func ResolveEndpointURL(protocol, endpointURL, baseURL string) string {
 
 // PromptSource 需要前向声明，实际定义在 prompt 包中
 type PromptSource interface {
+	GetSystemContent() string
 	GetRandomContent() string
 	GetContentByIndex(index int) string
 	Count() int

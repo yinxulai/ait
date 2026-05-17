@@ -42,7 +42,7 @@ func CtxBar_TaskDetail_NoHistory() []ContextBarItem {
 func CtxBar_TaskDetail_HasHistory() []ContextBarItem {
 	return []ContextBarItem{
 		{Key: "↑↓", Desc: "选择记录"},
-		{Key: "Enter", Desc: "展开/折叠详情"},
+		{Key: "Enter", Desc: "查看运行详情"},
 		{Key: "r", Desc: "再次运行"},
 		{Key: "g", Desc: "导出 JSON 报告"},
 		{Key: "e", Desc: "编辑"},

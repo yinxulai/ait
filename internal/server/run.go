@@ -86,6 +86,17 @@ func historyPath(historyDir, taskID string) string {
 	return filepath.Join(historyDir, taskID+".json")
 }
 
+// runStatePath 返回指定运行的完整状态快照文件路径（用于历史回放）。
+func runStatePath(historyDir string, runID RunID) string {
+	return filepath.Join(historyDir, "runs", string(runID)+".json")
+}
+
+// persistRunState 将完整 RunState 快照写入磁盘，供历史回放使用。
+func persistRunState(historyDir string, snap *RunState) {
+	st := store.NewJSONStore[*RunState](runStatePath(historyDir, snap.RunID))
+	_ = st.Save(snap) // 失败不影响主流程
+}
+
 // StartRun 启动一次新的运行，立即返回 RunID。
 func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	s.mu.RLock()
@@ -246,6 +257,9 @@ func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef typ
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
 	s.bus.CloseRun(runID)
 
+	// 将完整运行状态持久化到磁盘，供历史详情页回放
+	persistRunState(historyDir, snap)
+
 	summary := types.TaskRunSummary{
 		RunID:       string(runID),
 		TaskID:      taskDef.ID,
@@ -281,6 +295,9 @@ func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.
 
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
 	s.bus.CloseRun(runID)
+
+	// 将完整运行状态持久化到磁盘，供历史详情页回放
+	persistRunState(historyDir, snap)
 
 	var maxStable int
 	var peakTPS float64
@@ -318,6 +335,9 @@ func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefin
 
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunFailed, Payload: runErr})
 	s.bus.CloseRun(runID)
+
+	// 将完整运行状态持久化到磁盘，供历史详情页回放
+	persistRunState(historyDir, snap)
 
 	summary := types.TaskRunSummary{
 		RunID:        string(runID),
@@ -377,18 +397,26 @@ func (s *serverImpl) StopRun(runID RunID) error {
 }
 
 // GetRunState 返回指定运行的当前状态快照。
+// 先查内存中的 activeRuns；若不存在，再尝试从磁盘加载持久化的快照（历史回放）。
 func (s *serverImpl) GetRunState(runID RunID) (*RunState, bool) {
 	s.mu.RLock()
 	ar, ok := s.activeRuns[runID]
+	historyDir := s.historyDir
 	s.mu.RUnlock()
 
-	if !ok {
-		return nil, false
+	if ok {
+		ar.mu.RLock()
+		snap := ar.snapshotState()
+		ar.mu.RUnlock()
+		return snap, true
 	}
 
-	ar.mu.RLock()
-	snap := ar.snapshotState()
-	ar.mu.RUnlock()
+	// 不在内存中，尝试从磁盘加载持久化的 RunState 快照
+	st := store.NewJSONStore[*RunState](runStatePath(historyDir, runID))
+	snap, err := st.Load()
+	if err != nil || snap == nil {
+		return nil, false
+	}
 	return snap, true
 }
 

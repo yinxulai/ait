@@ -135,6 +135,17 @@ func (c *Client) GetRunStateCmd(runID server.RunID) tea.Cmd {
 	}
 }
 
+// GetRunStateForHistoryCmd 从历史记录导航时异步加载运行状态快照。
+func (c *Client) GetRunStateForHistoryCmd(runID server.RunID) tea.Cmd {
+	return func() tea.Msg {
+		state, ok := c.srv.GetRunState(runID)
+		if !ok {
+			return ErrorMsg{Err: fmt.Errorf("该次运行数据不在内存中，请重新运行")}
+		}
+		return RunStateMsg{State: state, FromHistory: true}
+	}
+}
+
 // GenerateReportCmd 异步生成报告文件。
 func (c *Client) GenerateReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd {
 	return func() tea.Msg {

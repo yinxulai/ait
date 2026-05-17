@@ -172,11 +172,15 @@ func extractCachedInputTokens(details *PromptTokensDetails) int {
 	return details.CachedTokens
 }
 
-func (c *OpenAIClient) buildRequestBody(prompt string, stream bool) ([]byte, error) {
+func (c *OpenAIClient) buildRequestBody(systemPrompt, userPrompt string, stream bool) ([]byte, error) {
 	if c.Provider == types.ProtocolOpenAIResponses {
+		input := userPrompt
+		if systemPrompt != "" {
+			input = systemPrompt + "\n\n" + userPrompt
+		}
 		reqBody := ResponsesAPIRequest{
 			Model:  c.Model,
-			Input:  prompt,
+			Input:  input,
 			Stream: stream,
 		}
 		if c.Thinking {
@@ -185,15 +189,22 @@ func (c *OpenAIClient) buildRequestBody(prompt string, stream bool) ([]byte, err
 		return json.Marshal(reqBody)
 	}
 
+	var messages []ChatCompletionMessage
+	if systemPrompt != "" {
+		messages = append(messages, ChatCompletionMessage{
+			Role:    "system",
+			Content: systemPrompt,
+		})
+	}
+	messages = append(messages, ChatCompletionMessage{
+		Role:    "user",
+		Content: userPrompt,
+	})
+
 	reqBody := ChatCompletionRequest{
-		Model: c.Model,
-		Messages: []ChatCompletionMessage{
-			{
-				Role:    "user",
-				Content: prompt,
-			},
-		},
-		Stream: stream,
+		Model:    c.Model,
+		Messages: messages,
+		Stream:   stream,
 	}
 
 	if stream {
@@ -379,17 +390,17 @@ func (c *OpenAIClient) SetLogger(l *logger.Logger) {
 }
 
 // Request 发送 OpenAI 协议请求（支持流式和非流式）
-func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, error) {
+func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error) {
 	// 记录请求开始日志
 	if c.logger != nil && c.logger.IsEnabled() {
-		c.logger.LogTestStart(c.Model, prompt, map[string]interface{}{
+		c.logger.LogTestStart(c.Model, userPrompt, map[string]interface{}{
 			"stream":       stream,
 			"protocol":     c.Provider,
 			"endpoint_url": c.endpointURL,
 		})
 	}
 
-	jsonData, err := c.buildRequestBody(prompt, stream)
+	jsonData, err := c.buildRequestBody(systemPrompt, userPrompt, stream)
 	if err != nil {
 		// 记录错误日志
 		if c.logger != nil && c.logger.IsEnabled() {
