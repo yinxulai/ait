@@ -99,7 +99,8 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── 任务保存完成（新建或更新） ──
 	case TaskSavedMsg:
 		m.status = fmt.Sprintf("任务 %q 已保存", msg.Task.Name)
-		if msg.AutoStart && (m.dash == nil || !m.dash.IsRunning()) {
+		notRunning := (m.dash == nil || !m.dash.IsRunning()) && (m.turboDash == nil || !m.turboDash.IsRunning())
+		if msg.AutoStart && notRunning {
 			return m, tea.Batch(
 				m.client.LoadTasksCmd(),
 				m.client.StartRunCmd(msg.Task.ID),

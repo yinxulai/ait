@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"strconv"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -139,6 +140,10 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 	if turboRate <= 0 {
 		turboRate = 0.9
 	}
+	var timeout time.Duration
+	if wz.Timeout > 0 {
+		timeout = time.Duration(wz.Timeout) * time.Second
+	}
 	return server.TaskConfig{
 		Name: wz.Name,
 		Input: types.Input{
@@ -148,6 +153,7 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 			Model:       wz.Model,
 			Concurrency: wz.Concurrency,
 			Count:       wz.Count,
+			Timeout:     timeout,
 			Stream:      wz.Stream,
 			Turbo:       wz.Turbo,
 			TurboConfig: types.TurboConfig{
@@ -405,13 +411,23 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			wz.ScrollOff = 0
 		case "end":
 			wz.ScrollOff = 1 << 30
-		case "enter", "r":
+		case "enter":
 			cfg := wz.BuildTaskConfig()
 			var cmd tea.Cmd
 			if wz.EditingID != "" {
 				cmd = client.UpdateTaskCmd(wz.EditingID, cfg)
 			} else {
-				cmd = client.CreateTaskCmd(cfg, true)
+				cmd = client.CreateTaskCmd(cfg, false) // 仅保存，不自动运行
+			}
+			nav = NavAction{To: NavTaskList}
+			return wz, cmd, nav
+		case "r":
+			cfg := wz.BuildTaskConfig()
+			var cmd tea.Cmd
+			if wz.EditingID != "" {
+				cmd = client.UpdateTaskCmd(wz.EditingID, cfg)
+			} else {
+				cmd = client.CreateTaskCmd(cfg, true) // 保存并运行
 			}
 			nav = NavAction{To: NavTaskList}
 			return wz, cmd, nav
