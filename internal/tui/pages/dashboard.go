@@ -18,6 +18,7 @@ type DashboardState struct {
 	RunState *server.RunState
 	ReqSel   int // 选中请求索引（-1 = 无选中）
 	ReqOff   int // 滚动偏移
+	ReqVis   int // 当前可见请求数
 }
 
 // NewDashboardState 创建仪表盘状态。
@@ -37,25 +38,26 @@ func (d *DashboardState) IsRunning() bool {
 	return d.RunState.Status == server.RunStatusRunning
 }
 
-// AdjustReqOffset 根据 ReqSel 调整列表可见窗口。
-func (d *DashboardState) AdjustReqOffset(visH int) {
+// AdjustReqOffset 根据屏幕显示顺序调整列表可见窗口。
+func (d *DashboardState) AdjustReqOffset(visH, total int) {
 	if d == nil {
 		return
 	}
 	if visH < 3 {
 		visH = 3
 	}
-	sel := d.ReqSel
-	off := d.ReqOff
-	if sel < 0 {
+	if total <= 0 || d.ReqSel < 0 {
+		d.ReqOff = 0
 		return
 	}
+	sel := requestDisplayPos(d.ReqSel, total)
+	off := d.ReqOff
 	if sel < off {
 		off = sel
 	} else if sel >= off+visH {
 		off = sel - visH + 1
 	}
-	d.ReqOff = off
+	d.ReqOff = clampInt(off, 0, maxInt(0, total-visH))
 }
 
 // HandleDashboardKey 处理仪表盘页按键。
@@ -75,23 +77,33 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 		if len(reqs) == 0 {
 			break
 		}
-		if d.ReqSel <= 0 {
-			d.ReqSel = len(reqs) - 1
-		} else {
-			d.ReqSel--
+		selPos := 0
+		if d.ReqSel >= 0 {
+			selPos = requestDisplayPos(d.ReqSel, len(reqs))
 		}
-		d.AdjustReqOffset(10)
+		if selPos <= 0 {
+			selPos = len(reqs) - 1
+		} else {
+			selPos--
+		}
+		d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
+		d.AdjustReqOffset(d.ReqVis, len(reqs))
 
 	case "down", "j":
 		if len(reqs) == 0 {
 			break
 		}
-		if d.ReqSel < len(reqs)-1 {
-			d.ReqSel++
-		} else {
-			d.ReqSel = 0
+		selPos := 0
+		if d.ReqSel >= 0 {
+			selPos = requestDisplayPos(d.ReqSel, len(reqs))
 		}
-		d.AdjustReqOffset(10)
+		if selPos < len(reqs)-1 {
+			selPos++
+		} else {
+			selPos = 0
+		}
+		d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
+		d.AdjustReqOffset(d.ReqVis, len(reqs))
 
 	case "enter":
 		if d.ReqSel >= 0 && d.ReqSel < len(reqs) {
@@ -170,7 +182,7 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 
 	subtitle := "─"
 	if rs != nil {
-		subtitle = fmt.Sprintf("◆ AIT   %s · %s · 并发: %d · 请求: %d",
+		subtitle = fmt.Sprintf("%s · %s · 并发: %d · 请求: %d",
 			"─", "─", 0, rs.TotalReqs)
 	}
 
@@ -185,7 +197,7 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 		TitleRight:  statusStr,
 		InfoLeft:    subtitle,
 		CtxItems:    cbItems,
-		FooterParts: []string{"[s] 停止", "[b] 后台运行", "[r] 提前报告", "[q] 退出"},
+		FooterParts: []string{"[q] 退出"},
 	}
 
 	// ── 计算高度 ──
@@ -248,7 +260,7 @@ func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) stri
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
 	} else {
 		lines = append(lines, " "+labelValue(st, "成功率  ",
-			st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate*100))))
+			st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate))))
 		lines = append(lines, " "+labelValue(st, "avg TPS ",
 			st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
 		lines = append(lines, " "+labelValue(st, "avg TTFT",
@@ -306,61 +318,88 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		return strings.Join(lines, "\n")
 	}
 
-	// 表头
-	lines = append(lines, " "+st.TableHead.Render(
-		padRight("#", 6)+padRight("状态", 6)+padRight("总耗时", 10)+
-			padRight("TTFT", 10)+padRight("Cache", 8)+padRight("输出Token", 10)+"TPS"))
-	lines = append(lines, " "+st.Divider.Render(strings.Repeat("─", width-2)))
+	// 列宽（header 与 content 行保持一致，前缀均为 2 字符）
+	const (
+		markW  = 2  // 选择标记列
+		idW    = 6  // "#1" 等
+		statW  = 5  // "✓" / "✗" 加空白
+		timeW  = 10 // 总耗时
+		ttftW  = 10 // TTFT
+		cacheW = 8  // Cache
+		tokW   = 10 // Token
+		// TPS: 余量
+	)
+	hdr := padRight("", markW) + padRight("#", idW) + padRight("状态", statW) + padRight("总耗时", timeW) +
+		padRight("TTFT", ttftW) + padRight("Cache", cacheW) + padRight("Token", tokW) + "TPS"
+	lines = append(lines, renderTableHeader(st, width, hdr))
+	lines = append(lines, dividerLine(st, width))
+	d.ReqVis = listVisibleItems(maxH, 3)
+	d.AdjustReqOffset(d.ReqVis, len(rs.Requests))
 
 	reqs := rs.Requests
-	// 倒序展示（最新在上方）
-	off := d.ReqOff
-	for i := len(reqs) - 1 - off; i >= 0; i-- {
-		if len(lines) >= maxH {
-			break
-		}
+	start := d.ReqOff
+	end := minInt(len(reqs), start+d.ReqVis)
+	for pos := start; pos < end; pos++ {
+		i := requestIndexFromDisplayPos(pos, len(reqs))
 		r := reqs[i]
 		isSel := i == d.ReqSel
 
-		statusStr := st.Ok.Render("✓")
+		statusText := "✓"
 		if !r.Success {
-			statusStr = st.ErrStyle.Render("✗")
+			statusText = "✗"
 		}
-		totalTime := fmtDuration(r.TotalTime)
+		totalText := fmtDuration(r.TotalTime)
 		if !r.Success && r.ErrorMessage != "" {
-			totalTime = st.ErrStyle.Render("timeout")
+			totalText = "timeout"
 		}
-		ttft := fmtDuration(r.TTFT)
-		cache := fmt.Sprintf("%.0f%%", r.CacheHitRate*100)
-		tok := fmt.Sprintf("%dtok", r.CompletionTokens)
-		tps := fmt.Sprintf("%.1f/s", r.TPS)
 
-		row := fmt.Sprintf(" %s %s  %s  %s  %s  %s  %s",
-			padRight(fmt.Sprintf("#%d", r.Index+1), 5),
-			statusStr,
-			padRight(totalTime, 9),
-			padRight(ttft, 9),
-			padRight(cache, 7),
-			padRight(tok, 9),
-			tps,
-		)
-
-		var rendered string
-		cursorStr := "  "
-		if isSel {
-			cursorStr = "▶ "
-		}
-		if isSel {
-			rendered = st.TableRowSel.Render(cursorStr+row) +
-				strings.Repeat(" ", max(0, width-lipgloss.Width(cursorStr+row)-2))
+		statusStr := statusText
+		if r.Success {
+			statusStr = styleWhenNotSelected(isSel, st.Ok, statusText)
 		} else {
-			rendered = "  " + st.TableRow.Render(row)
+			statusStr = styleWhenNotSelected(isSel, st.ErrStyle, statusText)
 		}
+		totalStr := totalText
+		if !r.Success && r.ErrorMessage != "" {
+			totalStr = styleWhenNotSelected(isSel, st.ErrStyle, totalText)
+		}
+
+		marker := selectionMarker(isSel)
+
+		rowContent := padRight(marker, markW) +
+			padRight(fmt.Sprintf("#%d", r.Index+1), idW) +
+			padRight(statusStr, statW) +
+			padRight(totalStr, timeW) +
+			padRight(fmtDuration(r.TTFT), ttftW) +
+			padRight(fmt.Sprintf("%.0f%%", r.CacheHitRate*100), cacheW) +
+			padRight(fmt.Sprintf("%dtok", r.CompletionTokens), tokW) +
+			fmt.Sprintf("%.1f/s", r.TPS)
+
+		rendered := renderTableRow(st, width, isSel, rowContent)
 		lines = append(lines, rendered)
+
+		// 行间分隔线
+		if pos < end-1 && len(lines) < maxH-1 {
+			lines = append(lines, dividerLine(st, width))
+		}
 	}
 
 	for len(lines) < maxH {
 		lines = append(lines, "")
 	}
 	return strings.Join(lines[:maxH], "\n")
+}
+
+func requestDisplayPos(reqIndex, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	return clampInt(total-1-reqIndex, 0, total-1)
+}
+
+func requestIndexFromDisplayPos(pos, total int) int {
+	if total <= 0 {
+		return 0
+	}
+	return clampInt(total-1-pos, 0, total-1)
 }

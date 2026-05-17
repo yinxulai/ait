@@ -9,10 +9,9 @@ const (
 	MinWidth  = 40
 	MinHeight = 10
 
-	// chrome 各组成部分的行数
-	chromeHeaderH = 2 // 双行标题栏
-	chromeFooterH = 1 // 单行底部状态栏
-	chromeCtxBarH = 2 // ContextBar (1) + 分隔线 (1)
+	// chrome 各组成部分的行数（仅保留单条合并底栏）
+	chromeHeaderH = 0 // 顶部 header 已移除
+	chromeFooterH = 1 // 单行底部状态栏（含上下文操作 + 全局导航，已合并）
 
 	// panelBorderV 是单个面板的上下边框行数之和。
 	panelBorderV = 2
@@ -20,9 +19,8 @@ const (
 
 // ── PageLayout ────────────────────────────────────────────────────────────────
 
-// PageLayout 描述一个完整页面的 chrome（顶部标题栏、底部 ContextBar + 分隔线 + Footer）。
-// 各页面 Render 函数先构造 PageLayout，再调用 Assemble 拼装最终输出，
-// 从而消除页面间重复的 header/footer/ctxbar 组装逻辑。
+// PageLayout 描述一个完整页面的 chrome（底部 ContextBar + Footer）。
+// 各页面 Render 函数先构造 PageLayout，再调用 Assemble 拼装最终输出。
 type PageLayout struct {
 	TitleLeft   string
 	TitleRight  string
@@ -32,14 +30,9 @@ type PageLayout struct {
 	FooterParts []string
 }
 
-// ChromeHeight 返回 chrome 占用的总行数
-// （header + 若有 ctxbar 则含 ctxbar+分隔线 + footer）。
+// ChromeHeight 返回 chrome 占用的总行数（当前仅包含合并底栏）。
 func (l PageLayout) ChromeHeight() int {
-	h := chromeHeaderH + chromeFooterH
-	if len(l.CtxItems) > 0 {
-		h += chromeCtxBarH
-	}
-	return h
+	return chromeHeaderH + chromeFooterH
 }
 
 // ContentHeight 返回单面板页面主内容区的可用行数
@@ -64,22 +57,21 @@ func ContentWidth(totalW int) int {
 
 // Assemble 拼装完整页面输出：
 //
-//	header
-//	content          ← 由调用方构建（单面板或多面板）
-//	[ctxbar]         ← 仅当 CtxItems 非空时输出
-//	[divider]        ← ctxbar 与 footer 之间的分隔线
-//	footer
+//	content
+//	底栏（上下文操作 · 全局导航，合并为单行）
 func (l PageLayout) Assemble(content string, st Styles, width int) string {
-	header := renderHeader(st, width, l.TitleLeft, l.TitleRight, l.InfoLeft, l.InfoRight)
-	footer := renderFooter(st, width, l.FooterParts...)
-
-	parts := []string{header, content}
-	if len(l.CtxItems) > 0 {
-		ctxBar := RenderContextBar(st, width, l.CtxItems)
-		parts = append(parts, ctxBar, dividerLine(st, width))
+	// 将上下文操作与全局导航合并为单条底栏，用 · 分隔
+	var barParts []string
+	for _, item := range l.CtxItems {
+		barParts = append(barParts, "["+item.Key+"] "+item.Desc)
 	}
-	parts = append(parts, footer)
-	return strings.Join(parts, "\n")
+	if len(l.CtxItems) > 0 && len(l.FooterParts) > 0 {
+		barParts = append(barParts, "·")
+	}
+	barParts = append(barParts, l.FooterParts...)
+	footer := renderFooter(st, width, barParts...)
+
+	return strings.Join([]string{content, footer}, "\n")
 }
 
 // ── 最小尺寸保护 ──────────────────────────────────────────────────────────────

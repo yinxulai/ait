@@ -18,6 +18,8 @@ type TurboDashState struct {
 	CancelFn server.CancelFunc
 	RunState *server.RunState
 	LevelSel int // 选中的级别索引（-1 = 无选中）
+	LevelOff int
+	LevelVis int
 }
 
 // NewTurboDashState 创建 Turbo 仪表盘初始状态。
@@ -103,6 +105,7 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
+	d.LevelOff = ensureVisibleOffset(d.LevelSel, len(levels), d.LevelOff, d.LevelVis)
 
 	return d, nil, nav
 }
@@ -144,7 +147,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 
 	subtitle := "─"
 	if rs != nil && len(rs.Levels) > 0 {
-		subtitle = fmt.Sprintf("◆ AIT   %s · 当前并发: %d   已完成 %d 级",
+		subtitle = fmt.Sprintf("%s · 当前并发: %d   已完成 %d 级",
 			"─", rs.CurrentLevel, len(rs.Levels))
 	}
 
@@ -159,7 +162,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 		TitleRight:  statusStr,
 		InfoLeft:    subtitle,
 		CtxItems:    cbItems,
-		FooterParts: []string{"[s] 停止", "[b] 后台运行", "[m] 标记极限", "[r] 提前报告", "[q] 退出"},
+		FooterParts: []string{"[q] 退出"},
 	}
 
 	// ── 计算高度 ──
@@ -228,7 +231,7 @@ func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) stri
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
 	} else {
-		lines = append(lines, " "+labelValue(st, "成功率  ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate*100))))
+		lines = append(lines, " "+labelValue(st, "成功率  ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate))))
 		lines = append(lines, " "+labelValue(st, "TPS     ", st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
 		lines = append(lines, " "+labelValue(st, "TTFT    ", st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
 		lines = append(lines, " "+labelValue(st, "Cache   ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
@@ -274,51 +277,66 @@ func buildLevelList(d *TurboDashState, rs *server.RunState, st Styles, width, ma
 		return strings.Join(lines, "\n")
 	}
 
-	// 表头
-	lines = append(lines, " "+st.TableHead.Render(
-		padRight("并发", 6)+padRight("成功率", 8)+padRight("TPS", 10)+
-			padRight("TTFT", 10)+padRight("Cache", 8)+padRight("总耗时", 9)+"结论"))
-	lines = append(lines, " "+st.Divider.Render(strings.Repeat("─", width-2)))
+	// 列宽（header 与 content 行保持一致，前缀均为 2 字符）
+	const (
+		markW  = 2  // 选择标记列
+		concW  = 6  // 并发数
+		rateW  = 8  // 成功率
+		tpsW   = 10 // TPS
+		ttftW  = 10 // TTFT
+		cacheW = 8  // Cache
+		totW   = 9  // 总耗时
+		// 结论: 余量
+	)
+	hdr := padRight("", markW) + padRight("并发", concW) + padRight("成功率", rateW) + padRight("TPS", tpsW) +
+		padRight("TTFT", ttftW) + padRight("Cache", cacheW) + padRight("总耗时", totW) + "结论"
+	lines = append(lines, renderTableHeader(st, width, hdr))
+	lines = append(lines, dividerLine(st, width))
+	d.LevelVis = listVisibleItems(maxH, 3)
+	d.LevelOff = ensureVisibleOffset(d.LevelSel, len(rs.Levels), d.LevelOff, d.LevelVis)
+	start := d.LevelOff
+	end := minInt(len(rs.Levels), start+d.LevelVis)
 
-	for i, lv := range rs.Levels {
-		if len(lines) >= maxH {
-			break
-		}
+	for i := start; i < end; i++ {
+		lv := rs.Levels[i]
 		isSel := i == d.LevelSel
 
-		conclusion := st.Ok.Render("✓ 稳定")
+		conclusionText := "✓ 稳定"
 		if !lv.Stable {
-			conclusion = st.ErrStyle.Render("✗ 降级")
+			conclusionText = "✗ 降级"
 		}
-		// 当前进行中的级别
 		isCurrent := (i == len(rs.Levels)-1) && rs.Status == server.RunStatusRunning
 		if isCurrent {
-			conclusion = st.MetricVal.Render("🔄 进行中")
+			conclusionText = "🔄 进行中"
 		}
 
-		row := fmt.Sprintf(" %s%s%s%s%s%s%s",
-			padRight(fmt.Sprintf("%d", lv.Concurrency), 6),
-			padRight(fmt.Sprintf("%.1f%%", lv.SuccessRate*100), 8),
-			padRight(fmt.Sprintf("%.1f", lv.AvgTPS), 10),
-			padRight(fmtDuration(lv.AvgTTFT), 10),
-			padRight(fmt.Sprintf("%.1f%%", lv.CacheHitRate*100), 8),
-			padRight(fmtDuration(lv.AvgTotalTime), 9),
-			conclusion,
-		)
-
-		cursorStr := "  "
-		if isSel {
-			cursorStr = "▶ "
-		}
-
-		var rendered string
-		if isSel {
-			rendered = st.TableRowSel.Render(cursorStr+row) +
-				strings.Repeat(" ", max(0, width-len([]rune(cursorStr+row))-2))
+		conclusion := conclusionText
+		if isCurrent {
+			conclusion = styleWhenNotSelected(isSel, st.MetricVal, conclusionText)
+		} else if lv.Stable {
+			conclusion = styleWhenNotSelected(isSel, st.Ok, conclusionText)
 		} else {
-			rendered = "  " + st.TableRow.Render(row)
+			conclusion = styleWhenNotSelected(isSel, st.ErrStyle, conclusionText)
 		}
+
+		marker := selectionMarker(isSel)
+
+		rowContent := padRight(marker, markW) +
+			padRight(fmt.Sprintf("%d", lv.Concurrency), concW) +
+			padRight(fmt.Sprintf("%.1f%%", lv.SuccessRate*100), rateW) +
+			padRight(fmt.Sprintf("%.1f", lv.AvgTPS), tpsW) +
+			padRight(fmtDuration(lv.AvgTTFT), ttftW) +
+			padRight(fmt.Sprintf("%.1f%%", lv.CacheHitRate*100), cacheW) +
+			padRight(fmtDuration(lv.AvgTotalTime), totW) +
+			conclusion
+
+		rendered := renderTableRow(st, width, isSel, rowContent)
 		lines = append(lines, rendered)
+
+		// 行间分隔线
+		if i < end-1 && len(lines) < maxH-1 {
+			lines = append(lines, dividerLine(st, width))
+		}
 	}
 
 	for len(lines) < maxH {

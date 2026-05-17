@@ -4,7 +4,6 @@ import (
 	"fmt"
 	"strings"
 	"time"
-	"unicode/utf8"
 
 	"github.com/charmbracelet/lipgloss"
 )
@@ -24,10 +23,7 @@ func truncate(s string, maxW int) string {
 	runes := []rune(s)
 	total := 0
 	for i, r := range runes {
-		rw := utf8.RuneLen(r)
-		if rw < 1 {
-			rw = 1
-		}
+		rw := lipgloss.Width(string(r))
 		if total+rw > maxW-1 {
 			return string(runes[:i]) + "…"
 		}
@@ -113,25 +109,60 @@ func fmtDuration(d time.Duration) string {
 // ─── 布局工具 ─────────────────────────────────────────────────────────────────
 
 // renderHeader 渲染顶部双行标题栏。
-// 第一行：titleLeft（左）/ titleRight（右），紫色背景加粗
+// 第一行：◆ brand（粉色）│ 页面标题（青色），深色背景
 // 第二行：infoLeft（左）/ infoRight（右），较暗色背景
 func renderHeader(st Styles, width int, titleLeft, titleRight, infoLeft, infoRight string) string {
 	w := width
 	if w < 1 {
 		w = 80
 	}
-	// 第一行
-	tl := " " + titleLeft
-	tr := titleRight + " "
-	tlW := lipgloss.Width(tl)
-	trW := lipgloss.Width(tr)
-	pad1 := w - tlW - trW
+
+	// Line 1: avoid nested Render() fragments to prevent ANSI reset from breaking background.
+	brand := titleLeft
+	pageTitle := ""
+	if idx := strings.Index(titleLeft, "  "); idx >= 0 {
+		brand = titleLeft[:idx]
+		pageTitle = strings.TrimSpace(titleLeft[idx:])
+	}
+
+	brandSeg := lipgloss.NewStyle().
+		Background(colorHeaderBg).
+		Foreground(colorPink).
+		Bold(true).
+		Render(" ◆ " + brand)
+	sepSeg := lipgloss.NewStyle().
+		Background(colorHeaderBg).
+		Foreground(colorDivider).
+		Render("  │  ")
+	titleSeg := lipgloss.NewStyle().
+		Background(colorHeaderBg).
+		Foreground(colorCyan).
+		Bold(true).
+		Render(pageTitle)
+
+	left1 := brandSeg
+	if pageTitle != "" {
+		left1 += sepSeg + titleSeg
+	}
+	right1 := ""
+	if titleRight != "" {
+		right1 = lipgloss.NewStyle().
+			Background(colorHeaderBg).
+			Foreground(colorMuted).
+			Render(titleRight + " ")
+	}
+	left1W := lipgloss.Width(left1)
+	right1W := lipgloss.Width(right1)
+	pad1 := w - left1W - right1W
 	if pad1 < 0 {
 		pad1 = 0
 	}
-	line1 := tl + strings.Repeat(" ", pad1) + tr
+	padSeg := lipgloss.NewStyle().
+		Background(colorHeaderBg).
+		Render(strings.Repeat(" ", pad1))
+	line1 := left1 + padSeg + right1
 
-	// 第二行
+	// ─ Line 2: info bar ─
 	il := "  " + infoLeft
 	ir := infoRight + " "
 	ilW := lipgloss.Width(il)
@@ -140,10 +171,9 @@ func renderHeader(st Styles, width int, titleLeft, titleRight, infoLeft, infoRig
 	if pad2 < 0 {
 		pad2 = 0
 	}
-	line2 := il + strings.Repeat(" ", pad2) + ir
+	line2 := st.HeaderInfo.Width(w).Render(il + strings.Repeat(" ", pad2) + ir)
 
-	return st.Header.Width(w).Render(line1) + "\n" +
-		st.HeaderInfo.Width(w).Render(line2)
+	return line1 + "\n" + line2
 }
 
 // renderFooter 渲染底部状态栏（单行，深色背景）。
@@ -160,6 +190,175 @@ func renderFooter(st Styles, width int, parts ...string) string {
 	}
 	line := "  " + strings.Join(visible, "   ")
 	return st.Footer.Width(w).Render(line)
+}
+
+// renderTableHeader 统一渲染列表表头。
+func renderTableHeader(st Styles, width int, row string) string {
+	return st.TableHead.Width(width).Render(row)
+}
+
+// renderTableRow 统一渲染列表行（选中/未选中）。
+func renderTableRow(st Styles, width int, isSel bool, row string) string {
+	if isSel {
+		return st.TableRowSel.Width(width).Render(row)
+	}
+	return st.TableRow.Width(width).Render(row)
+}
+
+// minInt 返回两个整数中的较小值。
+func minInt(a, b int) int {
+	if a < b {
+		return a
+	}
+	return b
+}
+
+// maxInt 返回两个整数中的较大值。
+func maxInt(a, b int) int {
+	if a > b {
+		return a
+	}
+	return b
+}
+
+// clampInt 将 v 约束在 [low, high] 区间内。
+func clampInt(v, low, high int) int {
+	if v < low {
+		return low
+	}
+	if v > high {
+		return high
+	}
+	return v
+}
+
+// listVisibleItems 计算在给定高度下可自然滚动的列表项数量。
+// staticLines 是列表项区域前的固定行数（如 section/header/divider）。
+func listVisibleItems(maxLines, staticLines int) int {
+	visible := (maxLines - staticLines + 1) / 2
+	if visible < 1 {
+		return 1
+	}
+	return visible
+}
+
+// ensureVisibleOffset 让 selected 始终位于 offset/visible 定义的可视窗口内。
+func ensureVisibleOffset(selected, count, offset, visible int) int {
+	if count <= 0 {
+		return 0
+	}
+	if visible < 1 {
+		visible = 1
+	}
+	selected = clampInt(selected, 0, count-1)
+	maxOffset := maxInt(0, count-visible)
+	offset = clampInt(offset, 0, maxOffset)
+	if selected < offset {
+		offset = selected
+	}
+	if selected >= offset+visible {
+		offset = selected - visible + 1
+	}
+	return clampInt(offset, 0, maxOffset)
+}
+
+// selectionMarker 返回统一的选中标记列内容。
+func selectionMarker(isSel bool) string {
+	if isSel {
+		return "▶"
+	}
+	return ""
+}
+
+// styleWhenNotSelected 仅在未选中时应用局部样式，避免重置选中行背景。
+func styleWhenNotSelected(isSel bool, style lipgloss.Style, text string) string {
+	if isSel {
+		return text
+	}
+	return style.Render(text)
+}
+
+// renderWelcomeHero 渲染任务中心顶部的品牌欢迎区。
+func renderWelcomeHero(st Styles, width int) []string {
+	if width < 42 {
+		return nil
+	}
+
+	art := []string{
+		"    _    ___ _____",
+		"   / \\  |_ _|_   _|",
+		"  / _ \\  | |  | |  ",
+		" / ___ \\ | |  | |  ",
+		"/_/   \\_\\___| |_|  ",
+	}
+	artStyles := []lipgloss.Style{
+		lipgloss.NewStyle().Foreground(colorPink).Bold(true),
+		lipgloss.NewStyle().Foreground(colorCyan).Bold(true),
+		lipgloss.NewStyle().Foreground(colorGold).Bold(true),
+		lipgloss.NewStyle().Foreground(colorTeal).Bold(true),
+		lipgloss.NewStyle().Foreground(colorPurple).Bold(true),
+	}
+
+	type heroTextLine struct {
+		style lipgloss.Style
+		text  string
+	}
+	intro := []heroTextLine{
+		{style: st.SectionHead, text: "AI 模型性能测试工作台"},
+		{style: st.Value, text: "批量压测 OpenAI / Anthropic 协议模型，聚焦 TTFT、TPS、缓存与网络指标。"},
+		{style: st.Muted, text: "从任务中心出发：创建任务、直接运行、查看执行记录、导出报告。"},
+		{style: st.Muted, text: "[a] 新建任务   [Enter] 查看详情/进入仪表盘   [r] 立即运行"},
+	}
+
+	artW := 0
+	for _, line := range art {
+		artW = maxInt(artW, lipgloss.Width(line))
+	}
+
+	if width >= 76 {
+		gap := 3
+		rightW := maxInt(18, width-artW-gap)
+		wrapped := make([]string, 0, 8)
+		for i, line := range intro {
+			segments := wrapText(line.text, rightW)
+			if len(segments) == 0 {
+				segments = []string{""}
+			}
+			for _, segment := range segments {
+				wrapped = append(wrapped, line.style.Render(segment))
+			}
+			if i == 0 {
+				wrapped = append(wrapped, "")
+			}
+		}
+
+		total := maxInt(len(art), len(wrapped))
+		lines := make([]string, 0, total)
+		for i := 0; i < total; i++ {
+			left := strings.Repeat(" ", artW)
+			if i < len(art) {
+				left = artStyles[i].Render(art[i])
+			}
+			right := ""
+			if i < len(wrapped) {
+				right = wrapped[i]
+			}
+			lines = append(lines, padRight(left, artW)+strings.Repeat(" ", gap)+right)
+		}
+		return lines
+	}
+
+	lines := make([]string, 0, len(art)+len(intro)+1)
+	for i, line := range art {
+		lines = append(lines, artStyles[i].Render(line))
+	}
+	lines = append(lines, "")
+	for _, line := range intro {
+		for _, segment := range wrapText(line.text, width) {
+			lines = append(lines, line.style.Render(segment))
+		}
+	}
+	return lines
 }
 
 // wrapIndex 循环索引（保证 0 ≤ result < count）。

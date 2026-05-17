@@ -4,7 +4,7 @@ import "github.com/charmbracelet/lipgloss"
 
 // Color palette
 const (
-	colorHeaderBg  = lipgloss.Color("57")  // electric indigo — header background
+	colorHeaderBg  = lipgloss.Color("17")  // dark navy — refined header background
 	colorFooterBg  = lipgloss.Color("235") // near-black footer background
 	colorCtxBarBg  = lipgloss.Color("237") // slightly lighter than footer — context bar
 	colorPink      = lipgloss.Color("205") // vivid hot pink/magenta — brand primary
@@ -18,13 +18,12 @@ const (
 	colorWhite     = lipgloss.Color("255") // bright white
 	colorMuted     = lipgloss.Color("245") // muted gray
 	colorGold      = lipgloss.Color("214") // amber
-	colorHeaderFg  = lipgloss.Color("212") // light pink — header right text
-	colorDivider   = lipgloss.Color("238") // dim border gray
+	colorHeaderFg  = lipgloss.Color("248") // light gray — header info text
+	colorDivider   = lipgloss.Color("241") // dim border gray — slightly more visible
 )
 
 // Styles 汇聚所有 TUI 样式，由 NewStyles() 初始化。
 type Styles struct {
-	AppBorder   lipgloss.Style
 	Panel       lipgloss.Style
 	Header      lipgloss.Style
 	HeaderInfo  lipgloss.Style
@@ -41,7 +40,6 @@ type Styles struct {
 	ErrStyle    lipgloss.Style
 	Key         lipgloss.Style
 	MetricVal   lipgloss.Style
-	Dialog      lipgloss.Style
 	FieldActive lipgloss.Style
 	FieldIdle   lipgloss.Style
 	Cursor      lipgloss.Style
@@ -71,14 +69,18 @@ func NewStyles() Styles {
 			Foreground(colorPink).
 			Bold(true),
 		TableHead: lipgloss.NewStyle().
+			Background(lipgloss.Color("234")).
 			Foreground(colorCyan).
-			Bold(true),
+			Bold(true).
+			Padding(0, 0),
 		TableRow: lipgloss.NewStyle().
-			Foreground(colorWhite),
+			Foreground(colorWhite).
+			Padding(0, 0),
 		TableRowSel: lipgloss.NewStyle().
 			Background(colorPurpleDim).
 			Foreground(colorWhite).
-			Bold(true),
+			Bold(true).
+			Padding(0, 0),
 		Label: lipgloss.NewStyle().
 			Foreground(colorTeal).
 			Bold(true),
@@ -97,29 +99,28 @@ func NewStyles() Styles {
 		MetricVal: lipgloss.NewStyle().
 			Foreground(colorYellow).
 			Bold(true),
-		Dialog: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPurple).
-			Padding(0, 1),
 		FieldActive: lipgloss.NewStyle().
-			Background(lipgloss.Color("55")).
+			Background(lipgloss.Color("236")).
 			Foreground(colorWhite).
+			Border(lipgloss.NormalBorder()).
+			BorderForeground(colorPink).
+			Bold(true).
 			Padding(0, 1),
 		FieldIdle: lipgloss.NewStyle().
+			Background(lipgloss.Color("234")).
+			Foreground(colorWhite).
 			Border(lipgloss.NormalBorder()).
-			BorderForeground(colorDivider).
+			BorderForeground(lipgloss.Color("238")).
 			Padding(0, 1),
 		Cursor: lipgloss.NewStyle().
 			Foreground(colorPink).
 			Bold(true),
 		TagTurbo: lipgloss.NewStyle().
-			Background(colorGold).
-			Foreground(colorDivider).
+			Foreground(colorGold).
 			Bold(true).
 			Padding(0, 1),
 		TagStd: lipgloss.NewStyle().
-			Background(colorPurple).
-			Foreground(colorWhite).
+			Foreground(colorPurple).
 			Padding(0, 1),
 		BtnPrimary: lipgloss.NewStyle().
 			Background(colorPink).
@@ -128,9 +129,6 @@ func NewStyles() Styles {
 			Padding(0, 2),
 		Divider: lipgloss.NewStyle().
 			Foreground(colorDivider),
-		AppBorder: lipgloss.NewStyle().
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(colorPurple),
 		Panel: lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(colorDivider),

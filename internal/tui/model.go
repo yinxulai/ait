@@ -29,14 +29,13 @@ const (
 // Model 是 BubbleTea 的根状态机。
 // 所有 Server 交互均通过 Client 发出 tea.Cmd；Model 不直接 import runner/task/turbo 等下层包。
 type Model struct {
-	client    *Client
-	styles    pages.Styles
-	width     int
-	height    int
-	view      viewState
-	prevView  viewState // 向导叠加时记录背景视图
-	status    string
-	err       error
+	client *Client
+	styles pages.Styles
+	width  int
+	height int
+	view   viewState
+	status string
+	err    error
 
 	// 页面局部状态（由 pages 包管理）
 	taskList  *pages.TaskListState
@@ -175,8 +174,8 @@ func (m *Model) View() string {
 	if m.width < 4 || m.height < 4 {
 		return "..."
 	}
-	innerW := m.width - 2
-	innerH := m.height - 2
+	innerW := m.width
+	innerH := m.height
 
 	var content string
 	switch m.view {
@@ -185,8 +184,7 @@ func (m *Model) View() string {
 	case viewTaskDetail:
 		content = pages.RenderTaskDetail(m.detail, m.styles, innerW, innerH)
 	case viewWizard:
-		bg := m.renderBgForWizard()
-		content = pages.RenderWizard(m.wizard, bg, m.styles, innerW, innerH)
+		content = pages.RenderWizard(m.wizard, m.styles, innerW, innerH)
 	case viewDashboard:
 		content = pages.RenderDashboard(m.dash, m.dashTaskName(), m.styles, innerW, innerH)
 	case viewTurboDash:
@@ -197,7 +195,7 @@ func (m *Model) View() string {
 		content = "未知视图"
 	}
 
-	return m.styles.AppBorder.Width(innerW).Height(innerH).Render(content)
+	return content
 }
 
 // ─── 键盘分发 ─────────────────────────────────────────────────────────────────
@@ -273,7 +271,6 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 		} else {
 			m.wizard = pages.NewWizardState()
 		}
-		m.prevView = m.view
 		m.view = viewWizard
 		return nil
 
@@ -419,15 +416,6 @@ func (m *Model) injectRunState(rs *server.RunState) {
 	} else {
 		delete(m.taskList.ActiveRuns, rs.TaskID)
 	}
-}
-
-func (m *Model) renderBgForWizard() string {
-	innerW := m.width - 2
-	innerH := m.height - 2
-	if m.prevView == viewTaskDetail {
-		return pages.RenderTaskDetail(m.detail, m.styles, innerW, innerH)
-	}
-	return pages.RenderTaskList(m.taskList, m.styles, innerW, innerH)
 }
 
 func (m *Model) dashTaskName() string {

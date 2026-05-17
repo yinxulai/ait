@@ -121,10 +121,10 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 	l := PageLayout{
 		TitleLeft:  fmt.Sprintf("AIT  请求详情 - %s  #%d", truncate(taskName, 20), idx+1),
 		TitleRight: statusStr,
-		InfoLeft: fmt.Sprintf("◆ AIT   任务: %s  请求 %d / %d",
+		InfoLeft: fmt.Sprintf("任务: %s  请求 %d / %d",
 			truncate(taskName, 20), idx+1, len(s.Requests)),
 		CtxItems:    CtxBar_ReqDetail(),
-		FooterParts: []string{"[b/Esc] 返回仪表盘", "[↑↓] 滚动", "[←→] 上/下一条请求"},
+		FooterParts: []string{"[q] 退出"},
 	}
 
 	// ── 计算高度 ──

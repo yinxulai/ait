@@ -1,35 +1,12 @@
 package pages
 
-import (
-	"strings"
-
-	"github.com/charmbracelet/lipgloss"
-)
-
-// ContextBarItem 是 Context Bar 中的一个可操作项。
+// ContextBarItem 是底栏中的一个可操作项。
 type ContextBarItem struct {
 	Key  string // 如 "Enter"、"r"、"↑↓"
 	Desc string // 操作描述
 }
 
-// RenderContextBar 渲染 Context Bar。
-// 若 items 为空则返回空字符串（不占空间）。
-func RenderContextBar(st Styles, width int, items []ContextBarItem) string {
-	if len(items) == 0 {
-		return ""
-	}
-	var parts []string
-	for _, item := range items {
-		parts = append(parts, "["+item.Key+"] "+item.Desc)
-	}
-	line := "  " + strings.Join(parts, "  ")
-	if lipgloss.Width(line) > width {
-		line = truncate(line, width)
-	}
-	return st.CtxBar.Width(width).Render(line)
-}
-
-// ─── 各页面 Context Bar 内容定义 ─────────────────────────────────────────────
+// ─── 各页面底栏操作定义 ───────────────────────────────────────────────────────
 
 // CtxBar_TaskList_Normal 普通任务选中时的 Context Bar。
 func CtxBar_TaskList_Normal() []ContextBarItem {
@@ -64,10 +41,43 @@ func CtxBar_TaskDetail_NoHistory() []ContextBarItem {
 // CtxBar_TaskDetail_HasHistory 任务详情页，有运行记录时。
 func CtxBar_TaskDetail_HasHistory() []ContextBarItem {
 	return []ContextBarItem{
-		{Key: "r", Desc: "生成报告"},
-		{Key: "c", Desc: "复制摘要"},
-		{Key: "Enter/r", Desc: "再次运行"},
+		{Key: "↑↓", Desc: "选择记录"},
+		{Key: "r", Desc: "导出 JSON 报告"},
+		{Key: "Enter", Desc: "再次运行"},
 		{Key: "e", Desc: "编辑"},
+		{Key: "y", Desc: "复制任务"},
+		{Key: "d", Desc: "删除"},
+	}
+}
+
+// CtxBar_Wizard_Step1 创建任务页，第 1 步。
+func CtxBar_Wizard_Step1() []ContextBarItem {
+	return []ContextBarItem{
+		{Key: "Tab/↑↓", Desc: "切换字段"},
+		{Key: "←→", Desc: "切换协议"},
+		{Key: "Enter", Desc: "下一步"},
+		{Key: "Esc", Desc: "返回列表"},
+	}
+}
+
+// CtxBar_Wizard_Step2 创建任务页，第 2 步。
+func CtxBar_Wizard_Step2() []ContextBarItem {
+	return []ContextBarItem{
+		{Key: "Tab/↑↓", Desc: "切换字段"},
+		{Key: "←→", Desc: "切换选项"},
+		{Key: "Enter", Desc: "下一步"},
+		{Key: "Esc", Desc: "返回上一步"},
+	}
+}
+
+// CtxBar_Wizard_Step3 创建任务页，第 3 步。
+func CtxBar_Wizard_Step3() []ContextBarItem {
+	return []ContextBarItem{
+		{Key: "↑↓", Desc: "滚动"},
+		{Key: "PgUp/PgDn", Desc: "翻页"},
+		{Key: "Enter", Desc: "保存"},
+		{Key: "r", Desc: "保存并运行"},
+		{Key: "Esc", Desc: "返回修改"},
 	}
 }
 
@@ -95,6 +105,7 @@ func CtxBar_TurboDash_NoSel() []ContextBarItem {
 		{Key: "s", Desc: "停止"},
 		{Key: "b", Desc: "后台运行"},
 		{Key: "m", Desc: "标记极限"},
+		{Key: "r", Desc: "提前报告"},
 	}
 }
 
@@ -111,6 +122,7 @@ func CtxBar_TurboDash_Sel() []ContextBarItem {
 func CtxBar_ReqDetail() []ContextBarItem {
 	return []ContextBarItem{
 		{Key: "b/Esc", Desc: "返回仪表盘"},
+		{Key: "↑↓", Desc: "滚动"},
 		{Key: "←→", Desc: "上/下一条请求"},
 	}
 }

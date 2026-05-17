@@ -15,6 +15,8 @@ import (
 type TaskListState struct {
 	Tasks    []types.TaskDefinition
 	Selected int
+	Offset   int
+	Visible  int
 	// 运行中任务的进度（runID -> RunState 快照，由 Model 注入）
 	ActiveRuns map[string]*server.RunState // taskID -> RunState
 }
@@ -114,6 +116,8 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 		nav = NavAction{To: NavQuit}
 	}
 
+	s.Offset = ensureVisibleOffset(s.Selected, len(s.Tasks), s.Offset, s.Visible)
+
 	return s, nil, nav
 }
 
@@ -153,9 +157,9 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 	}
 	l := PageLayout{
 		TitleLeft:   "AIT  任务中心",
-		InfoLeft:    fmt.Sprintf("◆ AIT   已保存任务: %d   %s", len(s.Tasks), lastRunStr),
+		InfoLeft:    fmt.Sprintf("已保存任务: %d   %s", len(s.Tasks), lastRunStr),
 		CtxItems:    cbItems,
-		FooterParts: []string{"[↑↓] 选择", "[a] 新建", "[y] 复制", "[q] 退出", "◆ AIT  v0.1"},
+		FooterParts: []string{"[↑↓] 选择", "[a] 新建", "[q] 退出", "◆ AIT  v0.1"},
 	}
 
 	content := buildTaskListContent(s, st, ContentWidth(width), l.ContentHeight(height))
@@ -164,31 +168,31 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 
 // buildTaskListContent 构建任务列表内容区（含表头 + 任务条目）。
 func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
-	innerW := width - 2
-	if innerW < 20 {
-		innerW = 20
-	}
-
 	var lines []string
+	showHero := width >= 60 && maxH >= 14
+	if showHero {
+		heroLines := renderWelcomeHero(st, width)
+		lines = append(lines, heroLines...)
+		lines = append(lines, dividerLine(st, width))
+	}
+	listTopLines := len(lines)
 
-	// 表头行
+	// 列宽（合计 = nameW + modeW + protoW + 结果列）
 	nameW := 28
 	modeW := 8
 	protoW := 14
-	resultW := innerW - nameW - modeW - protoW - 4
-	if resultW < 10 {
-		resultW = 10
-	}
 
-	header := st.TableHead.Render(
-		" " + padRight("任务名称", nameW) +
+	// 表头：2 空格前缀与正文行对齐（cursor=2）
+	header := renderTableHeader(st, width,
+		"  " + padRight("任务名称", nameW) +
 			padRight("模式", modeW) +
 			padRight("协议", protoW) +
-			"上次结果",
-	)
+			"上次结果")
 	lines = append(lines, header)
-	lines = append(lines, " "+st.Divider.Render(strings.Repeat("─", innerW-1)))
-	lines = append(lines, "") // 表头与第一条目之间的呼吸间距
+	lines = append(lines, dividerLine(st, width))
+	listMaxH := maxInt(3, maxH-listTopLines)
+	s.Visible = listVisibleItems(listMaxH, 2)
+	s.Offset = ensureVisibleOffset(s.Selected, len(s.Tasks), s.Offset, s.Visible)
 
 	if len(s.Tasks) == 0 {
 		lines = append(lines, "")
@@ -196,60 +200,70 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		return strings.Join(lines, "\n")
 	}
 
-	for i, t := range s.Tasks {
-		if len(lines) >= maxH {
-			break
-		}
+	start := s.Offset
+	end := minInt(len(s.Tasks), start+s.Visible)
+	for i := start; i < end; i++ {
+		t := s.Tasks[i]
 
 		isRunning := s.IsTaskRunning(t.ID)
 		isSel := i == s.Selected
 		rs := s.ActiveRuns[t.ID]
 
-		// ── 指示符和运行中标记 ──
-		cursor := "  "
-		if isSel {
-			cursor = "▶ "
-		}
-		runMark := "  "
-		if isRunning {
-			runMark = st.Ok.Render("◉") + " "
-		}
-		prefix := cursor + runMark
+		// ── 指示符 ──
+		prefix := padRight(selectionMarker(isSel), 2)
 
-		// ── 模式标签 ──
-		var modeTag string
+		// ── 模式（选中行禁用嵌套样式，避免重置整行背景）──
+		modeText := "标准"
+		modeCol := padRight(modeText, modeW)
 		if t.Input.Turbo {
-			modeTag = st.TagTurbo.Render("Turbo")
+			modeText = "Turbo"
+			modeCol = padRight(styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorGold).Bold(true), modeText), modeW)
 		} else {
-			modeTag = st.TagStd.Render("标准 ")
+			modeCol = padRight(styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorPurple), modeText), modeW)
 		}
-		modeTagW := lipgloss.Width(modeTag)
-		modePad := modeW - modeTagW
-		if modePad < 0 {
-			modePad = 0
-		}
-		modeCol := modeTag + strings.Repeat(" ", modePad)
 
 		// ── 协议 ──
 		proto := padRight(shortProtocol(t.Input.NormalizedProtocol()), protoW)
 
-		// ── 上次结果 ──
-		lastResult := st.Muted.Render("从未运行")
+		// ── 上次结果（选中行禁用嵌套样式，避免重置整行背景）──
+		lastResultText := "从未运行"
 		if t.LastRunSummary != nil {
 			pct := t.LastRunSummary.SuccessRate
 			if t.Input.Turbo {
 				if t.LastRunSummary.MaxStableConcurrency > 0 {
-					lastResult = st.Ok.Render(fmt.Sprintf("★ 并发%d", t.LastRunSummary.MaxStableConcurrency))
+					lastResultText = fmt.Sprintf("★ 并发%d", t.LastRunSummary.MaxStableConcurrency)
 				}
 			} else {
 				switch {
 				case pct >= 99:
-					lastResult = st.Ok.Render(fmt.Sprintf("✓ %.1f%%", pct))
+					lastResultText = fmt.Sprintf("✓ %.1f%%", pct)
 				case pct >= 90:
-					lastResult = st.MetricVal.Render(fmt.Sprintf("%.1f%%", pct))
+					lastResultText = fmt.Sprintf("%.1f%%", pct)
 				default:
-					lastResult = st.ErrStyle.Render(fmt.Sprintf("✗ %.1f%%", pct))
+					lastResultText = fmt.Sprintf("✗ %.1f%%", pct)
 				}
+			}
+		}
+		if isRunning && rs != nil {
+			lastResultText = fmt.Sprintf("◉ %d/%d  %.0f%%", rs.DoneReqs, rs.TotalReqs, rs.SuccessRate)
+		}
+
+		lastResult := lastResultText
+		if isRunning && rs != nil {
+			lastResult = styleWhenNotSelected(isSel, st.Ok, lastResultText)
+		} else if t.LastRunSummary == nil {
+			lastResult = styleWhenNotSelected(isSel, st.Muted, lastResultText)
+		} else if t.Input.Turbo && t.LastRunSummary.MaxStableConcurrency > 0 {
+			lastResult = styleWhenNotSelected(isSel, st.Ok, lastResultText)
+		} else if !t.Input.Turbo {
+			pct := t.LastRunSummary.SuccessRate
+			switch {
+			case pct >= 99:
+				lastResult = styleWhenNotSelected(isSel, st.Ok, lastResultText)
+			case pct >= 90:
+				lastResult = styleWhenNotSelected(isSel, st.MetricVal, lastResultText)
+			default:
+				lastResult = styleWhenNotSelected(isSel, st.ErrStyle, lastResultText)
 			}
 		}
 
@@ -262,48 +276,13 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		nameCol := name + strings.Repeat(" ", namePad)
 
 		// ── 第一行 ──
-		prefixW := lipgloss.Width(prefix)
 		row1Content := nameCol + modeCol + proto + lastResult
-		var row1 string
-		if isSel {
-			row1 = st.TableRowSel.Render(prefix+row1Content) + strings.Repeat(" ", max(0, width-prefixW-lipgloss.Width(row1Content)-2))
-		} else {
-			row1 = "  " + runMark + row1Content
-		}
+		row1 := renderTableRow(st, width, isSel, prefix+row1Content)
 		lines = append(lines, row1)
 
-		// ── 第二行（模型 + 参数 + 实时进度）──
-		if len(lines) < maxH {
-			indent := "     " // 5 空格缩进（对齐任务名）
-			var params string
-			if t.Input.Turbo {
-				tc := t.Input.TurboConfig
-				params = fmt.Sprintf("%s  %d→%d  步进+%d",
-					truncate(t.Input.Model, 12),
-					tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize)
-				if t.LastRunSummary != nil {
-					params += fmt.Sprintf("  上次: 峰值 TPS %.1f", t.LastRunSummary.AvgTPS)
-				}
-			} else {
-				params = fmt.Sprintf("%s  并发%d  请求%d",
-					truncate(t.Input.Model, 12),
-					t.Input.Concurrency, t.Input.Count)
-			}
-
-			// 实时进度
-			if isRunning && rs != nil {
-				prog := fmt.Sprintf("  %s %d/%d  成功率 %.1f%%",
-					st.Ok.Render("◉"), rs.DoneReqs, rs.TotalReqs, rs.SuccessRate*100)
-				params += prog
-			}
-
-			row2 := indent + st.Muted.Render(truncate(params, width-7))
-			lines = append(lines, row2)
-		}
-
-		// ── 空行分隔 ──
-		if i < len(s.Tasks)-1 && len(lines) < maxH-1 {
-			lines = append(lines, "")
+		// ── 分隔线 ──
+		if i < end-1 && len(lines) < maxH-1 {
+			lines = append(lines, dividerLine(st, width))
 		}
 	}
 

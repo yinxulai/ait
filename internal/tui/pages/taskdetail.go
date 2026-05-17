@@ -4,7 +4,9 @@ import (
 	"fmt"
 	"strings"
 
+	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
 
@@ -12,6 +14,10 @@ import (
 type TaskDetailState struct {
 	Task    types.TaskDefinition
 	History []types.TaskRunSummary
+	// HistorySel 当前选中的历史记录索引（0 = 最近一次）
+	HistorySel int
+	HistoryOff int
+	HistoryVis int
 	// LatestExpanded 控制最近一次运行是否展开（运行结束后自动置 true）
 	LatestExpanded bool
 }
@@ -25,10 +31,29 @@ func NewTaskDetailState(task types.TaskDefinition) *TaskDetailState {
 func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*TaskDetailState, tea.Cmd, NavAction) {
 	nav := NavAction{}
 	switch msg.String() {
+	case "up", "k":
+		if s.HistorySel > 0 {
+			s.HistorySel--
+		}
+
+	case "down", "j":
+		if s.HistorySel < len(s.History)-1 {
+			s.HistorySel++
+		}
+
 	case "left", "esc", "b":
 		nav = NavAction{To: NavTaskList}
 
-	case "enter", "r":
+	case "enter":
+		return s, client.StartRunCmd(s.Task.ID), nav
+
+	case "r":
+		if s.HistorySel >= 0 && s.HistorySel < len(s.History) {
+			runID := strings.TrimSpace(s.History[s.HistorySel].RunID)
+			if runID != "" {
+				return s, client.GenerateReportCmd(server.RunID(runID), server.ReportFormatJSON), nav
+			}
+		}
 		return s, client.StartRunCmd(s.Task.ID), nav
 
 	case "e":
@@ -44,6 +69,7 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
+	s.HistoryOff = ensureVisibleOffset(s.HistorySel, len(s.History), s.HistoryOff, s.HistoryVis)
 	return s, nil, nav
 }
 
@@ -85,160 +111,146 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	}
 	l := PageLayout{
 		TitleLeft: "AIT  任务详情 ─ " + truncate(t.Name, 30),
-		InfoLeft: fmt.Sprintf("◆ AIT   任务 ID: %s   更新: %s   %s",
+		InfoLeft: fmt.Sprintf("任务 ID: %s   更新: %s   %s",
 			truncate(t.ID, 10), t.UpdatedAt.Format("2006-01-02 15:04"), updatedStr),
 		CtxItems:    cbItems,
-		FooterParts: []string{"[b/Esc] 返回列表", "[r] 运行", "[e] 编辑", "◆ AIT  v0.1"},
+		FooterParts: []string{"[b/Esc] 返回列表", "◆ AIT  v0.1"},
 	}
 
 	content := buildTaskDetailContent(s, st, t, inp, ContentWidth(width), l.ContentHeight(height))
 	return l.Assemble(wrapPanel(st, content, width), st, width)
 }
 
-// buildTaskDetailContent 构建任务详情内容区。
+// buildTaskDetailContent 构建任务详情内容区（左右双栏布局）。
+// 左栏（40%）：配置摘要  右栏（60%）：历史运行记录
 func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinition, inp types.Input, width, maxH int) string {
-	innerW := width - 2
-	if innerW < 10 {
-		innerW = 10
+	leftW := width * 4 / 10
+	if leftW < 26 {
+		leftW = 26
 	}
+	rightW := width - leftW - 1 // 1 列用于 │ 分隔符
 
-	var lines []string
+	// ─── 左栏：配置摘要 ─────────────────────────────────────────
+	var leftLines []string
+	leftLines = append(leftLines, padRight(" "+st.SectionHead.Render("配置摘要"), leftW))
+	leftLines = append(leftLines, padRight(st.Divider.Render(strings.Repeat("─", leftW)), leftW))
+	leftLines = append(leftLines, padRight("", leftW))
 
-	// ─── 配置摘要 ─────────────────────────────────────────────
-	lines = append(lines, "  "+st.SectionHead.Render("配置摘要"))
-	lines = append(lines, "  "+dividerLine(st, innerW-2))
-
-	// 行1：协议 + 接口
 	proto := inp.NormalizedProtocol()
-	endpoint := truncate(inp.ResolvedEndpointURL(), innerW-30)
-	lines = append(lines, "  "+
-		st.Label.Render("协议")+"  "+st.Value.Render(proto)+
-		"    "+st.Label.Render("接口")+"  "+st.Value.Render(endpoint))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render("协议")+"  "+st.Value.Render(proto), leftW))
+	endpoint := truncate(inp.ResolvedEndpointURL(), leftW-8)
+	leftLines = append(leftLines, padRight(" "+st.Label.Render("接口")+"  "+st.Value.Render(endpoint), leftW))
+	leftLines = append(leftLines, padRight("", leftW))
 
-	// 行2：模型 + 模式 + 并发 + 请求
+	model := truncate(inp.Model, leftW-10)
+	leftLines = append(leftLines, padRight(" "+st.Label.Render("模型")+"  "+st.Value.Render(model), leftW))
 	modeStr := "标准模式"
 	if inp.Turbo {
 		modeStr = "Turbo 模式"
 	}
+	leftLines = append(leftLines, padRight(" "+st.Label.Render("模式")+"  "+st.Value.Render(modeStr), leftW))
 	if inp.Turbo {
 		tc := inp.TurboConfig
-		lines = append(lines, "  "+
-			st.Label.Render("模型")+"  "+st.Value.Render(inp.Model)+
-			"    "+st.Label.Render("模式")+"  "+st.Value.Render(modeStr)+
-			"    "+st.Label.Render("并发爬坡")+"  "+
-			st.Value.Render(fmt.Sprintf("%d → %d  步进+%d  每级%d请求",
-				tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize, tc.LevelRequests)))
+		leftLines = append(leftLines, padRight(" "+st.Label.Render("并发")+"  "+st.Value.Render(
+			fmt.Sprintf("%d → %d", tc.InitConcurrency, tc.MaxConcurrency)), leftW))
+		leftLines = append(leftLines, padRight(" "+st.Label.Render("步进")+"  "+st.Value.Render(
+			fmt.Sprintf("+%d  每级%d请求", tc.StepSize, tc.LevelRequests)), leftW))
 	} else {
-		lines = append(lines, "  "+
-			st.Label.Render("模型")+"  "+st.Value.Render(inp.Model)+
-			"    "+st.Label.Render("模式")+"  "+st.Value.Render(modeStr)+
-			"    "+st.Label.Render("并发")+"  "+st.Value.Render(fmt.Sprintf("%d", inp.Concurrency))+
-			"    "+st.Label.Render("请求")+"  "+st.Value.Render(fmt.Sprintf("%d", inp.Count)))
+		leftLines = append(leftLines, padRight(" "+st.Label.Render("并发")+"  "+st.Value.Render(
+			fmt.Sprintf("%d", inp.Concurrency)), leftW))
+		leftLines = append(leftLines, padRight(" "+st.Label.Render("请求")+"  "+st.Value.Render(
+			fmt.Sprintf("%d", inp.Count)), leftW))
 	}
-
-	// 行3：超时 + 流式 + Prompt
+	leftLines = append(leftLines, padRight("", leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render("超时")+"  "+st.Value.Render(fmtDuration(inp.Timeout)), leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render("流式")+"  "+st.Value.Render(boolLabel(inp.Stream)), leftW))
 	prompt := promptSummary(inp.PromptMode, inp.PromptText, inp.PromptFile, inp.PromptLength)
-	lines = append(lines, "  "+
-		st.Label.Render("超时")+"  "+st.Value.Render(fmtDuration(inp.Timeout))+
-		"    "+st.Label.Render("流式")+"  "+st.Value.Render(boolLabel(inp.Stream))+
-		"    "+st.Label.Render("Prompt")+"  "+st.Value.Render(truncate(prompt, innerW-50)))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render("Prompt")+"  "+st.Value.Render(truncate(prompt, leftW-12)), leftW))
 
-	lines = append(lines, "")
+	// ─── 右栏：历史运行记录 ─────────────────────────────────────
+	var rightLines []string
+	rightLines = append(rightLines, padRight(" "+st.SectionHead.Render("历史运行记录"), rightW))
+	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
 
-	// ─── 最近运行 ──────────────────────────────────────────────
-	if len(s.History) > 0 {
-		latest := s.History[0]
-		statusStr := "✓ 完成"
-		if latest.Status != "completed" {
-			statusStr = "✗ " + latest.Status
+	const (
+		markW = 2
+		statW = 2
+		timeW = 17
+		modeW = 7
+		rateW = 8
+		ttftW = 10
+	)
+	hdr := padRight("", markW) + padRight("", statW) + padRight("时间", timeW) + padRight("模式", modeW) +
+		padRight("成功率", rateW) + padRight("TTFT", ttftW) + "TPS"
+	rightLines = append(rightLines, padRight(renderTableHeader(st, rightW, hdr), rightW))
+	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
+
+	if len(s.History) == 0 {
+		rightLines = append(rightLines, padRight(" "+st.Muted.Render("暂无运行记录"), rightW))
+	} else {
+		detailLines := buildTaskHistoryDetailLines(s, st, rightW)
+		tableMaxH := maxH - len(detailLines)
+		if tableMaxH < 5 {
+			allowedDetail := maxInt(0, maxH-5)
+			if len(detailLines) > allowedDetail {
+				detailLines = detailLines[:allowedDetail]
+			}
+			tableMaxH = maxH - len(detailLines)
 		}
-		elapsed := latest.FinishedAt.Sub(latest.StartedAt)
-		expandMark := "▼"
-		if !s.LatestExpanded {
-			expandMark = "▶"
-		}
-		lines = append(lines, fmt.Sprintf("  %s  %s 最近运行 %s  %s  %d 请求  耗时 %s",
-			st.SectionHead.Render("最近运行"),
-			st.Ok.Render(expandMark),
-			latest.StartedAt.Format("2006-01-02 15:04"),
-			st.Ok.Render(statusStr),
-			0, // 请求总数（运行摘要中需要补充该字段，暂用 0）
-			fmtDuration(elapsed),
-		))
-		lines = append(lines, "  "+dividerLine(st, innerW-2))
+		s.HistoryVis = listVisibleItems(tableMaxH, 4)
+		s.HistoryOff = ensureVisibleOffset(s.HistorySel, len(s.History), s.HistoryOff, s.HistoryVis)
+		start := s.HistoryOff
+		end := minInt(len(s.History), start+s.HistoryVis)
 
-		if s.LatestExpanded && len(lines) < maxH-10 {
-			// 指标表格
-			lines = append(lines, "  "+st.TableHead.Render(
-				padRight("指标", 16)+padRight("最小值", 10)+padRight("平均值", 10)+padRight("标准差", 10)+"最大值"))
-			lines = append(lines, "  "+st.Divider.Render(strings.Repeat("─", innerW-2)))
-
-			if len(lines) < maxH {
-				lines = append(lines, buildMetricRow(st, "TTFT",
-					fmtDuration(latest.AvgTTFT), fmtDuration(latest.AvgTTFT), "─", "─"))
-			}
-			if len(lines) < maxH {
-				lines = append(lines, buildMetricRow(st, "输出 TPS",
-					"─", fmt.Sprintf("%.1f", latest.AvgTPS), "─", "─"))
-			}
-			if len(lines) < maxH {
-				lines = append(lines, buildMetricRow(st, "成功率",
-					"─", fmt.Sprintf("%.1f%%", latest.SuccessRate*100), "─", "─"))
-			}
-			if latest.CacheHitRate > 0 && len(lines) < maxH {
-				lines = append(lines, buildMetricRow(st, "缓存命中率",
-					"─", fmt.Sprintf("%.1f%%", latest.CacheHitRate*100), "─", "─"))
-			}
-			if latest.ErrorSummary != "" && len(lines) < maxH {
-				lines = append(lines, "  "+st.ErrStyle.Render("错误  "+truncate(latest.ErrorSummary, innerW-10)))
-			}
-		}
-		lines = append(lines, "")
-	}
-
-	// ─── 历史运行记录 ──────────────────────────────────────────
-	if len(lines) < maxH-4 {
-		lines = append(lines, "  "+st.SectionHead.Render("历史运行记录"))
-		lines = append(lines, "  "+st.TableHead.Render(
-			padRight("时间", 20)+padRight("模式", 8)+padRight("成功率", 8)+
-				padRight("TTFT", 10)+padRight("TPS", 10)+"Cache"))
-		lines = append(lines, "  "+st.Divider.Render(strings.Repeat("─", innerW-2)))
-
-		for _, run := range s.History {
-			if len(lines) >= maxH-1 {
-				break
-			}
-			statusIcon := st.Ok.Render("✓")
+		// ── 历史列表 ──
+		for idx := start; idx < end; idx++ {
+			run := s.History[idx]
+			statusText := "✓"
 			if run.Status != "completed" {
-				statusIcon = st.ErrStyle.Render("✗")
+				statusText = "✗"
 			}
 			modeShort := "标准"
 			if run.Mode == "turbo" {
 				modeShort = "Turbo"
 			}
-			cacheStr := "─"
-			if run.CacheHitRate > 0 {
-				cacheStr = fmt.Sprintf("%.1f%%", run.CacheHitRate*100)
+			isSel := idx == s.HistorySel
+			statusIcon := statusText
+			if run.Status == "completed" {
+				statusIcon = styleWhenNotSelected(isSel, st.Ok, statusText)
+			} else {
+				statusIcon = styleWhenNotSelected(isSel, st.ErrStyle, statusText)
 			}
-			row := fmt.Sprintf(" %s %s  %s  %s  %s  %s  %s",
-				statusIcon,
-				run.StartedAt.Format("2006-01-02 15:04"),
-				padRight(modeShort, 6),
-				padRight(fmt.Sprintf("%.1f%%", run.SuccessRate*100), 7),
-				padRight(fmtDuration(run.AvgTTFT), 9),
-				padRight(fmt.Sprintf("%.1f", run.AvgTPS), 9),
-				cacheStr,
-			)
-			lines = append(lines, "  "+st.TableRow.Render(row))
+
+			marker := selectionMarker(isSel)
+
+			row := padRight(marker, markW) +
+				padRight(statusIcon, statW) +
+				padRight(run.StartedAt.Format("2006-01-02 15:04"), timeW) +
+				padRight(modeShort, modeW) +
+				padRight(fmt.Sprintf("%.1f%%", run.SuccessRate), rateW) +
+				padRight(fmtDuration(run.AvgTTFT), ttftW) +
+				fmt.Sprintf("%.1f", run.AvgTPS)
+			rightLines = append(rightLines, padRight(renderTableRow(st, rightW, isSel, row), rightW))
+			if idx < end-1 {
+				rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
+			}
 		}
+		rightLines = append(rightLines, detailLines...)
 	}
 
-	// 补齐剩余高度
-	for len(lines) < maxH {
-		lines = append(lines, "")
+	// ─── 合并双栏 ──────────────────────────────────────────────
+	for len(leftLines) < maxH {
+		leftLines = append(leftLines, padRight("", leftW))
 	}
-
-	return strings.Join(lines, "\n")
+	for len(rightLines) < maxH {
+		rightLines = append(rightLines, padRight("", rightW))
+	}
+	sep := st.Divider.Render("│")
+	var combined []string
+	for i := 0; i < maxH; i++ {
+		combined = append(combined, leftLines[i]+sep+rightLines[i])
+	}
+	return strings.Join(combined, "\n")
 }
 
 // buildMetricRow 构建指标表格一行。
@@ -257,8 +269,129 @@ func UpdateTaskDetailHistory(s *TaskDetailState, history []types.TaskRunSummary,
 		return s
 	}
 	s.History = history
+	if len(history) == 0 {
+		s.HistorySel = 0
+		s.HistoryOff = 0
+	} else {
+		if s.HistorySel < 0 {
+			s.HistorySel = 0
+		}
+		if s.HistorySel >= len(history) {
+			s.HistorySel = len(history) - 1
+		}
+		s.HistoryOff = ensureVisibleOffset(s.HistorySel, len(history), s.HistoryOff, s.HistoryVis)
+	}
 	if autoExpand && len(history) > 0 {
 		s.LatestExpanded = true
 	}
 	return s
+}
+
+func buildTaskHistoryDetailLines(s *TaskDetailState, st Styles, width int) []string {
+	if s.HistorySel < 0 || s.HistorySel >= len(s.History) {
+		return nil
+	}
+	sel := s.History[s.HistorySel]
+	elapsed := sel.FinishedAt.Sub(sel.StartedAt)
+	labelW := 8
+	indent := " "
+	gap := 4
+	contentW := maxInt(12, width-lipgloss.Width(indent))
+	useTwoCols := contentW >= 48
+
+	statusText := sel.Status
+	statusStyle := st.Value
+	switch sel.Status {
+	case "completed":
+		statusText = "完成"
+		statusStyle = st.Ok
+	case "failed":
+		statusText = "失败"
+		statusStyle = st.ErrStyle
+	case "stopped":
+		statusText = "已停止"
+		statusStyle = st.Muted
+	}
+
+	modeText := "标准"
+	if sel.Mode == "turbo" {
+		modeText = "Turbo"
+	}
+
+	renderCell := func(label, value string, valueStyle lipgloss.Style, cellW int) string {
+		prefix := st.Label.Render(padRight(label, labelW))
+		available := maxInt(6, cellW-labelW-2)
+		return prefix + "  " + valueStyle.Render(truncate(value, available))
+	}
+
+	appendSingleField := func(lines []string, label, value string, valueStyle lipgloss.Style) []string {
+		valueW := maxInt(10, contentW-labelW-2)
+		segments := wrapText(value, valueW)
+		if len(segments) == 0 {
+			segments = []string{""}
+		}
+		lines = append(lines, indent+st.Label.Render(padRight(label, labelW))+"  "+valueStyle.Render(segments[0]))
+		contIndent := strings.Repeat(" ", lipgloss.Width(indent)+labelW+2)
+		for _, seg := range segments[1:] {
+			lines = append(lines, contIndent+valueStyle.Render(seg))
+		}
+		return lines
+	}
+
+	appendPairRow := func(lines []string, leftLabel, leftValue string, leftStyle lipgloss.Style, rightLabel, rightValue string, rightStyle lipgloss.Style) []string {
+		if !useTwoCols {
+			lines = appendSingleField(lines, leftLabel, leftValue, leftStyle)
+			return appendSingleField(lines, rightLabel, rightValue, rightStyle)
+		}
+		leftW := (contentW - gap) / 2
+		rightW := contentW - gap - leftW
+		row := indent + padRight(renderCell(leftLabel, leftValue, leftStyle, leftW), leftW) + strings.Repeat(" ", gap) +
+			renderCell(rightLabel, rightValue, rightStyle, rightW)
+		return append(lines, row)
+	}
+
+	lines := []string{
+		padRight(st.Divider.Render(strings.Repeat("─", width)), width),
+		padRight(" "+st.SectionHead.Render("记录详情"), width),
+	}
+
+	lines = appendPairRow(lines,
+		"状态", statusText, statusStyle,
+		"模式", modeText, st.Value,
+	)
+	lines = appendPairRow(lines,
+		"开始", sel.StartedAt.Format("2006-01-02 15:04"), st.Value,
+		"结束", sel.FinishedAt.Format("2006-01-02 15:04"), st.Value,
+	)
+	lines = appendPairRow(lines,
+		"耗时", fmtDuration(elapsed), st.Value,
+		"成功率", fmt.Sprintf("%.1f%%", sel.SuccessRate), st.Value,
+	)
+	lines = appendPairRow(lines,
+		"TTFT", fmtDuration(sel.AvgTTFT), st.Value,
+		"TPS", fmt.Sprintf("%.1f", sel.AvgTPS), st.MetricVal,
+	)
+	lines = appendSingleField(lines, "协议", shortProtocol(sel.Protocol), st.Value)
+	lines = appendSingleField(lines, "模型", sel.Model, st.Value)
+	if sel.CacheHitRate > 0 {
+		lines = appendSingleField(lines, "缓存", fmt.Sprintf("%.1f%%", sel.CacheHitRate*100), st.Value)
+	}
+	if sel.ReportJSONPath != "" || sel.ReportCSVPath != "" {
+		reports := make([]string, 0, 2)
+		if sel.ReportJSONPath != "" {
+			reports = append(reports, "JSON")
+		}
+		if sel.ReportCSVPath != "" {
+			reports = append(reports, "CSV")
+		}
+		lines = appendSingleField(lines, "报告", strings.Join(reports, " / "), st.Muted)
+	}
+	if sel.ErrorSummary != "" {
+		lines = append(lines, indent+st.Label.Render("错误摘要"))
+		for _, seg := range wrapText(sel.ErrorSummary, maxInt(10, contentW-2)) {
+			lines = append(lines, indent+"  "+st.ErrStyle.Render(seg))
+		}
+	}
+
+	return lines
 }

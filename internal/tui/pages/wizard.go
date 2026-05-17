@@ -63,22 +63,23 @@ type WizardState struct {
 
 	// 当前活跃字段索引（Tab 切换）
 	FieldIndex int
+	ScrollOff  int
 }
 
 // NewWizardState 创建新建任务向导状态（使用默认值）。
 func NewWizardState() *WizardState {
 	return &WizardState{
-		Step:           wizardStep1,
-		Protocol:       types.ProtocolOpenAICompletions,
-		Concurrency:    10,
-		Count:          100,
-		Timeout:        30,
+		Step:            wizardStep1,
+		Protocol:        types.ProtocolOpenAICompletions,
+		Concurrency:     10,
+		Count:           100,
+		Timeout:         30,
 		InitConcurrency: 1,
-		MaxConcurrency: 50,
-		StepSize:       2,
-		LevelRequests:  30,
-		MinSuccessRate: 90,
-		PromptMode:     PromptModeText,
+		MaxConcurrency:  50,
+		StepSize:        2,
+		LevelRequests:   30,
+		MinSuccessRate:  90,
+		PromptMode:      PromptModeText,
 	}
 }
 
@@ -90,27 +91,27 @@ func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 	inp := t.Input
 	tc := inp.TurboConfig
 	wz := &WizardState{
-		Step:           wizardStep1,
-		EditingID:      t.ID,
-		Name:           t.Name,
-		Protocol:       types.NormalizeProtocol(inp.Protocol),
-		EndpointURL:    inp.EndpointURL,
-		APIKey:         inp.ApiKey,
-		Model:          inp.Model,
-		Turbo:          inp.Turbo,
-		Stream:         inp.Stream,
-		Concurrency:    inp.Concurrency,
-		Count:          inp.Count,
-		Timeout:        int(inp.Timeout.Seconds()),
+		Step:            wizardStep1,
+		EditingID:       t.ID,
+		Name:            t.Name,
+		Protocol:        types.NormalizeProtocol(inp.Protocol),
+		EndpointURL:     inp.EndpointURL,
+		APIKey:          inp.ApiKey,
+		Model:           inp.Model,
+		Turbo:           inp.Turbo,
+		Stream:          inp.Stream,
+		Concurrency:     inp.Concurrency,
+		Count:           inp.Count,
+		Timeout:         int(inp.Timeout.Seconds()),
 		InitConcurrency: tc.InitConcurrency,
-		MaxConcurrency: tc.MaxConcurrency,
-		StepSize:       tc.StepSize,
-		LevelRequests:  tc.LevelRequests,
-		MinSuccessRate: tc.MinSuccessRate * 100, // 转为百分比
-		PromptMode:     inp.PromptMode,
-		PromptText:     inp.PromptText,
-		PromptFile:     inp.PromptFile,
-		PromptLength:   inp.PromptLength,
+		MaxConcurrency:  tc.MaxConcurrency,
+		StepSize:        tc.StepSize,
+		LevelRequests:   tc.LevelRequests,
+		MinSuccessRate:  tc.MinSuccessRate * 100, // 转为百分比
+		PromptMode:      inp.PromptMode,
+		PromptText:      inp.PromptText,
+		PromptFile:      inp.PromptFile,
+		PromptLength:    inp.PromptLength,
 	}
 	if wz.PromptMode == "" {
 		wz.PromptMode = PromptModeText
@@ -293,11 +294,6 @@ func step2Fields(turbo bool) []fieldDef {
 					}
 				},
 			},
-			fieldDef{
-				kind: fieldBool, label: "流式模式",
-				get: func(wz *WizardState) string { return boolLabel(wz.Stream) },
-				toggle: func(wz *WizardState, _ bool) { wz.Stream = !wz.Stream },
-			},
 		)
 	} else {
 		fields = append(fields,
@@ -348,6 +344,14 @@ func step2Fields(turbo bool) []fieldDef {
 			},
 		)
 	}
+
+	// 流式模式：与测试模式无关，两种模式均可配置
+	fields = append(fields, fieldDef{
+		kind:   fieldBool,
+		label:  "流式模式",
+		get:    func(wz *WizardState) string { return boolLabel(wz.Stream) },
+		toggle: func(wz *WizardState, _ bool) { wz.Stream = !wz.Stream },
+	})
 
 	// Prompt 字段（共用）
 	promptModes := []string{PromptModeText, PromptModeFile, PromptModeGenerated}
@@ -433,6 +437,19 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		case "esc":
 			wz.Step = wizardStep2
 			wz.FieldIndex = 0
+			wz.ScrollOff = 0
+		case "up", "k":
+			wz.ScrollOff--
+		case "down", "j":
+			wz.ScrollOff++
+		case "pgup":
+			wz.ScrollOff -= 5
+		case "pgdown", " ":
+			wz.ScrollOff += 5
+		case "home":
+			wz.ScrollOff = 0
+		case "end":
+			wz.ScrollOff = 1 << 30
 		case "enter":
 			// 保存任务
 			cfg := wz.BuildTaskConfig()
@@ -470,6 +487,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		} else {
 			wz.Step--
 			wz.FieldIndex = 0
+			wz.ScrollOff = 0
 		}
 
 	case "tab", "down", "j":
@@ -490,6 +508,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 				// 如果切换了 turbo 模式，重置 fieldIndex
 				if f.label == "测试模式" {
 					wz.FieldIndex = 0
+					wz.ScrollOff = 0
 				}
 			}
 		}
@@ -501,6 +520,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 				f.toggle(wz, true)
 				if f.label == "测试模式" {
 					wz.FieldIndex = 0
+					wz.ScrollOff = 0
 				}
 			}
 		}
@@ -509,6 +529,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		if wz.FieldIndex == maxField && int(wz.Step) < 2 {
 			wz.Step++
 			wz.FieldIndex = 0
+			wz.ScrollOff = 0
 		} else if wz.FieldIndex < maxField {
 			wz.FieldIndex++
 		}
@@ -541,116 +562,144 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 	return wz, nil, nav
 }
 
-// RenderWizard 渲染三步弹窗向导（overlay 覆盖在后台页面上）。
-func RenderWizard(wz *WizardState, bgView string, st Styles, width, height int) string {
+// RenderWizard 渲染三步创建/编辑任务页。
+func RenderWizard(wz *WizardState, st Styles, width, height int) string {
+	if TooSmall(width, height) {
+		return renderTooSmall(st, width, height)
+	}
 	if wz == nil {
-		return bgView
+		return renderTooSmall(st, width, height)
 	}
 
-	// 暗化背景
-	bgLines := strings.Split(bgView, "\n")
-	for i, line := range bgLines {
-		bgLines[i] = st.Muted.Render(line)
+	stepTitles := []string{"基本信息", "测试参数", "确认保存"}
+	stepDescs := []string{
+		"配置任务名称、模型协议和连接信息。",
+		"选择压测模式，并补全并发与 Prompt 参数。",
+		"保存前快速检查关键配置。",
 	}
-
-	// 弹窗尺寸
-	dialogW := width - 8
-	if dialogW > 72 {
-		dialogW = 72
-	}
-	if dialogW < 40 {
-		dialogW = 40
-	}
-
-	var dialogLines []string
-
-	stepTitles := []string{"1/3 · 基本信息", "2/3 · 测试参数", "3/3 · 确认保存"}
-	stepTitle := stepTitles[int(wz.Step)]
-	isEdit := wz.EditingID != ""
-	action := "新建任务"
-	if isEdit {
+	action := "创建任务"
+	if wz.EditingID != "" {
 		action = "编辑任务"
 	}
-	dialogLines = append(dialogLines, st.SectionHead.Render(fmt.Sprintf("  %s  %s", action, stepTitle)))
-	dialogLines = append(dialogLines, "")
+
+	l := PageLayout{
+		TitleLeft:   fmt.Sprintf("AIT  %s", action),
+		InfoLeft:    fmt.Sprintf("步骤 %d/3 · %s", int(wz.Step)+1, stepTitles[int(wz.Step)]),
+		CtxItems:    wizardContextItems(wz.Step),
+		FooterParts: []string{"[q] 退出", "◆ AIT  v0.1"},
+	}
+
+	content := buildWizardPageContent(wz, st, action, stepTitles[int(wz.Step)], stepDescs[int(wz.Step)], ContentWidth(width), l.ContentHeight(height))
+	return l.Assemble(wrapPanel(st, content, width), st, width)
+}
+
+func buildWizardPageContent(wz *WizardState, st Styles, action, stepTitle, stepDesc string, width, maxH int) string {
+	titleLeft := st.SectionHead.Render(action)
+	titleRight := st.Muted.Render(fmt.Sprintf("步骤 %d/3 · %s", int(wz.Step)+1, stepTitle))
+	var topLines []string
+	if lipgloss.Width(titleLeft)+lipgloss.Width(titleRight)+2 <= width {
+		topLines = append(topLines, titleLeft+strings.Repeat(" ", width-lipgloss.Width(titleLeft)-lipgloss.Width(titleRight))+titleRight)
+	} else {
+		topLines = append(topLines, titleLeft, titleRight)
+	}
+	if maxH >= 8 {
+		for _, line := range wrapText(stepDesc, width) {
+			topLines = append(topLines, st.Muted.Render(line))
+		}
+	}
+	if maxH >= 10 && width >= 46 {
+		topLines = append(topLines, renderWizardStepStrip(wz.Step))
+	}
+
+	bottomCount := 1
+	showBottomDivider := maxH >= 6
+	if showBottomDivider {
+		bottomCount = 2
+	}
+
+	// 为 body 保留最少 5 行空间
+	minBodyH := 5
+	availableForContent := maxH - bottomCount
+	maxTopH := maxInt(1, availableForContent-minBodyH)
+
+	// 限制 topLines 大小
+	if len(topLines) > maxTopH {
+		topLines = topLines[:maxTopH]
+	}
+	if maxH >= 6 {
+		topLines = append(topLines, dividerLine(st, width))
+	}
+
+	bodyLines, focusLine := buildWizardBody(wz, st, width)
+	bodyH := maxInt(1, availableForContent-len(topLines))
+	offset := 0
+	if wz.Step == wizardStep3 {
+		offset = clampInt(wz.ScrollOff, 0, maxInt(0, len(bodyLines)-bodyH))
+	} else if focusLine >= 0 {
+		offset = ensureVisibleOffset(focusLine, len(bodyLines), 0, bodyH)
+	}
+	end := minInt(len(bodyLines), offset+bodyH)
+	visibleBody := append([]string{}, bodyLines[offset:end]...)
+	for len(visibleBody) < bodyH {
+		visibleBody = append(visibleBody, "")
+	}
+
+	lines := append([]string{}, topLines...)
+	lines = append(lines, visibleBody...)
+	if showBottomDivider {
+		lines = append(lines, dividerLine(st, width))
+	}
+	lines = append(lines, st.Muted.Render(truncate(wizardStatusText(wz, focusLine, offset, end, len(bodyLines), bodyH), width)))
+
+	if len(lines) > maxH {
+		lines = lines[:maxH]
+	}
+	for len(lines) < maxH {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines, "\n")
+}
+
+func buildWizardBody(wz *WizardState, st Styles, contentW int) ([]string, int) {
+	var lines []string
+	focusLine := -1
+
+	// appendField 将字段渲染结果按行展开追加，因为 FieldActive/FieldIdle 带 Border
+	// 会产生 3 行输出（顶部边框 + 内容 + 底部边框），必须逐行记录才能正确计算高度。
+	appendField := func(rendered string, focused bool) {
+		if focused {
+			focusLine = len(lines)
+		}
+		for _, l := range strings.Split(rendered, "\n") {
+			lines = append(lines, l)
+		}
+	}
 
 	switch wz.Step {
 	case wizardStep1:
 		fields := step1Fields()
 		for i, f := range fields {
-			dialogLines = append(dialogLines, renderWizardField(st, f, wz, i == wz.FieldIndex, dialogW-4))
-			dialogLines = append(dialogLines, "")
+			appendField(renderWizardField(st, f, wz, i == wz.FieldIndex, contentW), i == wz.FieldIndex)
 		}
-		dialogLines = append(dialogLines, dividerLine(st, dialogW-4))
-		hintStyle := st.Muted
-		dialogLines = append(dialogLines, hintStyle.Render("  [Tab] 下一项  [↑↓] 切换协议  [Enter] 下一步  [Esc] 取消"))
 
 	case wizardStep2:
 		fields := step2Fields(wz.Turbo)
 		for i, f := range fields {
-			dialogLines = append(dialogLines, renderWizardField(st, f, wz, i == wz.FieldIndex, dialogW-4))
-			dialogLines = append(dialogLines, "")
+			if f.label == "输入方式" {
+				lines = append(lines, "", st.Muted.Render("Prompt 配置"))
+			}
+			appendField(renderWizardField(st, f, wz, i == wz.FieldIndex, contentW), i == wz.FieldIndex)
 		}
-		dialogLines = append(dialogLines, dividerLine(st, dialogW-4))
-		dialogLines = append(dialogLines, st.Muted.Render("  [Tab] 下一项  [←→] 切换模式  [Enter] 下一步  [Esc] 返回"))
 
 	case wizardStep3:
-		dialogLines = append(dialogLines, renderStep3Summary(wz, st, dialogW-4)...)
-		dialogLines = append(dialogLines, "")
-		dialogLines = append(dialogLines, dividerLine(st, dialogW-4))
-		dialogLines = append(dialogLines, st.Muted.Render("  [Enter] 保存任务   [r] 保存并运行   [Esc] 返回修改"))
+		lines = append(lines, renderStep3Summary(wz, st, contentW)...)
 	}
 
-	// 构建弹窗框
-	innerLines := dialogLines
-	boxedLines := make([]string, len(innerLines))
-	for i, l := range innerLines {
-		lW := lipgloss.Width(l)
-		pad := dialogW - 4 - lW
-		if pad < 0 {
-			pad = 0
-		}
-		boxedLines[i] = "  " + l + strings.Repeat(" ", pad)
-	}
-
-	// 用 lipgloss rounded border 包裹
-	inner := strings.Join(boxedLines, "\n")
-	box := st.Dialog.Width(dialogW).Render(inner)
-
-	// 将弹窗叠加在背景中间
-	boxLines := strings.Split(box, "\n")
-	startRow := (height - len(boxLines)) / 2
-	if startRow < 0 {
-		startRow = 0
-	}
-	startCol := (width - dialogW) / 2
-	if startCol < 0 {
-		startCol = 0
-	}
-
-	for i, boxLine := range boxLines {
-		row := startRow + i
-		if row >= len(bgLines) {
-			bgLines = append(bgLines, strings.Repeat(" ", width))
-		}
-		bgLine := []rune(bgLines[row])
-		boxRunes := []rune(boxLine)
-		// 替换对应列
-		for j, r := range boxRunes {
-			col := startCol + j
-			if col < len(bgLine) {
-				bgLine[col] = r
-			}
-		}
-		bgLines[row] = string(bgLine)
-	}
-
-	return strings.Join(bgLines, "\n")
+	return lines, focusLine
 }
 
 // renderWizardField 渲染向导的一个字段行。
 func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW int) string {
-	label := padRight(f.label, 12)
 	var valueStr string
 
 	if f.get != nil {
@@ -662,66 +711,203 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 		valueStr = maskAPIKey(valueStr)
 	}
 
-	var renderedValue string
-	if active {
-		if f.kind == fieldEnum || f.kind == fieldBool {
-			renderedValue = st.Ok.Render("● " + valueStr)
-		} else {
-			renderedValue = st.FieldActive.Width(maxW - 14).Render(valueStr + "█") // 光标
+	// FieldActive/Idle: Width(n) = 内容区宽度（在 padding/border 之内）
+	// 总渲染宽度 = n + padding(2) + border(2) = n + 4
+	// Line1 = label(14) + space(1) + (n+4) = n + 19 ≤ maxW → n = maxW - 19
+	fieldW := maxInt(10, maxW-19)
+	valueStyle := st.Value
+	if valueStr == "" && !active {
+		valueStr = "未填写"
+		valueStyle = st.Muted
+	}
+
+	// Width(fieldW) 是内容区宽度，padding 在其外侧叠加，文字区即为 fieldW
+	// 激活时保留 1 列给光标 █，非激活可用满 fieldW
+	if f.kind == fieldEnum || f.kind == fieldBool {
+		if active {
+			valueStr = "‹ " + valueStr + " ›"
 		}
+		valueStr = truncate(valueStr, maxInt(4, fieldW))
 	} else {
-		if f.kind == fieldEnum || f.kind == fieldBool {
-			renderedValue = st.Muted.Render("○ " + valueStr)
+		if active {
+			valueStr = fitTail(valueStr, maxInt(1, fieldW-1)) + "█"
 		} else {
-			renderedValue = st.FieldIdle.Width(maxW - 14).Render(valueStr)
+			valueStr = fitTail(valueStr, maxInt(1, fieldW))
 		}
 	}
 
-	return "  " + st.Label.Render(label) + "  " + renderedValue
+	fieldStyle := st.FieldIdle
+	if active {
+		fieldStyle = st.FieldActive
+	}
+
+	renderedValue := fieldStyle.Width(fieldW).Render(valueStyle.Render(valueStr))
+	// 用 JoinHorizontal 而非字符串拼接：renderedValue 有 3 行（上边框/内容/下边框），
+	// 直接 + 只有第一行有 label 前缀，后两行会从列 0 开始，导致布局混乱。
+	// JoinHorizontal(Top, ...) 会将 label 块和 field 块按顶部对齐水平拼接，
+	// label 块高度自动补齐到与 field 相同（3 行），布局整齐。
+	labelBlock := lipgloss.NewStyle().Width(15).Render(st.Label.Render(wizardFieldLabel(f, wz)))
+	return lipgloss.JoinHorizontal(lipgloss.Top, labelBlock, renderedValue)
 }
 
 // renderStep3Summary 渲染步骤3的确认内容。
 func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 	var lines []string
-	addRow := func(label, value string) {
-		lines = append(lines, "  "+st.Label.Render(padRight(label, 12))+"  "+st.Value.Render(value))
+	addRow := func(label, value string, valueStyle lipgloss.Style) {
+		appendWizardSummaryRow(&lines, st, label, value, innerW, valueStyle)
 	}
 
-	addRow("任务名称", wz.Name)
-	addRow("协议", wz.Protocol)
+	lines = append(lines, st.SectionHead.Render("配置概览"))
+	addRow("任务名称", wizardFallback(wz.Name, "未命名任务"), st.Value)
+	addRow("协议", wz.Protocol, st.Value)
 	endpointDisplay := wz.EndpointURL
 	if endpointDisplay == "" {
 		endpointDisplay = types.DefaultEndpointURL(wz.Protocol)
 	}
-	addRow("接口地址", truncate(endpointDisplay, innerW-20))
-	addRow("API 密钥", maskAPIKey(wz.APIKey))
-	addRow("测试模型", wz.Model)
+	addRow("接口地址", endpointDisplay, st.Value)
+	addRow("API 密钥", wizardFallback(maskAPIKey(wz.APIKey), "未填写"), st.Value)
+	addRow("测试模型", wizardFallback(wz.Model, "未填写"), st.Value)
 
+	lines = append(lines, "", st.SectionHead.Render("执行参数"))
 	if wz.Turbo {
-		addRow("测试模式", "Turbo 模式")
-		addRow("并发爬坡", fmt.Sprintf("%d → %d  步进 +%d  每级 %d 请求",
-			wz.InitConcurrency, wz.MaxConcurrency, wz.StepSize, wz.LevelRequests))
-		addRow("停止条件", fmt.Sprintf("成功率 < %.0f%%", wz.MinSuccessRate))
+		addRow("测试模式", "Turbo 模式", st.Value)
+		addRow("并发爬坡", fmt.Sprintf("%d → %d · 步进 +%d · 每级 %d 请求",
+			wz.InitConcurrency, wz.MaxConcurrency, wz.StepSize, wz.LevelRequests), st.Value)
+		addRow("停止条件", fmt.Sprintf("成功率 < %.0f%%", wz.MinSuccessRate), st.Value)
 	} else {
-		addRow("测试模式", "标准模式")
-		addRow("并发数", strconv.Itoa(wz.Concurrency))
-		addRow("请求总数", strconv.Itoa(wz.Count))
-		addRow("超时", fmt.Sprintf("%ds", wz.Timeout))
-		addRow("流式模式", boolLabel(wz.Stream))
+		addRow("测试模式", "标准模式", st.Value)
+		addRow("并发数", strconv.Itoa(wz.Concurrency), st.Value)
+		addRow("请求总数", strconv.Itoa(wz.Count), st.Value)
+		addRow("超时", fmt.Sprintf("%ds", wz.Timeout), st.Value)
+		addRow("流式模式", boolLabel(wz.Stream), st.Value)
 	}
 
-	promptDesc := wz.PromptText
-	if wz.PromptMode == PromptModeFile {
-		promptDesc = "文件: " + wz.PromptFile
+	lines = append(lines, "", st.SectionHead.Render("Prompt"))
+	addRow("输入方式", wizardPromptModeLabel(wz.PromptMode), st.Value)
+	promptDesc := promptSummary(wz.PromptMode, wz.PromptText, wz.PromptFile, wz.PromptLength)
+	addRow("内容摘要", wizardFallback(promptDesc, "未填写"), st.Value)
+	if wz.PromptMode == PromptModeText {
+		addRow("字符数", strconv.Itoa(len([]rune(wz.PromptText))), st.Muted)
 	} else if wz.PromptMode == PromptModeGenerated {
-		promptDesc = fmt.Sprintf("生成 %d 字符", wz.PromptLength)
+		addRow("目标长度", strconv.Itoa(wz.PromptLength), st.Muted)
 	}
-	addRow("Prompt", truncate(promptDesc, innerW-20)+fmt.Sprintf(" (长度: %d)", len([]rune(wz.PromptText))))
 
-	lines = append(lines, "")
-	lines = append(lines, "  "+st.Muted.Render("保存任务到 ~/.ait/tasks.json  [✓]"))
-	lines = append(lines, "")
-	lines = append(lines, "  "+st.BtnPrimary.Render("▶  保存任务"))
+	lines = append(lines, "", st.Muted.Render("保存位置: ~/.ait/tasks.json"))
 
 	return lines
+}
+
+func renderWizardStepStrip(step wizardStep) string {
+	active := lipgloss.NewStyle().Background(colorPink).Foreground(colorWhite).Bold(true).Padding(0, 1)
+	done := lipgloss.NewStyle().Background(colorCyan).Foreground(lipgloss.Color("233")).Bold(true).Padding(0, 1)
+	idle := lipgloss.NewStyle().Background(lipgloss.Color("238")).Foreground(colorMuted).Padding(0, 1)
+	labels := []string{"1 基本信息", "2 测试参数", "3 确认保存"}
+	parts := make([]string, 0, len(labels))
+	for i, label := range labels {
+		switch {
+		case i < int(step):
+			parts = append(parts, done.Render("✓ "+label))
+		case i == int(step):
+			parts = append(parts, active.Render(label))
+		default:
+			parts = append(parts, idle.Render(label))
+		}
+	}
+	return strings.Join(parts, " ")
+}
+
+func wizardFieldLabel(f fieldDef, wz *WizardState) string {
+	if f.label != "内容" {
+		if f.label == "最低成功率%" {
+			return "最低成功率"
+		}
+		return f.label
+	}
+	switch wz.PromptMode {
+	case PromptModeFile:
+		return "文件路径"
+	case PromptModeGenerated:
+		return "生成长度"
+	default:
+		return "Prompt"
+	}
+}
+
+func wizardPromptModeLabel(mode string) string {
+	switch mode {
+	case PromptModeFile:
+		return "文件"
+	case PromptModeGenerated:
+		return "按长度生成"
+	default:
+		return "直接输入"
+	}
+}
+
+func wizardFallback(value, fallback string) string {
+	if value == "" {
+		return fallback
+	}
+	return value
+}
+
+func fitTail(s string, maxW int) string {
+	if maxW <= 0 {
+		return ""
+	}
+	if lipgloss.Width(s) <= maxW {
+		return s
+	}
+	runes := []rune(s)
+	width := 0
+	for i := len(runes) - 1; i >= 0; i-- {
+		rw := lipgloss.Width(string(runes[i]))
+		if width+rw > maxW-1 {
+			return "…" + string(runes[i+1:])
+		}
+		width += rw
+	}
+	return s
+}
+
+func appendWizardSummaryRow(lines *[]string, st Styles, label, value string, width int, valueStyle lipgloss.Style) {
+	labelW := 14
+	contentW := maxInt(8, width-labelW-1)
+	segments := wrapText(value, contentW)
+	if len(segments) == 0 {
+		segments = []string{""}
+	}
+	*lines = append(*lines, st.Label.Render(padRight(label, labelW))+" "+valueStyle.Render(segments[0]))
+	indent := strings.Repeat(" ", labelW+1)
+	for _, segment := range segments[1:] {
+		*lines = append(*lines, indent+valueStyle.Render(segment))
+	}
+}
+
+func wizardContextItems(step wizardStep) []ContextBarItem {
+	switch step {
+	case wizardStep1:
+		return CtxBar_Wizard_Step1()
+	case wizardStep2:
+		return CtxBar_Wizard_Step2()
+	default:
+		return CtxBar_Wizard_Step3()
+	}
+}
+
+func wizardStatusText(wz *WizardState, focusLine, offset, end, total, visible int) string {
+	if total <= 0 {
+		return "暂无配置项"
+	}
+	if wz.Step == wizardStep3 {
+		if total > visible {
+			return fmt.Sprintf("确认项 %d-%d/%d", offset+1, end, total)
+		}
+		return fmt.Sprintf("共 %d 项待确认", total)
+	}
+	current := clampInt(focusLine+1, 1, total)
+	if total > visible {
+		return fmt.Sprintf("当前字段 %d/%d · 内容较多时自动滚动", current, total)
+	}
+	return fmt.Sprintf("当前字段 %d/%d", current, total)
 }
