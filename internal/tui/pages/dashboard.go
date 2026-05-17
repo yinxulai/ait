@@ -165,27 +165,6 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	}
 	rs := d.RunState
 
-	// ── 状态标识 ──
-	statusStr := "等待中"
-	if rs != nil {
-		switch rs.Status {
-		case server.RunStatusRunning:
-			statusStr = st.Ok.Render("运行中")
-		case server.RunStatusCompleted:
-			statusStr = st.Ok.Render("已完成")
-		case server.RunStatusFailed:
-			statusStr = st.ErrStyle.Render("失败")
-		case server.RunStatusStopped:
-			statusStr = st.Muted.Render("已停止")
-		}
-	}
-
-	subtitle := "─"
-	if rs != nil {
-		subtitle = fmt.Sprintf("%s · %s · 并发: %d · 请求: %d",
-			"─", "─", 0, rs.TotalReqs)
-	}
-
 	var cbItems []ContextBarItem
 	if d.ReqSel >= 0 && rs != nil && d.ReqSel < len(rs.Requests) {
 		cbItems = CtxBar_Dashboard_Sel()
@@ -193,9 +172,6 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 		cbItems = CtxBar_Dashboard_NoSel()
 	}
 	l := PageLayout{
-		TitleLeft:   "AIT  正在测试 ─ " + truncate(taskName, 25),
-		TitleRight:  statusStr,
-		InfoLeft:    subtitle,
 		CtxItems:    cbItems,
 		FooterParts: []string{"[q] 退出"},
 	}

@@ -143,10 +143,6 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 		return renderTooSmall(st, width, height)
 	}
 
-	lastRunStr := ""
-	if lt := s.latestRunAt(); lt != nil {
-		lastRunStr = "最近运行: " + lt.Format("2006-01-02 15:04")
-	}
 	var cbItems []ContextBarItem
 	if t, ok := s.CurrentTask(); ok {
 		if s.IsTaskRunning(t.ID) {
@@ -156,8 +152,6 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 		}
 	}
 	l := PageLayout{
-		TitleLeft:   "AIT  任务中心",
-		InfoLeft:    fmt.Sprintf("已保存任务: %d   %s", len(s.Tasks), lastRunStr),
 		CtxItems:    cbItems,
 		FooterParts: []string{"[↑↓] 选择", "[a] 新建", "[q] 退出", "◆ AIT  v0.1"},
 	}

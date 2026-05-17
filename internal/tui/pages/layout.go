@@ -22,10 +22,6 @@ const (
 // PageLayout 描述一个完整页面的 chrome（底部 ContextBar + Footer）。
 // 各页面 Render 函数先构造 PageLayout，再调用 Assemble 拼装最终输出。
 type PageLayout struct {
-	TitleLeft   string
-	TitleRight  string
-	InfoLeft    string
-	InfoRight   string
 	CtxItems    []ContextBarItem
 	FooterParts []string
 }

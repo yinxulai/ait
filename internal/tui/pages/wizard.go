@@ -83,59 +83,52 @@ func NewWizardState() *WizardState {
 	}
 }
 
-// NewWizardStateEdit 创建编辑任务向导状态（预填任务数据）。
+// NewWizardStateEdit 创建编辑任务向导状态（预填任务数据，零值字段沿用默认值）。
 func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 	if t == nil {
 		return NewWizardState()
 	}
+	wz := NewWizardState()
 	inp := t.Input
 	tc := inp.TurboConfig
-	wz := &WizardState{
-		Step:            wizardStep1,
-		EditingID:       t.ID,
-		Name:            t.Name,
-		Protocol:        types.NormalizeProtocol(inp.Protocol),
-		EndpointURL:     inp.EndpointURL,
-		APIKey:          inp.ApiKey,
-		Model:           inp.Model,
-		Turbo:           inp.Turbo,
-		Stream:          inp.Stream,
-		Concurrency:     inp.Concurrency,
-		Count:           inp.Count,
-		Timeout:         int(inp.Timeout.Seconds()),
-		InitConcurrency: tc.InitConcurrency,
-		MaxConcurrency:  tc.MaxConcurrency,
-		StepSize:        tc.StepSize,
-		LevelRequests:   tc.LevelRequests,
-		MinSuccessRate:  tc.MinSuccessRate * 100, // 转为百分比
-		PromptMode:      inp.PromptMode,
-		PromptText:      inp.PromptText,
-		PromptFile:      inp.PromptFile,
-		PromptLength:    inp.PromptLength,
+
+	wz.EditingID = t.ID
+	wz.Name = t.Name
+	wz.Protocol = types.NormalizeProtocol(inp.Protocol)
+	wz.EndpointURL = inp.EndpointURL
+	wz.APIKey = inp.ApiKey
+	wz.Model = inp.Model
+	wz.Turbo = inp.Turbo
+	wz.Stream = inp.Stream
+	wz.PromptText = inp.PromptText
+	wz.PromptFile = inp.PromptFile
+	wz.PromptLength = inp.PromptLength
+	if inp.PromptMode != "" {
+		wz.PromptMode = inp.PromptMode
 	}
-	if wz.PromptMode == "" {
-		wz.PromptMode = PromptModeText
+	if inp.Concurrency > 0 {
+		wz.Concurrency = inp.Concurrency
 	}
-	if wz.Concurrency == 0 {
-		wz.Concurrency = 10
+	if inp.Count > 0 {
+		wz.Count = inp.Count
 	}
-	if wz.Count == 0 {
-		wz.Count = 100
+	if inp.Timeout > 0 {
+		wz.Timeout = int(inp.Timeout.Seconds())
 	}
-	if wz.Timeout == 0 {
-		wz.Timeout = 30
+	if tc.InitConcurrency > 0 {
+		wz.InitConcurrency = tc.InitConcurrency
 	}
-	if wz.MinSuccessRate == 0 {
-		wz.MinSuccessRate = 90
+	if tc.MaxConcurrency > 0 {
+		wz.MaxConcurrency = tc.MaxConcurrency
 	}
-	if wz.StepSize == 0 {
-		wz.StepSize = 2
+	if tc.StepSize > 0 {
+		wz.StepSize = tc.StepSize
 	}
-	if wz.LevelRequests == 0 {
-		wz.LevelRequests = 30
+	if tc.LevelRequests > 0 {
+		wz.LevelRequests = tc.LevelRequests
 	}
-	if wz.MaxConcurrency == 0 {
-		wz.MaxConcurrency = 50
+	if tc.MinSuccessRate > 0 {
+		wz.MinSuccessRate = tc.MinSuccessRate * 100
 	}
 	return wz
 }
@@ -192,6 +185,20 @@ const (
 	fieldBool                    // 布尔开关
 	fieldEnum                    // 枚举循环
 )
+
+// intField 构造一个整数输入字段（值 > 0 时才写入）。
+func intField(label string, get func(*WizardState) int, set func(*WizardState, int)) fieldDef {
+	return fieldDef{
+		kind:  fieldNumber,
+		label: label,
+		get:   func(wz *WizardState) string { return strconv.Itoa(get(wz)) },
+		set: func(wz *WizardState, v string) {
+			if n, err := strconv.Atoi(v); err == nil && n > 0 {
+				set(wz, n)
+			}
+		},
+	}
+}
 
 // step1Fields 返回步骤1的字段列表。
 func step1Fields() []fieldDef {
@@ -267,75 +274,20 @@ func step2Fields(turbo bool) []fieldDef {
 
 	if !turbo {
 		fields = append(fields,
-			fieldDef{
-				kind: fieldNumber, label: "并发数",
-				get: func(wz *WizardState) string { return strconv.Itoa(wz.Concurrency) },
-				set: func(wz *WizardState, v string) {
-					if n, err := strconv.Atoi(v); err == nil && n > 0 {
-						wz.Concurrency = n
-					}
-				},
-			},
-			fieldDef{
-				kind: fieldNumber, label: "请求总数",
-				get: func(wz *WizardState) string { return strconv.Itoa(wz.Count) },
-				set: func(wz *WizardState, v string) {
-					if n, err := strconv.Atoi(v); err == nil && n > 0 {
-						wz.Count = n
-					}
-				},
-			},
-			fieldDef{
-				kind: fieldNumber, label: "超时(秒)",
-				get: func(wz *WizardState) string { return strconv.Itoa(wz.Timeout) },
-				set: func(wz *WizardState, v string) {
-					if n, err := strconv.Atoi(v); err == nil && n > 0 {
-						wz.Timeout = n
-					}
-				},
-			},
+			intField("并发数", func(wz *WizardState) int { return wz.Concurrency }, func(wz *WizardState, n int) { wz.Concurrency = n }),
+			intField("请求总数", func(wz *WizardState) int { return wz.Count }, func(wz *WizardState, n int) { wz.Count = n }),
+			intField("超时(秒)", func(wz *WizardState) int { return wz.Timeout }, func(wz *WizardState, n int) { wz.Timeout = n }),
 		)
 	} else {
 		fields = append(fields,
+			intField("初始并发", func(wz *WizardState) int { return wz.InitConcurrency }, func(wz *WizardState, n int) { wz.InitConcurrency = n }),
+			intField("最大并发", func(wz *WizardState) int { return wz.MaxConcurrency }, func(wz *WizardState, n int) { wz.MaxConcurrency = n }),
+			intField("步进值", func(wz *WizardState) int { return wz.StepSize }, func(wz *WizardState, n int) { wz.StepSize = n }),
+			intField("每级请求数", func(wz *WizardState) int { return wz.LevelRequests }, func(wz *WizardState, n int) { wz.LevelRequests = n }),
 			fieldDef{
-				kind: fieldNumber, label: "初始并发",
-				get: func(wz *WizardState) string { return strconv.Itoa(wz.InitConcurrency) },
-				set: func(wz *WizardState, v string) {
-					if n, err := strconv.Atoi(v); err == nil && n > 0 {
-						wz.InitConcurrency = n
-					}
-				},
-			},
-			fieldDef{
-				kind: fieldNumber, label: "最大并发",
-				get: func(wz *WizardState) string { return strconv.Itoa(wz.MaxConcurrency) },
-				set: func(wz *WizardState, v string) {
-					if n, err := strconv.Atoi(v); err == nil && n > 0 {
-						wz.MaxConcurrency = n
-					}
-				},
-			},
-			fieldDef{
-				kind: fieldNumber, label: "步进值",
-				get: func(wz *WizardState) string { return strconv.Itoa(wz.StepSize) },
-				set: func(wz *WizardState, v string) {
-					if n, err := strconv.Atoi(v); err == nil && n > 0 {
-						wz.StepSize = n
-					}
-				},
-			},
-			fieldDef{
-				kind: fieldNumber, label: "每级请求数",
-				get: func(wz *WizardState) string { return strconv.Itoa(wz.LevelRequests) },
-				set: func(wz *WizardState, v string) {
-					if n, err := strconv.Atoi(v); err == nil && n > 0 {
-						wz.LevelRequests = n
-					}
-				},
-			},
-			fieldDef{
-				kind: fieldNumber, label: "最低成功率%",
-				get: func(wz *WizardState) string { return fmt.Sprintf("%.0f", wz.MinSuccessRate) },
+				kind:  fieldNumber,
+				label: "最低成功率",
+				get:   func(wz *WizardState) string { return fmt.Sprintf("%.0f", wz.MinSuccessRate) },
 				set: func(wz *WizardState, v string) {
 					if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 100 {
 						wz.MinSuccessRate = f
@@ -450,19 +402,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			wz.ScrollOff = 0
 		case "end":
 			wz.ScrollOff = 1 << 30
-		case "enter":
-			// 保存任务
-			cfg := wz.BuildTaskConfig()
-			var cmd tea.Cmd
-			if wz.EditingID != "" {
-				cmd = client.UpdateTaskCmd(wz.EditingID, cfg)
-			} else {
-				cmd = client.CreateTaskCmd(cfg, true) // autoStart
-			}
-			nav = NavAction{To: NavTaskList}
-			return wz, cmd, nav
-		case "r":
-			// 保存并运行（强制启动，忽略干扰检测）
+		case "enter", "r":
 			cfg := wz.BuildTaskConfig()
 			var cmd tea.Cmd
 			if wz.EditingID != "" {
@@ -571,6 +511,16 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 		return renderTooSmall(st, width, height)
 	}
 
+	l := PageLayout{
+		CtxItems:    wizardContextItems(wz.Step),
+		FooterParts: []string{"[q] 退出", "◆ AIT  v0.1"},
+	}
+
+	content := buildWizardPageContent(wz, st, ContentWidth(width), l.ContentHeight(height))
+	return l.Assemble(wrapPanel(st, content, width), st, width)
+}
+
+func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string {
 	stepTitles := []string{"基本信息", "测试参数", "确认保存"}
 	stepDescs := []string{
 		"配置任务名称、模型协议和连接信息。",
@@ -581,19 +531,9 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 	if wz.EditingID != "" {
 		action = "编辑任务"
 	}
+	stepTitle := stepTitles[int(wz.Step)]
+	stepDesc := stepDescs[int(wz.Step)]
 
-	l := PageLayout{
-		TitleLeft:   fmt.Sprintf("AIT  %s", action),
-		InfoLeft:    fmt.Sprintf("步骤 %d/3 · %s", int(wz.Step)+1, stepTitles[int(wz.Step)]),
-		CtxItems:    wizardContextItems(wz.Step),
-		FooterParts: []string{"[q] 退出", "◆ AIT  v0.1"},
-	}
-
-	content := buildWizardPageContent(wz, st, action, stepTitles[int(wz.Step)], stepDescs[int(wz.Step)], ContentWidth(width), l.ContentHeight(height))
-	return l.Assemble(wrapPanel(st, content, width), st, width)
-}
-
-func buildWizardPageContent(wz *WizardState, st Styles, action, stepTitle, stepDesc string, width, maxH int) string {
 	titleLeft := st.SectionHead.Render(action)
 	titleRight := st.Muted.Render(fmt.Sprintf("步骤 %d/3 · %s", int(wz.Step)+1, stepTitle))
 	var topLines []string
@@ -649,7 +589,7 @@ func buildWizardPageContent(wz *WizardState, st Styles, action, stepTitle, stepD
 	if showBottomDivider {
 		lines = append(lines, dividerLine(st, width))
 	}
-	lines = append(lines, st.Muted.Render(truncate(wizardStatusText(wz, focusLine, offset, end, len(bodyLines), bodyH), width)))
+	lines = append(lines, st.Muted.Render(truncate(wizardStatusText(wz, offset, end, len(bodyLines), bodyH), width)))
 
 	if len(lines) > maxH {
 		lines = lines[:maxH]
@@ -779,8 +719,8 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 		addRow("并发数", strconv.Itoa(wz.Concurrency), st.Value)
 		addRow("请求总数", strconv.Itoa(wz.Count), st.Value)
 		addRow("超时", fmt.Sprintf("%ds", wz.Timeout), st.Value)
-		addRow("流式模式", boolLabel(wz.Stream), st.Value)
 	}
+	addRow("流式模式", boolLabel(wz.Stream), st.Value)
 
 	lines = append(lines, "", st.SectionHead.Render("Prompt"))
 	addRow("输入方式", wizardPromptModeLabel(wz.PromptMode), st.Value)
@@ -818,9 +758,6 @@ func renderWizardStepStrip(step wizardStep) string {
 
 func wizardFieldLabel(f fieldDef, wz *WizardState) string {
 	if f.label != "内容" {
-		if f.label == "最低成功率%" {
-			return "最低成功率"
-		}
 		return f.label
 	}
 	switch wz.PromptMode {
@@ -895,19 +832,25 @@ func wizardContextItems(step wizardStep) []ContextBarItem {
 	}
 }
 
-func wizardStatusText(wz *WizardState, focusLine, offset, end, total, visible int) string {
-	if total <= 0 {
+func wizardStatusText(wz *WizardState, offset, end, scrollTotal, visible int) string {
+	if wz.Step == wizardStep3 {
+		if scrollTotal <= 0 {
+			return "暂无确认项"
+		}
+		if scrollTotal > visible {
+			return fmt.Sprintf("确认项 %d-%d/%d", offset+1, end, scrollTotal)
+		}
+		return fmt.Sprintf("共 %d 项待确认", scrollTotal)
+	}
+	var fieldTotal int
+	switch wz.Step {
+	case wizardStep1:
+		fieldTotal = len(step1Fields())
+	case wizardStep2:
+		fieldTotal = len(step2Fields(wz.Turbo))
+	}
+	if fieldTotal <= 0 {
 		return "暂无配置项"
 	}
-	if wz.Step == wizardStep3 {
-		if total > visible {
-			return fmt.Sprintf("确认项 %d-%d/%d", offset+1, end, total)
-		}
-		return fmt.Sprintf("共 %d 项待确认", total)
-	}
-	current := clampInt(focusLine+1, 1, total)
-	if total > visible {
-		return fmt.Sprintf("当前字段 %d/%d · 内容较多时自动滚动", current, total)
-	}
-	return fmt.Sprintf("当前字段 %d/%d", current, total)
+	return fmt.Sprintf("当前字段 %d/%d", wz.FieldIndex+1, fieldTotal)
 }

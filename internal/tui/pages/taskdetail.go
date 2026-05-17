@@ -102,7 +102,6 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	t := s.Task
 	inp := t.Input
 
-	updatedStr := timeAgo(t.UpdatedAt)
 	var cbItems []ContextBarItem
 	if len(s.History) > 0 {
 		cbItems = CtxBar_TaskDetail_HasHistory()
@@ -110,9 +109,6 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 		cbItems = CtxBar_TaskDetail_NoHistory()
 	}
 	l := PageLayout{
-		TitleLeft: "AIT  任务详情 ─ " + truncate(t.Name, 30),
-		InfoLeft: fmt.Sprintf("任务 ID: %s   更新: %s   %s",
-			truncate(t.ID, 10), t.UpdatedAt.Format("2006-01-02 15:04"), updatedStr),
 		CtxItems:    cbItems,
 		FooterParts: []string{"[b/Esc] 返回列表", "◆ AIT  v0.1"},
 	}

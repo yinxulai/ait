@@ -139,18 +139,6 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	}
 	rs := d.RunState
 
-	// ── 状态标识 ──
-	statusStr := st.Ok.Render("探测中")
-	if rs != nil && rs.Status != server.RunStatusRunning {
-		statusStr = st.Muted.Render(string(rs.Status))
-	}
-
-	subtitle := "─"
-	if rs != nil && len(rs.Levels) > 0 {
-		subtitle = fmt.Sprintf("%s · 当前并发: %d   已完成 %d 级",
-			"─", rs.CurrentLevel, len(rs.Levels))
-	}
-
 	var cbItems []ContextBarItem
 	if d.LevelSel >= 0 && rs != nil && d.LevelSel < len(rs.Levels) {
 		cbItems = CtxBar_TurboDash_Sel()
@@ -158,9 +146,6 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 		cbItems = CtxBar_TurboDash_NoSel()
 	}
 	l := PageLayout{
-		TitleLeft:   "AIT  Turbo 探测 ─ " + truncate(taskName, 22),
-		TitleRight:  statusStr,
-		InfoLeft:    subtitle,
 		CtxItems:    cbItems,
 		FooterParts: []string{"[q] 退出"},
 	}
