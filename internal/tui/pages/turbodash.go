@@ -57,7 +57,10 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 		if len(levels) == 0 {
 			break
 		}
-		if d.LevelSel <= 0 {
+		if d.LevelSel < 0 {
+			// 首次按键：跳到最后一级（最新/最高并发），与 ↓ 保持一致
+			d.LevelSel = len(levels) - 1
+		} else if d.LevelSel <= 0 {
 			d.LevelSel = len(levels) - 1
 		} else {
 			d.LevelSel--
@@ -67,7 +70,10 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 		if len(levels) == 0 {
 			break
 		}
-		if d.LevelSel < len(levels)-1 {
+		if d.LevelSel < 0 {
+			// 首次按键：跳到最后一级（最新/最高并发），与 ↑ 保持一致
+			d.LevelSel = len(levels) - 1
+		} else if d.LevelSel < len(levels)-1 {
 			d.LevelSel++
 		} else {
 			d.LevelSel = 0

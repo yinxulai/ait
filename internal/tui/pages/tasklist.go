@@ -95,7 +95,7 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 		}
 
 	case "r":
-		if t, ok := s.CurrentTask(); ok {
+		if t, ok := s.CurrentTask(); ok && !s.IsTaskRunning(t.ID) {
 			return s, client.StartRunCmd(t.ID), nav
 		}
 

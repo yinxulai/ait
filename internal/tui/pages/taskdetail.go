@@ -71,7 +71,9 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 		nav = NavAction{To: NavTaskList}
 
 	case "r":
-		return s, client.StartRunCmd(s.Task.ID), nav
+		if s.ActiveRun == nil {
+			return s, client.StartRunCmd(s.Task.ID), nav
+		}
 
 	case "g":
 		if s.HistorySel >= 0 && s.HistorySel < effectiveLen {
@@ -142,9 +144,12 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	if hasActive {
 		effectiveLen++
 	}
-	if effectiveLen > 0 {
+	switch {
+	case hasActive:
+		cbItems = CtxBar_TaskDetail_Running()
+	case effectiveLen > 0:
 		cbItems = CtxBar_TaskDetail_HasHistory()
-	} else {
+	default:
 		cbItems = CtxBar_TaskDetail_NoHistory()
 	}
 	l := PageLayout{

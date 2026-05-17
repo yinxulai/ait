@@ -3,6 +3,7 @@ package pages
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
@@ -280,9 +281,13 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 		ratio = float64(done) / float64(total)
 	}
 	prefix := " 进度  "
-	elapsed := ""
+	elapsed := "─"
 	if !rs.StartedAt.IsZero() {
-		elapsed = "─"
+		if rs.FinishedAt != nil {
+			elapsed = fmtDuration(rs.FinishedAt.Sub(rs.StartedAt))
+		} else {
+			elapsed = fmtDuration(time.Since(rs.StartedAt))
+		}
 	}
 	suffix := fmt.Sprintf("  %d / %d   %s", done, total, elapsed)
 
