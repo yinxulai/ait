@@ -1,9 +1,14 @@
 package server
 
 import (
+	"bufio"
+	"encoding/json"
 	"fmt"
+	"os"
 	"path/filepath"
+	"sort"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
@@ -26,6 +31,21 @@ type activeRun struct {
 	ttftSum      time.Duration
 	cacheSum     float64
 	doneCount    int // 与 state.DoneReqs 保持同步，方便不加锁时计算
+}
+
+// callbackLevelRunner 包装 runner.Runner，在每次请求完成时调用回调，
+// 使 turbo 运行也能逐请求采集详细指标数据。
+type callbackLevelRunner struct {
+	r  *runner.Runner
+	cb runner.RequestDoneCallback
+}
+
+func (c *callbackLevelRunner) Run() (*types.ReportData, error) {
+	return c.r.RunWithCallback(c.cb)
+}
+
+func (c *callbackLevelRunner) Stop() {
+	c.r.Stop()
 }
 
 // snapshotState 返回 state 的深度拷贝（调用方须已持有 activeRun.mu 读锁）。
@@ -91,10 +111,65 @@ func runStatePath(historyDir string, runID RunID) string {
 	return filepath.Join(historyDir, "runs", string(runID)+".json")
 }
 
-// persistRunState 将完整 RunState 快照写入磁盘，供历史回放使用。
+// requestsFilePath 返回指定运行的请求详情 JSONL 文件路径。
+func requestsFilePath(historyDir string, runID RunID) string {
+	return filepath.Join(historyDir, "runs", string(runID)+".jsonl")
+}
+
+// appendRequestToDisk 将单条 RequestMetrics 以 JSON 行的形式追加写入磁盘。
+func appendRequestToDisk(historyDir string, runID RunID, rm *RequestMetrics) {
+	path := requestsFilePath(historyDir, runID)
+	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
+	if err != nil {
+		return
+	}
+	defer f.Close()
+	data, err := json.Marshal(rm)
+	if err != nil {
+		return
+	}
+	_, _ = f.Write(data)
+	_, _ = f.Write([]byte{'\n'})
+}
+
+// loadRequestsFromDisk 从 JSONL 文件中加载所有 RequestMetrics，按 Index 排序。
+func loadRequestsFromDisk(historyDir string, runID RunID) []*RequestMetrics {
+	path := requestsFilePath(historyDir, runID)
+	f, err := os.Open(path)
+	if err != nil {
+		return nil
+	}
+	defer f.Close()
+
+	const maxLineSize = 16 * 1024 * 1024 // 16 MB per line
+	buf := make([]byte, maxLineSize)
+	scanner := bufio.NewScanner(f)
+	scanner.Buffer(buf, maxLineSize)
+
+	var reqs []*RequestMetrics
+	for scanner.Scan() {
+		line := scanner.Bytes()
+		if len(line) == 0 {
+			continue
+		}
+		var rm RequestMetrics
+		if err := json.Unmarshal(line, &rm); err != nil {
+			continue
+		}
+		reqs = append(reqs, &rm)
+	}
+	sort.Slice(reqs, func(i, j int) bool {
+		return reqs[i].Index < reqs[j].Index
+	})
+	return reqs
+}
+
+// persistRunState 将 RunState 元数据写入磁盘（不含 Requests，请求详情在 JSONL 文件中）。
 func persistRunState(historyDir string, snap *RunState) {
+	toSave := *snap
+	toSave.Requests = nil // 请求详情已逐条写入 JSONL，避免重复存储
 	st := store.NewJSONStore[*RunState](runStatePath(historyDir, snap.RunID))
-	_ = st.Save(snap) // 失败不影响主流程
+	_ = st.Save(&toSave) // 失败不影响主流程
 }
 
 // StartRun 启动一次新的运行，立即返回 RunID。
@@ -123,13 +198,18 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	}
 
 	state := &RunState{
-		RunID:       runID,
-		TaskID:      taskID,
-		Status:      RunStatusRunning,
-		Mode:        mode,
-		StartedAt:   now,
-		TotalReqs:   hydratedInput.Count,
-		Requests:    make([]*RequestMetrics, hydratedInput.Count),
+		RunID:     runID,
+		TaskID:    taskID,
+		Status:    RunStatusRunning,
+		Mode:      mode,
+		StartedAt: now,
+	}
+	if hydratedInput.Turbo {
+		// turbo 模式：跨多个并发级别探测，请求总数不固定，动态追加
+		state.TotalReqs = 0
+	} else {
+		// standard 模式：请求数固定，动态追加（按完成顺序）
+		state.TotalReqs = hydratedInput.Count
 	}
 
 	ar := &activeRun{state: state}
@@ -179,11 +259,10 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 
 	reportData, err := rnr.RunWithCallback(func(metrics *client.ResponseMetrics, idx int, cbErr error) {
 		rm := mapRequestMetrics(metrics, idx, cbErr)
+		appendRequestToDisk(historyDir, runID, rm)
 
 		ar.mu.Lock()
-		if idx < len(ar.state.Requests) {
-			ar.state.Requests[idx] = rm
-		}
+		ar.state.Requests = append(ar.state.Requests, rm)
 		ar.state.DoneReqs++
 		if rm.Success {
 			ar.state.SuccessReqs++
@@ -222,7 +301,50 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 
 // runTurbo 在 goroutine 中执行 Turbo 运行。
 func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, historyDir string) {
-	engine := turbo.New(turbo.DefaultRunnerFactory(taskDef.ID))
+	// 全局请求计数器（原子递增），确保跨多个并发级别的请求索引唯一
+	var globalIdx int64
+
+	factory := func(levelInput types.Input) (turbo.LevelRunner, error) {
+		r, err := runner.NewRunner(taskDef.ID, levelInput)
+		if err != nil {
+			return nil, err
+		}
+		return &callbackLevelRunner{
+			r: r,
+			cb: func(metrics *client.ResponseMetrics, _ int, cbErr error) {
+				gIdx := int(atomic.AddInt64(&globalIdx, 1)) - 1
+				rm := mapRequestMetrics(metrics, gIdx, cbErr)
+				appendRequestToDisk(historyDir, runID, rm)
+
+				ar.mu.Lock()
+				ar.state.Requests = append(ar.state.Requests, rm)
+				ar.state.TotalReqs++
+				ar.state.DoneReqs++
+				if rm.Success {
+					ar.state.SuccessReqs++
+					ar.tpsSum += rm.TPS
+					ar.ttftSum += rm.TTFT
+					ar.cacheSum += rm.CacheHitRate
+				} else {
+					ar.state.FailedReqs++
+				}
+				if ar.state.SuccessReqs > 0 {
+					ar.state.AvgTPS = ar.tpsSum / float64(ar.state.SuccessReqs)
+					ar.state.AvgTTFT = ar.ttftSum / time.Duration(ar.state.SuccessReqs)
+					ar.state.CacheHitRate = ar.cacheSum / float64(ar.state.SuccessReqs)
+				}
+				if ar.state.DoneReqs > 0 {
+					ar.state.SuccessRate = float64(ar.state.SuccessReqs) / float64(ar.state.DoneReqs) * 100
+				}
+				snap := ar.snapshotState()
+				ar.mu.Unlock()
+
+				s.bus.Publish(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
+			},
+		}, nil
+	}
+
+	engine := turbo.New(factory)
 
 	ar.mu.Lock()
 	ar.turboEngine = engine
@@ -257,8 +379,13 @@ func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef typ
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
 	s.bus.CloseRun(runID)
 
-	// 将完整运行状态持久化到磁盘，供历史详情页回放
+	// 将元数据写入磁盘（Requests 已造话就写 JSONL，此处仅写 RunState 元数据）
 	persistRunState(historyDir, snap)
+
+	// 运行已完成且数据已落盘，释放内存中的请求详情
+	ar.mu.Lock()
+	ar.state.Requests = nil
+	ar.mu.Unlock()
 
 	summary := types.TaskRunSummary{
 		RunID:       string(runID),
@@ -296,8 +423,13 @@ func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
 	s.bus.CloseRun(runID)
 
-	// 将完整运行状态持久化到磁盘，供历史详情页回放
+	// 将元数据写入磁盘（Requests 已造话就写 JSONL，此处仅写 RunState 元数据）
 	persistRunState(historyDir, snap)
+
+	// 运行已完成且数据已落盘，释放内存中的请求详情
+	ar.mu.Lock()
+	ar.state.Requests = nil
+	ar.mu.Unlock()
 
 	var maxStable int
 	var peakTPS float64
@@ -333,11 +465,16 @@ func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefin
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	s.bus.Publish(Event{RunID: runID, Kind: EventRunFailed, Payload: runErr})
+	s.bus.Publish(Event{RunID: runID, Kind: EventRunFailed, Payload: snap})
 	s.bus.CloseRun(runID)
 
-	// 将完整运行状态持久化到磁盘，供历史详情页回放
+	// 将元数据写入磁盘（Requests 已造话就写 JSONL，此处仅写 RunState 元数据）
 	persistRunState(historyDir, snap)
+
+	// 运行已完成且数据已落盘，释放内存中的请求详情
+	ar.mu.Lock()
+	ar.state.Requests = nil
+	ar.mu.Unlock()
 
 	summary := types.TaskRunSummary{
 		RunID:        string(runID),
@@ -408,6 +545,10 @@ func (s *serverImpl) GetRunState(runID RunID) (*RunState, bool) {
 		ar.mu.RLock()
 		snap := ar.snapshotState()
 		ar.mu.RUnlock()
+		// 运行已完成且 Requests 已从内存清除（节省内存），从 JSONL 文件补充加载
+		if snap.Status != RunStatusRunning && snap.Requests == nil {
+			snap.Requests = loadRequestsFromDisk(historyDir, snap.RunID)
+		}
 		return snap, true
 	}
 
@@ -417,6 +558,8 @@ func (s *serverImpl) GetRunState(runID RunID) (*RunState, bool) {
 	if err != nil || snap == nil {
 		return nil, false
 	}
+	// 从 JSONL 文件加载请求详情
+	snap.Requests = loadRequestsFromDisk(historyDir, runID)
 	return snap, true
 }
 

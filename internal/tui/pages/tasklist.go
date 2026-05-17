@@ -91,13 +91,7 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 
 	case "enter":
 		if t, ok := s.CurrentTask(); ok {
-			if s.IsTaskRunning(t.ID) {
-				if rs, ok := s.ActiveRuns[t.ID]; ok {
-					nav = NavAction{To: NavDashboard, TaskID: t.ID, RunID: rs.RunID}
-				}
-			} else {
-				nav = NavAction{To: NavTaskDetail, TaskID: t.ID}
-			}
+			nav = NavAction{To: NavTaskDetail, TaskID: t.ID}
 		}
 
 	case "r":
@@ -171,17 +165,25 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	}
 	listTopLines := len(lines)
 
-	// 列宽（合计 = nameW + modeW + protoW + 结果列）
-	nameW := 28
-	modeW := 8
-	protoW := 14
+	// 列宽（gap=2 作为列间距内置到每个非末尾列的宽度中）
+	const (
+		modeW    = 9  // 7 + 2 gap
+		protoW   = 12 // 10 + 2 gap
+		lastRunW = 13 // 11 + 2 gap
+		ttftW    = 12 // 10 + 2 gap
+		tpsW     = 9  // 末尾列，无需额外 gap
+	)
+	fixedW := 2 + modeW + protoW + lastRunW + ttftW + tpsW
+	nameW := maxInt(10, width-fixedW)
 
 	// 表头：2 空格前缀与正文行对齐（cursor=2）
 	header := renderTableHeader(st, width,
-		"  " + padRight("任务名称", nameW) +
-			padRight("模式", modeW) +
-			padRight("协议", protoW) +
-			"上次结果")
+		"  "+padRight("任务名称", nameW)+
+			padRight("模式", modeW)+
+			padRight("协议", protoW)+
+			padRight("上次运行", lastRunW)+
+			padRight("TTFT", ttftW)+
+			"TPS")
 	lines = append(lines, header)
 	lines = append(lines, dividerLine(st, width))
 	listMaxH := maxInt(3, maxH-listTopLines)
@@ -199,9 +201,9 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	for i := start; i < end; i++ {
 		t := s.Tasks[i]
 
-		isRunning := s.IsTaskRunning(t.ID)
 		isSel := i == s.Selected
 		rs := s.ActiveRuns[t.ID]
+		_, hasActiveRun := s.ActiveRuns[t.ID]
 
 		// ── 指示符 ──
 		prefix := padRight(selectionMarker(isSel), 2)
@@ -219,48 +221,6 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		// ── 协议 ──
 		proto := padRight(shortProtocol(t.Input.NormalizedProtocol()), protoW)
 
-		// ── 上次结果（选中行禁用嵌套样式，避免重置整行背景）──
-		lastResultText := "从未运行"
-		if t.LastRunSummary != nil {
-			pct := t.LastRunSummary.SuccessRate
-			if t.Input.Turbo {
-				if t.LastRunSummary.MaxStableConcurrency > 0 {
-					lastResultText = fmt.Sprintf("★ 并发%d", t.LastRunSummary.MaxStableConcurrency)
-				}
-			} else {
-				switch {
-				case pct >= 99:
-					lastResultText = fmt.Sprintf("✓ %.1f%%", pct)
-				case pct >= 90:
-					lastResultText = fmt.Sprintf("%.1f%%", pct)
-				default:
-					lastResultText = fmt.Sprintf("✗ %.1f%%", pct)
-				}
-			}
-		}
-		if isRunning && rs != nil {
-			lastResultText = fmt.Sprintf("◉ %d/%d  %.0f%%", rs.DoneReqs, rs.TotalReqs, rs.SuccessRate)
-		}
-
-		lastResult := lastResultText
-		if isRunning && rs != nil {
-			lastResult = styleWhenNotSelected(isSel, st.Ok, lastResultText)
-		} else if t.LastRunSummary == nil {
-			lastResult = styleWhenNotSelected(isSel, st.Muted, lastResultText)
-		} else if t.Input.Turbo && t.LastRunSummary.MaxStableConcurrency > 0 {
-			lastResult = styleWhenNotSelected(isSel, st.Ok, lastResultText)
-		} else if !t.Input.Turbo {
-			pct := t.LastRunSummary.SuccessRate
-			switch {
-			case pct >= 99:
-				lastResult = styleWhenNotSelected(isSel, st.Ok, lastResultText)
-			case pct >= 90:
-				lastResult = styleWhenNotSelected(isSel, st.MetricVal, lastResultText)
-			default:
-				lastResult = styleWhenNotSelected(isSel, st.ErrStyle, lastResultText)
-			}
-		}
-
 		// ── 任务名称（裁剪）──
 		name := truncate(t.Name, nameW)
 		namePad := nameW - lipgloss.Width(name)
@@ -269,10 +229,44 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		}
 		nameCol := name + strings.Repeat(" ", namePad)
 
-		// ── 第一行 ──
-		row1Content := nameCol + modeCol + proto + lastResult
-		row1 := renderTableRow(st, width, isSel, prefix+row1Content)
-		lines = append(lines, row1)
+		// ── 上次运行时间 ──
+		lastRunText := "─"
+		if hasActiveRun {
+			lastRunText = "运行中"
+		} else if t.LastRunAt != nil {
+			lastRunText = fmtRelativeTime(*t.LastRunAt)
+		}
+		lastRunStyle := st.Muted
+		if hasActiveRun {
+			lastRunStyle = st.Ok
+		}
+		lastRunCol := padRight(styleWhenNotSelected(isSel, lastRunStyle, lastRunText), lastRunW)
+
+		// ── TTFT ──
+		ttftText := "─"
+		if hasActiveRun && rs != nil && rs.AvgTTFT > 0 {
+			ttftText = fmtDuration(rs.AvgTTFT)
+		} else if !hasActiveRun && t.LastRunSummary != nil {
+			ttftText = fmtDuration(t.LastRunSummary.AvgTTFT)
+		}
+		ttftCol := padRight(styleWhenNotSelected(isSel, st.Value, ttftText), ttftW)
+
+		// ── TPS ──
+		tpsText := "─"
+		if hasActiveRun && rs != nil && rs.AvgTPS > 0 {
+			tpsText = fmt.Sprintf("%.1f", rs.AvgTPS)
+		} else if !hasActiveRun && t.LastRunSummary != nil {
+			if t.Input.Turbo && t.LastRunSummary.MaxStableConcurrency > 0 {
+				tpsText = fmt.Sprintf("并发%d", t.LastRunSummary.MaxStableConcurrency)
+			} else if !t.Input.Turbo {
+				tpsText = fmt.Sprintf("%.1f", t.LastRunSummary.AvgTPS)
+			}
+		}
+		tpsCol := styleWhenNotSelected(isSel, st.Value, tpsText)
+
+		// ── 单行：名称 | 模式 | 协议 | 上次运行 | TTFT | TPS ──
+		rowContent := nameCol + modeCol + proto + lastRunCol + ttftCol + tpsCol
+		lines = append(lines, renderTableRow(st, width, isSel, prefix+rowContent))
 
 		// ── 分隔线 ──
 		if i < end-1 && len(lines) < maxH-1 {

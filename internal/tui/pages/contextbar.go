@@ -22,7 +22,7 @@ func CtxBar_TaskList_Normal() []ContextBarItem {
 // CtxBar_TaskList_Running 运行中任务选中时的 Context Bar。
 func CtxBar_TaskList_Running() []ContextBarItem {
 	return []ContextBarItem{
-		{Key: "Enter", Desc: "进入仪表盘"},
+		{Key: "Enter", Desc: "查看详情"},
 		{Key: "s", Desc: "停止"},
 		{Key: "y", Desc: "复制"},
 	}
@@ -82,17 +82,24 @@ func CtxBar_Wizard_Step3() []ContextBarItem {
 	}
 }
 
-// CtxBar_Dashboard_NoSel 标准仪表盘，无选中请求时。
-func CtxBar_Dashboard_NoSel() []ContextBarItem {
+// CtxBar_Dashboard_Running_NoSel 标准仪表盘运行中，无选中请求时。
+func CtxBar_Dashboard_Running_NoSel() []ContextBarItem {
 	return []ContextBarItem{
 		{Key: "s", Desc: "停止"},
-		{Key: "b", Desc: "后台运行"},
-		{Key: "r", Desc: "提前报告"},
+		{Key: "b/Esc", Desc: "返回列表"},
 	}
 }
 
-// CtxBar_Dashboard_Sel 标准仪表盘，已选中请求时。
-func CtxBar_Dashboard_Sel() []ContextBarItem {
+// CtxBar_Dashboard_Done_NoSel 标准仪表盘完成后，无选中请求时。
+func CtxBar_Dashboard_Done_NoSel() []ContextBarItem {
+	return []ContextBarItem{
+		{Key: "r", Desc: "生成报告"},
+		{Key: "b/Esc", Desc: "返回列表"},
+	}
+}
+
+// CtxBar_Dashboard_Running_Sel 标准仪表盘运行中，已选中请求时。
+func CtxBar_Dashboard_Running_Sel() []ContextBarItem {
 	return []ContextBarItem{
 		{Key: "Enter", Desc: "查看请求详情"},
 		{Key: "↑↓", Desc: "选择请求"},
@@ -100,22 +107,45 @@ func CtxBar_Dashboard_Sel() []ContextBarItem {
 	}
 }
 
-// CtxBar_TurboDash_NoSel Turbo 仪表盘，无选中级别时。
-func CtxBar_TurboDash_NoSel() []ContextBarItem {
+// CtxBar_Dashboard_Done_Sel 标准仪表盘完成后，已选中请求时。
+func CtxBar_Dashboard_Done_Sel() []ContextBarItem {
 	return []ContextBarItem{
-		{Key: "s", Desc: "停止"},
-		{Key: "b", Desc: "后台运行"},
-		{Key: "m", Desc: "标记极限"},
-		{Key: "r", Desc: "提前报告"},
+		{Key: "Enter", Desc: "查看请求详情"},
+		{Key: "↑↓", Desc: "选择请求"},
 	}
 }
 
-// CtxBar_TurboDash_Sel Turbo 仪表盘，已选中已完成级别时。
-func CtxBar_TurboDash_Sel() []ContextBarItem {
+// CtxBar_TurboDash_Running_NoSel Turbo 仪表盘运行中，无选中级别时。
+func CtxBar_TurboDash_Running_NoSel() []ContextBarItem {
 	return []ContextBarItem{
-		{Key: "Enter", Desc: "查看该级别请求列表"},
+		{Key: "s", Desc: "停止"},
+		{Key: "m", Desc: "标记极限并停止"},
+		{Key: "b/Esc", Desc: "返回列表"},
+	}
+}
+
+// CtxBar_TurboDash_Done_NoSel Turbo 仪表盘完成后，无选中级别时。
+func CtxBar_TurboDash_Done_NoSel() []ContextBarItem {
+	return []ContextBarItem{
+		{Key: "r", Desc: "生成报告"},
+		{Key: "b/Esc", Desc: "返回列表"},
+	}
+}
+
+// CtxBar_TurboDash_Running_Sel Turbo 仪表盘运行中，已选中级别时。
+func CtxBar_TurboDash_Running_Sel() []ContextBarItem {
+	return []ContextBarItem{
+		{Key: "Enter", Desc: "查看该级别请求"},
 		{Key: "↑↓", Desc: "选择"},
 		{Key: "s", Desc: "停止"},
+	}
+}
+
+// CtxBar_TurboDash_Done_Sel Turbo 仪表盘完成后，已选中级别时。
+func CtxBar_TurboDash_Done_Sel() []ContextBarItem {
+	return []ContextBarItem{
+		{Key: "Enter", Desc: "查看该级别请求"},
+		{Key: "↑↓", Desc: "选择"},
 	}
 }
 

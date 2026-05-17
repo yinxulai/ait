@@ -17,9 +17,10 @@ type TurboDashState struct {
 	EventCh  <-chan server.Event
 	CancelFn server.CancelFunc
 	RunState *server.RunState
-	LevelSel int // 选中的级别索引（-1 = 无选中）
+	LevelSel int       // 选中的级别索引（-1 = 无选中）
 	LevelOff int
 	LevelVis int
+	BackNav  NavAction // 按 b/esc 时的返回目标；Zero = 返回任务列表
 }
 
 // NewTurboDashState 创建 Turbo 仪表盘初始状态。
@@ -73,9 +74,13 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 		}
 
 	case "enter":
-		// 进入该级别的请求列表（使用标准仪表盘的请求详情，此处导航到 ReqDetail）
+		// 进入该级别的请求列表，定位到该级别第一条请求
 		if d.LevelSel >= 0 && d.LevelSel < len(levels) {
-			nav = NavAction{To: NavReqDetail, ReqIndex: 0}
+			startIdx := 0
+			for j := 0; j < d.LevelSel; j++ {
+				startIdx += levels[j].TotalRequests
+			}
+			nav = NavAction{To: NavReqDetail, ReqIndex: startIdx}
 		}
 
 	case "s":
@@ -95,7 +100,11 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 		}
 		d.EventCh = nil
 		d.CancelFn = nil
-		nav = NavAction{To: NavTaskList}
+		if d.BackNav.To != NavNone {
+			nav = d.BackNav
+		} else {
+			nav = NavAction{To: NavTaskList}
+		}
 
 	case "r":
 		if d.RunState != nil && !d.IsRunning() {
@@ -139,11 +148,18 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	}
 	rs := d.RunState
 
+	isRunning := d.IsRunning()
+	hasSel := d.LevelSel >= 0 && rs != nil && d.LevelSel < len(rs.Levels)
 	var cbItems []ContextBarItem
-	if d.LevelSel >= 0 && rs != nil && d.LevelSel < len(rs.Levels) {
-		cbItems = CtxBar_TurboDash_Sel()
-	} else {
-		cbItems = CtxBar_TurboDash_NoSel()
+	switch {
+	case hasSel && isRunning:
+		cbItems = CtxBar_TurboDash_Running_Sel()
+	case hasSel && !isRunning:
+		cbItems = CtxBar_TurboDash_Done_Sel()
+	case !hasSel && isRunning:
+		cbItems = CtxBar_TurboDash_Running_NoSel()
+	default:
+		cbItems = CtxBar_TurboDash_Done_NoSel()
 	}
 	l := PageLayout{
 		CtxItems:    cbItems,
@@ -239,14 +255,20 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	if total > 0 {
 		ratio = float64(done) / float64(total)
 	}
-	barW := 15
-	barRendered := st.Ok.Render(strings.Repeat("█", int(ratio*float64(barW)))) +
-		st.Muted.Render(strings.Repeat("░", barW-int(ratio*float64(barW))))
-
 	levelTotal := len(rs.Levels)
-	line := fmt.Sprintf(" 进度  %s  %d/%d  当前并发 %d   总进度: 已完成 %d/~? 级",
-		barRendered, done, total, rs.CurrentLevel, levelTotal)
-	return line
+	prefix := " 进度  "
+	suffix := fmt.Sprintf("  %d/%d  当前并发 %d   总进度: 已完成 %d/~? 级", done, total, rs.CurrentLevel, levelTotal)
+
+	barW := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
+	if barW < 5 {
+		barW = 5
+	}
+
+	filled := int(ratio * float64(barW))
+	barRendered := st.Ok.Render(strings.Repeat("█", filled)) +
+		st.Muted.Render(strings.Repeat("░", barW-filled))
+
+	return prefix + barRendered + suffix
 }
 
 // buildLevelList 构建 Turbo 级别列表区域。

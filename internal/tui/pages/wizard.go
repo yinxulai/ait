@@ -169,8 +169,10 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 type fieldDef struct {
 	kind  fieldKind
 	label string
-	// 获取当前值（字符串形式）
+	// 获取当前值（字符串形式），用于显示；可能包含占位默认值
 	get func(wz *WizardState) string
+	// 获取实际存储值（用于编辑操作）；若为 nil 则退回到 get
+	getRaw func(wz *WizardState) string
 	// 设置文本值
 	set func(wz *WizardState, v string)
 	// 枚举/布尔切换
@@ -242,6 +244,7 @@ func step1Fields() []fieldDef {
 				}
 				return types.DefaultEndpointURL(wz.Protocol)
 			},
+			getRaw: func(wz *WizardState) string { return wz.EndpointURL },
 			set: func(wz *WizardState, v string) { wz.EndpointURL = v },
 		},
 		{
@@ -478,7 +481,11 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		if wz.FieldIndex < len(fields) {
 			f := fields[wz.FieldIndex]
 			if f.set != nil && f.kind == fieldText {
-				v := f.get(wz)
+				getEdit := f.get
+				if f.getRaw != nil {
+					getEdit = f.getRaw
+				}
+				v := getEdit(wz)
 				r := []rune(v)
 				if len(r) > 0 {
 					f.set(wz, string(r[:len(r)-1]))
@@ -494,7 +501,11 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		if len(msg.Runes) > 0 && wz.FieldIndex < len(fields) {
 			f := fields[wz.FieldIndex]
 			if f.set != nil && (f.kind == fieldText || f.kind == fieldNumber) {
-				f.set(wz, f.get(wz)+string(msg.Runes))
+				getEdit := f.get
+				if f.getRaw != nil {
+					getEdit = f.getRaw
+				}
+				f.set(wz, getEdit(wz)+string(msg.Runes))
 			}
 		}
 	}

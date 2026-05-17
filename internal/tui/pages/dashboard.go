@@ -16,9 +16,10 @@ type DashboardState struct {
 	EventCh  <-chan server.Event   // nil = 已后台或已结束
 	CancelFn server.CancelFunc
 	RunState *server.RunState
-	ReqSel   int // 选中请求索引（-1 = 无选中）
-	ReqOff   int // 滚动偏移
-	ReqVis   int // 当前可见请求数
+	ReqSel   int       // 选中请求索引（-1 = 无选中）
+	ReqOff   int       // 滚动偏移
+	ReqVis   int       // 当前可见请求数
+	BackNav  NavAction // 按 b/esc 时的返回目标；Zero = 返回任务列表
 }
 
 // NewDashboardState 创建仪表盘状态。
@@ -77,32 +78,36 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 		if len(reqs) == 0 {
 			break
 		}
-		selPos := 0
-		if d.ReqSel >= 0 {
-			selPos = requestDisplayPos(d.ReqSel, len(reqs))
-		}
-		if selPos <= 0 {
-			selPos = len(reqs) - 1
+		if d.ReqSel < 0 {
+			// 无选中项：首次按键选中最新一条（显示列表顶部）
+			d.ReqSel = requestIndexFromDisplayPos(0, len(reqs))
 		} else {
-			selPos--
+			selPos := requestDisplayPos(d.ReqSel, len(reqs))
+			if selPos <= 0 {
+				selPos = len(reqs) - 1
+			} else {
+				selPos--
+			}
+			d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
 		}
-		d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
 		d.AdjustReqOffset(d.ReqVis, len(reqs))
 
 	case "down", "j":
 		if len(reqs) == 0 {
 			break
 		}
-		selPos := 0
-		if d.ReqSel >= 0 {
-			selPos = requestDisplayPos(d.ReqSel, len(reqs))
-		}
-		if selPos < len(reqs)-1 {
-			selPos++
+		if d.ReqSel < 0 {
+			// 无选中项：首次按键选中最新一条（显示列表顶部）
+			d.ReqSel = requestIndexFromDisplayPos(0, len(reqs))
 		} else {
-			selPos = 0
+			selPos := requestDisplayPos(d.ReqSel, len(reqs))
+			if selPos < len(reqs)-1 {
+				selPos++
+			} else {
+				selPos = 0
+			}
+			d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
 		}
-		d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
 		d.AdjustReqOffset(d.ReqVis, len(reqs))
 
 	case "enter":
@@ -121,7 +126,11 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 		}
 		d.EventCh = nil
 		d.CancelFn = nil
-		nav = NavAction{To: NavTaskList}
+		if d.BackNav.To != NavNone {
+			nav = d.BackNav
+		} else {
+			nav = NavAction{To: NavTaskList}
+		}
 
 	case "r":
 		if d.RunState != nil && !d.IsRunning() {
@@ -165,11 +174,18 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	}
 	rs := d.RunState
 
+	isRunning := d.IsRunning()
+	hasSel := d.ReqSel >= 0 && rs != nil && d.ReqSel < len(rs.Requests)
 	var cbItems []ContextBarItem
-	if d.ReqSel >= 0 && rs != nil && d.ReqSel < len(rs.Requests) {
-		cbItems = CtxBar_Dashboard_Sel()
-	} else {
-		cbItems = CtxBar_Dashboard_NoSel()
+	switch {
+	case hasSel && isRunning:
+		cbItems = CtxBar_Dashboard_Running_Sel()
+	case hasSel && !isRunning:
+		cbItems = CtxBar_Dashboard_Done_Sel()
+	case !hasSel && isRunning:
+		cbItems = CtxBar_Dashboard_Running_NoSel()
+	default:
+		cbItems = CtxBar_Dashboard_Done_NoSel()
 	}
 	l := PageLayout{
 		CtxItems:    cbItems,
@@ -263,22 +279,23 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 	if total > 0 {
 		ratio = float64(done) / float64(total)
 	}
-	barW := 20
-	barRendered := st.Ok.Render(strings.Repeat("█", int(ratio*float64(barW)))) +
-		st.Muted.Render(strings.Repeat("░", barW-int(ratio*float64(barW))))
-
+	prefix := " 进度  "
 	elapsed := ""
 	if !rs.StartedAt.IsZero() {
-		// elapsed time display
 		elapsed = "─"
 	}
+	suffix := fmt.Sprintf("  %d / %d   %s", done, total, elapsed)
 
-	line := fmt.Sprintf(" 进度  %s  %d / %d   %s",
-		barRendered, done, total, elapsed)
-	if lipgloss.Width(line) > width {
-		line = truncate(line, width)
+	barW := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
+	if barW < 5 {
+		barW = 5
 	}
-	return line
+
+	filled := int(ratio * float64(barW))
+	barRendered := st.Ok.Render(strings.Repeat("█", filled)) +
+		st.Muted.Render(strings.Repeat("░", barW-filled))
+
+	return prefix + barRendered + suffix
 }
 
 // buildRequestList 构建请求列表区域。
@@ -287,7 +304,11 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 	lines = append(lines, " "+st.SectionHead.Render("请求列表"))
 
 	if rs == nil || len(rs.Requests) == 0 {
-		lines = append(lines, " "+st.Muted.Render("等待请求..."))
+		msg := "等待请求..."
+		if rs != nil && rs.Status != server.RunStatusRunning {
+			msg = "无请求详情数据"
+		}
+		lines = append(lines, " "+st.Muted.Render(msg))
 		for len(lines) < maxH {
 			lines = append(lines, "")
 		}
@@ -319,21 +340,6 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		i := requestIndexFromDisplayPos(pos, len(reqs))
 		r := reqs[i]
 		isSel := i == d.ReqSel
-
-		if r == nil {
-			// 该请求尚未开始，渲染为等待中
-			marker := selectionMarker(isSel)
-			rowContent := padRight(marker, markW) +
-				padRight(fmt.Sprintf("#%d", i+1), idW) +
-				padRight(st.Muted.Render("…"), statW) +
-				padRight(st.Muted.Render("等待中"), timeW) +
-				padRight("─", ttftW) +
-				padRight("─", cacheW) +
-				padRight("─", tokW) +
-				"─"
-			lines = append(lines, renderTableRow(st, width, isSel, rowContent))
-			continue
-		}
 
 		statusText := "✓"
 		if !r.Success {

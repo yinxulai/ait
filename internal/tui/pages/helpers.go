@@ -106,6 +106,28 @@ func fmtDuration(d time.Duration) string {
 	return fmt.Sprintf("%.0fm%.0fs", s/60, float64(int64(s)%60))
 }
 
+// fmtRelativeTime 将过去的时间格式化为「X 前」的简短形式。
+func fmtRelativeTime(t time.Time) string {
+	if t.IsZero() {
+		return ""
+	}
+	d := time.Since(t)
+	if d < time.Minute {
+		return "刚刚"
+	}
+	if d < time.Hour {
+		return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
+	}
+	if d < 24*time.Hour {
+		return fmt.Sprintf("%d 小时前", int(d.Hours()))
+	}
+	days := int(d.Hours() / 24)
+	if days < 30 {
+		return fmt.Sprintf("%d 天前", days)
+	}
+	return t.Format("2006-01-02")
+}
+
 // ─── 布局工具 ─────────────────────────────────────────────────────────────────
 
 // renderHeader 渲染顶部双行标题栏。

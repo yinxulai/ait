@@ -13,8 +13,9 @@ import (
 type ReqDetailState struct {
 	RunID    server.RunID
 	Requests []*server.RequestMetrics
-	Index    int    // 当前查看的请求索引
-	ScrollY  int    // 输出区域滚动偏移
+	Index    int       // 当前查看的请求索引
+	ScrollY  int       // 输出区域滚动偏移
+	BackNav  NavAction // 按 b/esc 时的返回目标
 }
 
 // NewReqDetailState 创建请求详情状态。
@@ -59,7 +60,11 @@ func HandleReqDetailKey(s *ReqDetailState, msg tea.KeyMsg) (*ReqDetailState, Nav
 		s.ScrollY++
 
 	case "b", "esc", "backspace":
-		nav = NavAction{To: NavDashboard}
+		if s.BackNav.To != NavNone {
+			nav = s.BackNav
+		} else {
+			nav = NavAction{To: NavDashboard}
+		}
 
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
@@ -152,6 +157,14 @@ func buildReqPerfPanel(r *server.RequestMetrics, st Styles, maxH, width int) str
 	lines = append(lines, " "+st.SectionHead.Render("性能指标"))
 	lines = append(lines, "")
 
+	if r == nil {
+		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		for len(lines) < maxH {
+			lines = append(lines, "")
+		}
+		return strings.Join(lines[:maxH], "\n")
+	}
+
 	statusStr := st.Ok.Render("✓ 成功")
 	if !r.Success {
 		statusStr = st.ErrStyle.Render("✗ 失败")
@@ -182,6 +195,15 @@ func buildReqNetworkPanel(r *server.RequestMetrics, st Styles, maxH, width int) 
 	var lines []string
 	lines = append(lines, " "+st.SectionHead.Render("网络指标"))
 	lines = append(lines, "")
+
+	if r == nil {
+		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		for len(lines) < maxH {
+			lines = append(lines, "")
+		}
+		return strings.Join(lines[:maxH], "\n")
+	}
+
 	lines = append(lines, " "+labelValue(st, "DNS      ", fmtDuration(r.DNSTime)))
 	lines = append(lines, " "+labelValue(st, "TCP 连接 ", fmtDuration(r.ConnectTime)))
 	lines = append(lines, " "+labelValue(st, "TLS 握手 ", fmtDuration(r.TLSTime)))

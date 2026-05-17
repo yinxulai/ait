@@ -14,12 +14,12 @@ import (
 type TaskDetailState struct {
 	Task    types.TaskDefinition
 	History []types.TaskRunSummary
-	// HistorySel 当前选中的历史记录索引（0 = 最近一次）
+	// HistorySel 当前选中的历史记录索引（0 = 最近一次；若有正在运行的实例，0 = 运行中条目）
 	HistorySel int
 	HistoryOff int
 	HistoryVis int
-	// LatestExpanded 控制最近一次运行是否展开（运行结束后自动置 true）
-	LatestExpanded bool
+	// ActiveRun 当前正在运行的实例快照（nil = 无），由 model 注入
+	ActiveRun *server.RunState
 }
 
 // NewTaskDetailState 创建初始任务详情状态。
@@ -30,24 +30,40 @@ func NewTaskDetailState(task types.TaskDefinition) *TaskDetailState {
 // HandleTaskDetailKey 处理任务详情页按键。
 func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*TaskDetailState, tea.Cmd, NavAction) {
 	nav := NavAction{}
+	hasActive := s.ActiveRun != nil
+	effectiveLen := len(s.History)
+	if hasActive {
+		effectiveLen++
+	}
+
 	switch msg.String() {
 	case "up", "k":
 		if s.HistorySel > 0 {
 			s.HistorySel--
-			s.LatestExpanded = false
 		}
 
 	case "down", "j":
-		if s.HistorySel < len(s.History)-1 {
+		if s.HistorySel < effectiveLen-1 {
 			s.HistorySel++
-			s.LatestExpanded = false
 		}
 
 	case "enter":
-		if s.HistorySel >= 0 && s.HistorySel < len(s.History) {
-			runID := strings.TrimSpace(s.History[s.HistorySel].RunID)
-			if runID != "" {
-				nav = NavAction{To: NavRunDetail, RunID: server.RunID(runID)}
+		if s.HistorySel >= 0 && s.HistorySel < effectiveLen {
+			if hasActive && s.HistorySel == 0 {
+				// 进入正在运行的仪表盘
+				nav = NavAction{To: NavRunDetail, RunID: s.ActiveRun.RunID}
+			} else {
+				histIdx := s.HistorySel
+				if hasActive {
+					histIdx--
+				}
+				if histIdx >= 0 && histIdx < len(s.History) {
+					runID := strings.TrimSpace(s.History[histIdx].RunID)
+					if runID != "" {
+						sum := s.History[histIdx]
+						nav = NavAction{To: NavRunDetail, RunID: server.RunID(runID), Summary: &sum}
+					}
+				}
 			}
 		}
 
@@ -58,10 +74,19 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 		return s, client.StartRunCmd(s.Task.ID), nav
 
 	case "g":
-		if s.HistorySel >= 0 && s.HistorySel < len(s.History) {
-			runID := strings.TrimSpace(s.History[s.HistorySel].RunID)
-			if runID != "" {
-				return s, client.GenerateReportCmd(server.RunID(runID), server.ReportFormatJSON), nav
+		if s.HistorySel >= 0 && s.HistorySel < effectiveLen {
+			if hasActive && s.HistorySel == 0 {
+				break // 正在运行中，无法导出报告
+			}
+			histIdx := s.HistorySel
+			if hasActive {
+				histIdx--
+			}
+			if histIdx >= 0 && histIdx < len(s.History) {
+				runID := strings.TrimSpace(s.History[histIdx].RunID)
+				if runID != "" {
+					return s, client.GenerateReportCmd(server.RunID(runID), server.ReportFormatJSON), nav
+				}
 			}
 		}
 
@@ -78,7 +103,7 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
-	s.HistoryOff = ensureVisibleOffset(s.HistorySel, len(s.History), s.HistoryOff, s.HistoryVis)
+	s.HistoryOff = ensureVisibleOffset(s.HistorySel, effectiveLen, s.HistoryOff, s.HistoryVis)
 	return s, nil, nav
 }
 
@@ -112,7 +137,12 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	inp := t.Input
 
 	var cbItems []ContextBarItem
-	if len(s.History) > 0 {
+	hasActive := s.ActiveRun != nil
+	effectiveLen := len(s.History)
+	if hasActive {
+		effectiveLen++
+	}
+	if effectiveLen > 0 {
 		cbItems = CtxBar_TaskDetail_HasHistory()
 	} else {
 		cbItems = CtxBar_TaskDetail_NoHistory()
@@ -177,6 +207,12 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	rightLines = append(rightLines, padRight(" "+st.SectionHead.Render("历史运行记录"), rightW))
 	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
 
+	hasActive := s.ActiveRun != nil
+	effectiveLen := len(s.History)
+	if hasActive {
+		effectiveLen++
+	}
+
 	const (
 		markW = 2
 		statW = 2
@@ -190,12 +226,23 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	rightLines = append(rightLines, padRight(renderTableHeader(st, rightW, hdr), rightW))
 	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
 
-	if len(s.History) == 0 {
+	if effectiveLen == 0 {
 		rightLines = append(rightLines, padRight(" "+st.Muted.Render("暂无运行记录"), rightW))
 	} else {
+		// 始终为当前选中的历史条目显示详情面板
 		var detailLines []string
-		if s.LatestExpanded {
-			detailLines = buildTaskHistoryDetailLines(s, st, rightW)
+		{
+			histIdx := s.HistorySel
+			if hasActive {
+				if s.HistorySel == 0 {
+					histIdx = -1 // 运行中条目无详情
+				} else {
+					histIdx--
+				}
+			}
+			if histIdx >= 0 {
+				detailLines = buildTaskHistoryDetailLines(s, histIdx, st, rightW)
+			}
 		}
 		tableMaxH := maxH - len(detailLines)
 		if tableMaxH < 5 {
@@ -206,38 +253,63 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			tableMaxH = maxH - len(detailLines)
 		}
 		s.HistoryVis = listVisibleItems(tableMaxH, 4)
-		s.HistoryOff = ensureVisibleOffset(s.HistorySel, len(s.History), s.HistoryOff, s.HistoryVis)
+		s.HistoryOff = ensureVisibleOffset(s.HistorySel, effectiveLen, s.HistoryOff, s.HistoryVis)
 		start := s.HistoryOff
-		end := minInt(len(s.History), start+s.HistoryVis)
+		end := minInt(effectiveLen, start+s.HistoryVis)
 
 		// ── 历史列表 ──
 		for idx := start; idx < end; idx++ {
-			run := s.History[idx]
-			statusText := "✓"
-			if run.Status != "completed" {
-				statusText = "✗"
-			}
-			modeShort := "标准"
-			if run.Mode == "turbo" {
-				modeShort = "Turbo"
-			}
 			isSel := idx == s.HistorySel
-			statusIcon := statusText
-			if run.Status == "completed" {
-				statusIcon = styleWhenNotSelected(isSel, st.Ok, statusText)
-			} else {
-				statusIcon = styleWhenNotSelected(isSel, st.ErrStyle, statusText)
-			}
-
 			marker := selectionMarker(isSel)
+			var row string
 
-			row := padRight(marker, markW) +
-				padRight(statusIcon, statW) +
-				padRight(run.StartedAt.Format("2006-01-02 15:04"), timeW) +
-				padRight(modeShort, modeW) +
-				padRight(fmt.Sprintf("%.1f%%", run.SuccessRate), rateW) +
-				padRight(fmtDuration(run.AvgTTFT), ttftW) +
-				fmt.Sprintf("%.1f", run.AvgTPS)
+			if hasActive && idx == 0 {
+				// 正在运行中的条目
+				rs := s.ActiveRun
+				modeShort := "标准"
+				if rs.Mode == "turbo" {
+					modeShort = "Turbo"
+				}
+				statusIcon := styleWhenNotSelected(isSel, st.Ok, "●")
+				rateStr := "─"
+				if rs.TotalReqs > 0 {
+					rateStr = fmt.Sprintf("%.0f%%", rs.SuccessRate)
+				}
+				progStr := fmt.Sprintf("%d/%d 正在运行...", rs.DoneReqs, rs.TotalReqs)
+				row = padRight(marker, markW) +
+					padRight(statusIcon, statW) +
+					padRight(rs.StartedAt.Format("2006-01-02 15:04"), timeW) +
+					padRight(modeShort, modeW) +
+					padRight(rateStr, rateW) +
+					styleWhenNotSelected(isSel, st.Ok, progStr)
+			} else {
+				histIdx := idx
+				if hasActive {
+					histIdx--
+				}
+				run := s.History[histIdx]
+				statusText := "✓"
+				if run.Status != "completed" {
+					statusText = "✗"
+				}
+				modeShort := "标准"
+				if run.Mode == "turbo" {
+					modeShort = "Turbo"
+				}
+				statusIcon := statusText
+				if run.Status == "completed" {
+					statusIcon = styleWhenNotSelected(isSel, st.Ok, statusText)
+				} else {
+					statusIcon = styleWhenNotSelected(isSel, st.ErrStyle, statusText)
+				}
+				row = padRight(marker, markW) +
+					padRight(statusIcon, statW) +
+					padRight(run.StartedAt.Format("2006-01-02 15:04"), timeW) +
+					padRight(modeShort, modeW) +
+					padRight(fmt.Sprintf("%.1f%%", run.SuccessRate), rateW) +
+					padRight(fmtDuration(run.AvgTTFT), ttftW) +
+					fmt.Sprintf("%.1f", run.AvgTPS)
+			}
 			rightLines = append(rightLines, padRight(renderTableRow(st, rightW, isSel, row), rightW))
 			if idx < end-1 {
 				rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
@@ -290,16 +362,17 @@ func UpdateTaskDetailHistory(s *TaskDetailState, history []types.TaskRunSummary,
 		s.HistoryOff = ensureVisibleOffset(s.HistorySel, len(history), s.HistoryOff, s.HistoryVis)
 	}
 	if autoExpand && len(history) > 0 {
-		s.LatestExpanded = true
+		// autoExpand 参数保留接口兼容性，展开行为已由渲染层自动处理
+		_ = autoExpand
 	}
 	return s
 }
 
-func buildTaskHistoryDetailLines(s *TaskDetailState, st Styles, width int) []string {
-	if s.HistorySel < 0 || s.HistorySel >= len(s.History) {
+func buildTaskHistoryDetailLines(s *TaskDetailState, histIdx int, st Styles, width int) []string {
+	if histIdx < 0 || histIdx >= len(s.History) {
 		return nil
 	}
-	sel := s.History[s.HistorySel]
+	sel := s.History[histIdx]
 	elapsed := sel.FinishedAt.Sub(sel.StartedAt)
 	labelW := 8
 	indent := " "

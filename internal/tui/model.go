@@ -156,10 +156,19 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else if m.turboDash != nil && m.turboDash.RunID == msg.State.RunID {
 			m.turboDash.RunState = msg.State
 		} else if msg.FromHistory {
-			// 从历史记录导航过来：用加载到的 RunState 新建 dash 并切换视图
-			m.dash = pages.NewDashboardState(msg.State.RunID, msg.State.TaskID)
-			m.dash.RunState = msg.State
-			m.view = viewDashboard
+			// 从历史记录导航过来：根据运行模式选择对应仪表盘，并设置返回目标为任务详情
+			backNav := pages.NavAction{To: pages.NavTaskDetail}
+			if msg.State.Mode == "turbo" {
+				m.turboDash = pages.NewTurboDashState(msg.State.RunID, msg.State.TaskID)
+				m.turboDash.RunState = msg.State
+				m.turboDash.BackNav = backNav
+				m.view = viewTurboDash
+			} else {
+				m.dash = pages.NewDashboardState(msg.State.RunID, msg.State.TaskID)
+				m.dash.RunState = msg.State
+				m.dash.BackNav = backNav
+				m.view = viewDashboard
+			}
 		}
 		return m, nil
 
@@ -266,6 +275,12 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 		} else if m.detail == nil {
 			return nil
 		}
+		// 若该任务有正在运行的实例，注入快照
+		if m.detail != nil && m.taskList != nil {
+			if rs, ok := m.taskList.ActiveRuns[m.detail.Task.ID]; ok && rs != nil {
+				m.detail.ActiveRun = rs
+			}
+		}
 		m.view = viewTaskDetail
 		if m.detail != nil {
 			return m.client.LoadHistoryCmd(m.detail.Task.ID, 10)
@@ -295,11 +310,18 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 
 	case pages.NavRunDetail:
 		// 从历史记录进入某次运行的仪表盘
-		return m.client.GetRunStateForHistoryCmd(nav.RunID)
+		return m.client.GetRunStateForHistoryCmd(nav.RunID, nav.Summary)
 
 	case pages.NavReqDetail:
 		reqs := m.collectRequests()
-		m.reqDetail = pages.NewReqDetailState(m.currentRunID(), reqs, nav.ReqIndex)
+		s := pages.NewReqDetailState(m.currentRunID(), reqs, nav.ReqIndex)
+		// 记录来源页面，用于 b/esc 返回
+		if m.view == viewTurboDash {
+			s.BackNav = pages.NavAction{To: pages.NavTurboDash}
+		} else {
+			s.BackNav = pages.NavAction{To: pages.NavDashboard}
+		}
+		m.reqDetail = s
 		m.view = viewReqDetail
 		return nil
 
@@ -344,6 +366,9 @@ func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 		if m.taskList != nil {
 			delete(m.taskList.ActiveRuns, taskID)
 		}
+		if m.detail != nil && m.detail.Task.ID == taskID {
+			m.detail.ActiveRun = nil
+		}
 		// 在后台刷新任务列表和历史，不自动跳转页面；用户可按 b/Esc 返回
 		return m, tea.Batch(
 			m.client.LoadTasksCmd(),
@@ -367,6 +392,9 @@ func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 		taskID := m.currentRunTaskID(isDash)
 		if m.taskList != nil {
 			delete(m.taskList.ActiveRuns, taskID)
+		}
+		if m.detail != nil && m.detail.Task.ID == taskID {
+			m.detail.ActiveRun = nil
 		}
 		// 在后台刷新任务列表和历史，不自动跳转页面；用户可按 b/Esc 返回
 		return m, tea.Batch(
@@ -419,6 +447,14 @@ func (m *Model) injectRunState(rs *server.RunState) {
 	} else {
 		delete(m.taskList.ActiveRuns, rs.TaskID)
 	}
+	// 如果详情页正在显示该任务，同步更新 ActiveRun
+	if m.detail != nil && m.detail.Task.ID == rs.TaskID {
+		if rs.Status == server.RunStatusRunning {
+			m.detail.ActiveRun = rs
+		} else {
+			m.detail.ActiveRun = nil
+		}
+	}
 }
 
 func (m *Model) dashTaskName() string {
@@ -444,6 +480,14 @@ func (m *Model) turboDashTaskName() string {
 }
 
 func (m *Model) reqDetailTaskName() string {
+	// 根据 reqDetail 的来源视图确定任务名，避免两个面板均有状态时取错
+	if m.reqDetail != nil && m.reqDetail.BackNav.To == pages.NavTurboDash {
+		if m.turboDash != nil {
+			if t := m.findTask(m.turboDash.TaskID); t != nil {
+				return t.Name
+			}
+		}
+	}
 	if m.dash != nil {
 		if t := m.findTask(m.dash.TaskID); t != nil {
 			return t.Name
@@ -478,11 +522,16 @@ func (m *Model) currentRunTaskID(isDash bool) string {
 }
 
 func (m *Model) collectRequests() []*server.RequestMetrics {
-	if m.dash != nil && m.dash.RunState != nil {
-		return m.dash.RunState.Requests
-	}
-	if m.turboDash != nil && m.turboDash.RunState != nil {
-		return m.turboDash.RunState.Requests
+	// 优先使用当前活跃视图的数据，避免两个面板均有 RunState 时取错
+	switch m.view {
+	case viewTurboDash:
+		if m.turboDash != nil && m.turboDash.RunState != nil {
+			return m.turboDash.RunState.Requests
+		}
+	case viewDashboard:
+		if m.dash != nil && m.dash.RunState != nil {
+			return m.dash.RunState.Requests
+		}
 	}
 	return nil
 }

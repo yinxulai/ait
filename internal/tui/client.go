@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // Client 持有 server.Server，为 TUI 层提供 tea.Cmd 包装的异步调用。
@@ -136,13 +137,40 @@ func (c *Client) GetRunStateCmd(runID server.RunID) tea.Cmd {
 }
 
 // GetRunStateForHistoryCmd 从历史记录导航时异步加载运行状态快照。
-func (c *Client) GetRunStateForHistoryCmd(runID server.RunID) tea.Cmd {
+// 若磁盘文件不存在，则用 summary 摘要数据构造最小化 RunState 作为回退。
+func (c *Client) GetRunStateForHistoryCmd(runID server.RunID, summary *types.TaskRunSummary) tea.Cmd {
 	return func() tea.Msg {
 		state, ok := c.srv.GetRunState(runID)
 		if !ok {
-			return ErrorMsg{Err: fmt.Errorf("该次运行数据不在内存中，请重新运行")}
+			if summary != nil {
+				state = summaryToRunState(summary)
+			} else {
+				return ErrorMsg{Err: fmt.Errorf("该次运行数据不在内存中，请重新运行")}
+			}
 		}
 		return RunStateMsg{State: state, FromHistory: true}
+	}
+}
+
+// summaryToRunState 用 TaskRunSummary 摘要数据构造最小化 RunState，供无磁盘快照时回退展示。
+func summaryToRunState(s *types.TaskRunSummary) *server.RunState {
+	finished := s.FinishedAt
+	status := server.RunStatusCompleted
+	if s.Status == string(server.RunStatusFailed) {
+		status = server.RunStatusFailed
+	}
+	return &server.RunState{
+		RunID:        server.RunID(s.RunID),
+		TaskID:       s.TaskID,
+		Status:       status,
+		Mode:         s.Mode,
+		StartedAt:    s.StartedAt,
+		FinishedAt:   &finished,
+		AvgTPS:       s.AvgTPS,
+		AvgTTFT:      s.AvgTTFT,
+		SuccessRate:  s.SuccessRate,
+		CacheHitRate: s.CacheHitRate,
+		ErrorMsg:     s.ErrorSummary,
 	}
 }
 

@@ -30,7 +30,8 @@ type NavAction struct {
 	TaskID   string
 	RunID    server.RunID
 	ReqIndex int
-	EditTask *types.TaskDefinition // 向导编辑模式时非空；nil 表示新建
+	EditTask *types.TaskDefinition  // 向导编辑模式时非空；nil 表示新建
+	Summary  *types.TaskRunSummary  // NavRunDetail 时，磁盘文件缺失的回退数据
 }
 
 // Client 定义 pages 包对外依赖的操作集合。
@@ -50,6 +51,6 @@ type Client interface {
 	// 历史 & 报告
 	LoadHistoryCmd(taskID string, limit int) tea.Cmd
 	GetRunStateCmd(runID server.RunID) tea.Cmd
-	GetRunStateForHistoryCmd(runID server.RunID) tea.Cmd
+	GetRunStateForHistoryCmd(runID server.RunID, summary *types.TaskRunSummary) tea.Cmd
 	GenerateReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd
 }
