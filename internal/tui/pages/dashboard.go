@@ -145,12 +145,15 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 //	║  [s] 停止  [b] 后台运行  [r] 报告  [q] 退出 ║
 //	╚═════════════════════════════════════════╝
 func RenderDashboard(d *DashboardState, taskName string, st Styles, width, height int) string {
-	if d == nil || width == 0 {
-		return "加载中..."
+	if TooSmall(width, height) {
+		return renderTooSmall(st, width, height)
+	}
+	if d == nil {
+		return renderTooSmall(st, width, height)
 	}
 	rs := d.RunState
 
-	// ── Header ──
+	// ── 状态标识 ──
 	statusStr := "等待中"
 	if rs != nil {
 		switch rs.Status {
@@ -171,36 +174,24 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 			"─", "─", 0, rs.TotalReqs)
 	}
 
-	header := renderHeader(st, width,
-		"AIT  正在测试 ─ "+truncate(taskName, 25),
-		statusStr,
-		subtitle,
-		"",
-	)
-
-	// ── Context Bar ──
 	var cbItems []ContextBarItem
 	if d.ReqSel >= 0 && rs != nil && d.ReqSel < len(rs.Requests) {
 		cbItems = CtxBar_Dashboard_Sel()
 	} else {
 		cbItems = CtxBar_Dashboard_NoSel()
 	}
-	ctxBar := RenderContextBar(st, width, cbItems)
-
-	// ── Footer ──
-	footer := renderFooter(st, width, "[s] 停止", "[b] 后台运行", "[r] 提前报告", "[q] 退出")
+	l := PageLayout{
+		TitleLeft:   "AIT  正在测试 ─ " + truncate(taskName, 25),
+		TitleRight:  statusStr,
+		InfoLeft:    subtitle,
+		CtxItems:    cbItems,
+		FooterParts: []string{"[s] 停止", "[b] 后台运行", "[r] 提前报告", "[q] 退出"},
+	}
 
 	// ── 计算高度 ──
-	// 布局：header(2) + split面板(splitH) + 进度面板(3) + 请求面板(reqListH+2) + ctxBarH + footer(1)
-	headerH := 2
-	ctxBarH := 0
-	if ctxBar != "" {
-		ctxBarH = 1
-	}
-	footerH := 1
-	splitH := 9  // 双栏面板外部总高度（含面板边框）
+	splitH := 9      // 双栏面板外部总高度（含面板边框）
 	progressPanel := 3 // 进度条面板外部高度（1内容+2边框）
-	reqListH := height - headerH - ctxBarH - footerH - splitH - progressPanel - 2 // -2 for req panel border
+	reqListH := height - l.ChromeHeight() - splitH - progressPanel - 2 // -2 for req panel border
 	if reqListH < 3 {
 		reqListH = 3
 	}
@@ -215,19 +206,15 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// ── 进度条面板 ──
-	progressLine := buildProgressLine(rs, st, width-2)
+	progressLine := buildProgressLine(rs, st, ContentWidth(width))
 	progressPanelStr := wrapPanel(st, progressLine, width)
 
 	// ── 请求列表面板 ──
-	reqList := buildRequestList(d, rs, st, width-2, reqListH)
+	reqList := buildRequestList(d, rs, st, ContentWidth(width), reqListH)
 	reqPanelStr := wrapPanel(st, reqList, width)
 
-	parts := []string{header, split, progressPanelStr, reqPanelStr}
-	if ctxBar != "" {
-		parts = append(parts, ctxBar)
-	}
-	parts = append(parts, footer)
-	return strings.Join(parts, "\n")
+	content := strings.Join([]string{split, progressPanelStr, reqPanelStr}, "\n")
+	return l.Assemble(content, st, width)
 }
 
 // buildDashParamsPanel 构建左侧任务参数面板。
@@ -289,7 +276,6 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 		ratio = float64(done) / float64(total)
 	}
 	barW := 20
-	bar := progressBar(ratio, barW)
 	barRendered := st.Ok.Render(strings.Repeat("█", int(ratio*float64(barW)))) +
 		st.Muted.Render(strings.Repeat("░", barW-int(ratio*float64(barW))))
 
@@ -301,7 +287,6 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 
 	line := fmt.Sprintf(" 进度  %s  %d / %d   %s",
 		barRendered, done, total, elapsed)
-	_ = bar
 	if lipgloss.Width(line) > width {
 		line = truncate(line, width)
 	}

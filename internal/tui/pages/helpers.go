@@ -162,57 +162,6 @@ func renderFooter(st Styles, width int, parts ...string) string {
 	return st.Footer.Width(w).Render(line)
 }
 
-// dualColumnLayout 将左右两段文本排列为双栏，高度限定为 maxH。
-// 中间用竖线 │ 隔开。
-func dualColumnLayout(st Styles, left, right string, leftW, rightW, maxH int) string {
-	leftLines := strings.Split(left, "\n")
-	rightLines := strings.Split(right, "\n")
-
-	if len(leftLines) > maxH {
-		leftLines = leftLines[:maxH]
-	}
-	if len(rightLines) > maxH {
-		rightLines = rightLines[:maxH]
-	}
-	for len(leftLines) < maxH {
-		leftLines = append(leftLines, "")
-	}
-	for len(rightLines) < maxH {
-		rightLines = append(rightLines, "")
-	}
-
-	sep := st.Divider.Render("│")
-	var rows []string
-	for i := 0; i < maxH; i++ {
-		lLine := leftLines[i]
-		rLine := rightLines[i]
-		lW := lipgloss.Width(lLine)
-		if lW < leftW {
-			lLine += strings.Repeat(" ", leftW-lW)
-		}
-		rows = append(rows, lLine+sep+rLine)
-	}
-	return strings.Join(rows, "\n")
-}
-
-// progressBar 生成进度条字符串（filled=已完成比例 0.0-1.0）。
-func progressBar(filled float64, width int) string {
-	if width <= 0 {
-		return ""
-	}
-	if filled < 0 {
-		filled = 0
-	}
-	if filled > 1 {
-		filled = 1
-	}
-	doneW := int(float64(width) * filled)
-	emptyW := width - doneW
-	done := strings.Repeat("█", doneW)
-	empty := strings.Repeat("░", emptyW)
-	return done + empty
-}
-
 // wrapIndex 循环索引（保证 0 ≤ result < count）。
 func wrapIndex(idx, count int) int {
 	if count <= 0 {

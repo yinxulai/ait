@@ -128,56 +128,44 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 //	║  [s] 停止  [b] 后台  [m] 标记极限  [q] 退出 ║
 //	╚═════════════════════════════════════════╝
 func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, height int) string {
-	if d == nil || width == 0 {
-		return "加载中..."
+	if TooSmall(width, height) {
+		return renderTooSmall(st, width, height)
+	}
+	if d == nil {
+		return renderTooSmall(st, width, height)
 	}
 	rs := d.RunState
 
-	// ── Header ──
-	statusStr := "探测中"
+	// ── 状态标识 ──
+	statusStr := st.Ok.Render("探测中")
 	if rs != nil && rs.Status != server.RunStatusRunning {
 		statusStr = st.Muted.Render(string(rs.Status))
-	} else {
-		statusStr = st.Ok.Render("探测中")
 	}
 
 	subtitle := "─"
 	if rs != nil && len(rs.Levels) > 0 {
-		curLevel := rs.CurrentLevel
 		subtitle = fmt.Sprintf("◆ AIT   %s · 当前并发: %d   已完成 %d 级",
-			"─", curLevel, len(rs.Levels))
+			"─", rs.CurrentLevel, len(rs.Levels))
 	}
 
-	header := renderHeader(st, width,
-		"AIT  Turbo 探测 ─ "+truncate(taskName, 22),
-		statusStr,
-		subtitle,
-		"",
-	)
-
-	// ── Context Bar ──
 	var cbItems []ContextBarItem
 	if d.LevelSel >= 0 && rs != nil && d.LevelSel < len(rs.Levels) {
 		cbItems = CtxBar_TurboDash_Sel()
 	} else {
 		cbItems = CtxBar_TurboDash_NoSel()
 	}
-	ctxBar := RenderContextBar(st, width, cbItems)
-
-	// ── Footer ──
-	footer := renderFooter(st, width, "[s] 停止", "[b] 后台运行", "[m] 标记极限", "[r] 提前报告", "[q] 退出")
+	l := PageLayout{
+		TitleLeft:   "AIT  Turbo 探测 ─ " + truncate(taskName, 22),
+		TitleRight:  statusStr,
+		InfoLeft:    subtitle,
+		CtxItems:    cbItems,
+		FooterParts: []string{"[s] 停止", "[b] 后台运行", "[m] 标记极限", "[r] 提前报告", "[q] 退出"},
+	}
 
 	// ── 计算高度 ──
-	// 布局：header(2) + split面板(splitH) + 进度面板(3) + 级别面板(levelListH+2) + ctxBarH + footer(1)
-	headerH := 2
-	ctxBarH := 0
-	if ctxBar != "" {
-		ctxBarH = 1
-	}
-	footerH := 1
 	splitH := 9
 	progressPanel := 3
-	levelListH := height - headerH - ctxBarH - footerH - splitH - progressPanel - 2
+	levelListH := height - l.ChromeHeight() - splitH - progressPanel - 2
 	if levelListH < 3 {
 		levelListH = 3
 	}
@@ -192,19 +180,15 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// ── 进度条面板 ──
-	progressLine := buildTurboProgressLine(rs, st, width-2)
+	progressLine := buildTurboProgressLine(rs, st, ContentWidth(width))
 	progressPanelStr := wrapPanel(st, progressLine, width)
 
 	// ── 级别列表面板 ──
-	levelList := buildLevelList(d, rs, st, width-2, levelListH)
+	levelList := buildLevelList(d, rs, st, ContentWidth(width), levelListH)
 	levelPanelStr := wrapPanel(st, levelList, width)
 
-	parts := []string{header, split, progressPanelStr, levelPanelStr}
-	if ctxBar != "" {
-		parts = append(parts, ctxBar)
-	}
-	parts = append(parts, footer)
-	return strings.Join(parts, "\n")
+	content := strings.Join([]string{split, progressPanelStr, levelPanelStr}, "\n")
+	return l.Assemble(content, st, width)
 }
 
 // buildTurboDashParams 构建 Turbo 仪表盘左侧任务参数面板。

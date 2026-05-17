@@ -96,11 +96,11 @@ func HandleReqDetailKey(s *ReqDetailState, msg tea.KeyMsg) (*ReqDetailState, Nav
 //	║  [b/Esc] 返回仪表盘  [↑↓] 滚动  [←→] 上/下一条 ║
 //	╚═════════════════════════════════════════╝
 func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, height int) string {
-	if s == nil || width == 0 {
-		return "加载中..."
+	if TooSmall(width, height) {
+		return renderTooSmall(st, width, height)
 	}
-	if len(s.Requests) == 0 {
-		return "无请求数据"
+	if s == nil || len(s.Requests) == 0 {
+		return renderTooSmall(st, width, height)
 	}
 
 	idx := s.Index
@@ -112,36 +112,25 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 	}
 	r := s.Requests[idx]
 
-	// ── Header ──
+	// ── 状态标识 ──
 	statusStr := st.Ok.Render("✓ 成功")
 	if !r.Success {
 		statusStr = st.ErrStyle.Render("✗ 失败")
 	}
-	header := renderHeader(st, width,
-		fmt.Sprintf("AIT  请求详情 - %s  #%d", truncate(taskName, 20), idx+1),
-		statusStr,
-		fmt.Sprintf("◆ AIT   任务: %s  请求 %d / %d",
+
+	l := PageLayout{
+		TitleLeft:  fmt.Sprintf("AIT  请求详情 - %s  #%d", truncate(taskName, 20), idx+1),
+		TitleRight: statusStr,
+		InfoLeft: fmt.Sprintf("◆ AIT   任务: %s  请求 %d / %d",
 			truncate(taskName, 20), idx+1, len(s.Requests)),
-		"",
-	)
-
-	// ── Context Bar ──
-	ctxBar := RenderContextBar(st, width, CtxBar_ReqDetail())
-
-	// ── Footer ──
-	footer := renderFooter(st, width, "[b/Esc] 返回仪表盘", "[↑↓] 滚动", "[←→] 上/下一条请求")
+		CtxItems:    CtxBar_ReqDetail(),
+		FooterParts: []string{"[b/Esc] 返回仪表盘", "[↑↓] 滚动", "[←→] 上/下一条请求"},
+	}
 
 	// ── 计算高度 ──
-	// 布局：header(2) + split面板(splitH) + 输入面板(inputH+2) + 输出面板(outputH+2) + ctxBarH + footer(1)
-	headerH := 2
-	ctxBarH := 0
-	if ctxBar != "" {
-		ctxBarH = 1
-	}
-	footerH := 1
 	splitH := 9
 	inputH := 5
-	outputH := height - headerH - ctxBarH - footerH - splitH - inputH - 2 - 2 // -2 for input panel border, -2 for output panel border
+	outputH := height - l.ChromeHeight() - splitH - inputH - 2 - 2 // -2 for input panel border, -2 for output panel border
 	if outputH < 4 {
 		outputH = 4
 	}
@@ -156,19 +145,15 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// ── 输入区面板 ──
-	inputSection := buildInputSection(r, st, width-2, inputH)
+	inputSection := buildInputSection(r, st, ContentWidth(width), inputH)
 	inputPanelStr := wrapPanel(st, inputSection, width)
 
 	// ── 输出区面板 ──
-	outputSection := buildOutputSection(r, s.ScrollY, st, width-2, outputH)
+	outputSection := buildOutputSection(r, s.ScrollY, st, ContentWidth(width), outputH)
 	outputPanelStr := wrapPanel(st, outputSection, width)
 
-	parts := []string{header, split, inputPanelStr, outputPanelStr}
-	if ctxBar != "" {
-		parts = append(parts, ctxBar)
-	}
-	parts = append(parts, footer)
-	return strings.Join(parts, "\n")
+	content := strings.Join([]string{split, inputPanelStr, outputPanelStr}, "\n")
+	return l.Assemble(content, st, width)
 }
 
 // buildReqPerfPanel 构建请求左侧性能指标面板。

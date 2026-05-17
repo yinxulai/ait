@@ -70,57 +70,29 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 //	║  [b/Esc] 返回列表  ◆ AIT  v0.1       ║
 //	╚══════════════════════════════════════╝
 func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
-	if width == 0 {
-		return "加载中..."
+	if TooSmall(width, height) {
+		return renderTooSmall(st, width, height)
 	}
 	t := s.Task
 	inp := t.Input
 
-	// ── Header ──
 	updatedStr := timeAgo(t.UpdatedAt)
-	header := renderHeader(st, width,
-		"AIT  任务详情 ─ "+truncate(t.Name, 30),
-		"",
-		fmt.Sprintf("◆ AIT   任务 ID: %s   更新: %s   %s",
-			truncate(t.ID, 10), t.UpdatedAt.Format("2006-01-02 15:04"), updatedStr),
-		"",
-	)
-
-	// ── Context Bar ──
-	hasHistory := len(s.History) > 0
 	var cbItems []ContextBarItem
-	if hasHistory {
+	if len(s.History) > 0 {
 		cbItems = CtxBar_TaskDetail_HasHistory()
 	} else {
 		cbItems = CtxBar_TaskDetail_NoHistory()
 	}
-	ctxBar := RenderContextBar(st, width, cbItems)
-
-	// ── Footer ──
-	footer := renderFooter(st, width, "[b/Esc] 返回列表", "[r] 运行", "[e] 编辑", "◆ AIT  v0.1")
-
-	// ── 内容区高度 ──
-	headerH := 2
-	ctxBarH := 0
-	if ctxBar != "" {
-		ctxBarH = 1
-	}
-	footerH := 1
-	contentH := height - headerH - ctxBarH - footerH - 2 // -2 for panel border
-	if contentH < 6 {
-		contentH = 6
+	l := PageLayout{
+		TitleLeft: "AIT  任务详情 ─ " + truncate(t.Name, 30),
+		InfoLeft: fmt.Sprintf("◆ AIT   任务 ID: %s   更新: %s   %s",
+			truncate(t.ID, 10), t.UpdatedAt.Format("2006-01-02 15:04"), updatedStr),
+		CtxItems:    cbItems,
+		FooterParts: []string{"[b/Esc] 返回列表", "[r] 运行", "[e] 编辑", "◆ AIT  v0.1"},
 	}
 
-	// ── 内容构建 ──
-	content := buildTaskDetailContent(s, st, t, inp, width-2, contentH)
-	panel := wrapPanel(st, content, width)
-
-	parts := []string{header, panel}
-	if ctxBar != "" {
-		parts = append(parts, ctxBar)
-	}
-	parts = append(parts, footer)
-	return strings.Join(parts, "\n")
+	content := buildTaskDetailContent(s, st, t, inp, ContentWidth(width), l.ContentHeight(height))
+	return l.Assemble(wrapPanel(st, content, width), st, width)
 }
 
 // buildTaskDetailContent 构建任务详情内容区。

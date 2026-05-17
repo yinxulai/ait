@@ -135,23 +135,14 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 //	║  [↑↓] 选择  [q] 退出  ◆ AIT  ║
 //	╚══════════════════════════════╝
 func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
-	if width == 0 {
-		return "加载中..."
+	if TooSmall(width, height) {
+		return renderTooSmall(st, width, height)
 	}
 
-	// ── Header ──
 	lastRunStr := ""
 	if lt := s.latestRunAt(); lt != nil {
 		lastRunStr = "最近运行: " + lt.Format("2006-01-02 15:04")
 	}
-	header := renderHeader(st, width,
-		"AIT  任务中心",
-		"",
-		fmt.Sprintf("◆ AIT   已保存任务: %d   %s", len(s.Tasks), lastRunStr),
-		"",
-	)
-
-	// ── Context Bar ──
 	var cbItems []ContextBarItem
 	if t, ok := s.CurrentTask(); ok {
 		if s.IsTaskRunning(t.ID) {
@@ -160,33 +151,15 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 			cbItems = CtxBar_TaskList_Normal()
 		}
 	}
-	ctxBar := RenderContextBar(st, width, cbItems)
-
-	// ── Footer ──
-	footer := renderFooter(st, width, "[↑↓] 选择", "[a] 新建", "[y] 复制", "[q] 退出", "◆ AIT  v0.1")
-
-	// ── 可用内容高度 ──
-	headerH := 2
-	ctxBarH := 0
-	if ctxBar != "" {
-		ctxBarH = 1
-	}
-	footerH := 1
-	contentH := height - headerH - ctxBarH - footerH - 2 // -2 for panel border
-	if contentH < 4 {
-		contentH = 4
+	l := PageLayout{
+		TitleLeft:   "AIT  任务中心",
+		InfoLeft:    fmt.Sprintf("◆ AIT   已保存任务: %d   %s", len(s.Tasks), lastRunStr),
+		CtxItems:    cbItems,
+		FooterParts: []string{"[↑↓] 选择", "[a] 新建", "[y] 复制", "[q] 退出", "◆ AIT  v0.1"},
 	}
 
-	// ── 内容区 ──
-	content := buildTaskListContent(s, st, width-2, contentH)
-	panel := wrapPanel(st, content, width)
-
-	parts := []string{header, panel}
-	if ctxBar != "" {
-		parts = append(parts, ctxBar)
-	}
-	parts = append(parts, footer)
-	return strings.Join(parts, "\n")
+	content := buildTaskListContent(s, st, ContentWidth(width), l.ContentHeight(height))
+	return l.Assemble(wrapPanel(st, content, width), st, width)
 }
 
 // buildTaskListContent 构建任务列表内容区（含表头 + 任务条目）。
@@ -215,6 +188,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	)
 	lines = append(lines, header)
 	lines = append(lines, " "+st.Divider.Render(strings.Repeat("─", innerW-1)))
+	lines = append(lines, "") // 表头与第一条目之间的呼吸间距
 
 	if len(s.Tasks) == 0 {
 		lines = append(lines, "")
