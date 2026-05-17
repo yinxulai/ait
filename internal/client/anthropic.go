@@ -304,6 +304,7 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		var inputTokens int
 		var cachedInputTokens int
 		var streamChunks []string // 用于记录所有流式数据块
+		var rawResponseLines strings.Builder
 		
 		// 记录流式响应开始日志
 		if c.logger != nil && c.logger.IsEnabled() {
@@ -320,6 +321,8 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		
 		for scanner.Scan() {
 			line := scanner.Text()
+			rawResponseLines.WriteString(line)
+			rawResponseLines.WriteByte('\n')
 			if strings.HasPrefix(line, "data: ") {
 				data := strings.TrimPrefix(line, "data: ")
 				if strings.TrimSpace(data) == "" {
@@ -394,16 +397,18 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		}
 		
 		return &ResponseMetrics{
-			TimeToFirstToken: firstTokenTime,
-			TotalTime:        totalTime,
-			DNSTime:          dnsTime,
-			ConnectTime:      connectTime,
-			TLSHandshakeTime: tlsTime,
-			TargetIP:         targetIP,
-			PromptTokens:     inputTokens,
+			TimeToFirstToken:  firstTokenTime,
+			TotalTime:         totalTime,
+			DNSTime:           dnsTime,
+			ConnectTime:       connectTime,
+			TLSHandshakeTime:  tlsTime,
+			TargetIP:          targetIP,
+			PromptTokens:      inputTokens,
 			CachedInputTokens: cachedInputTokens,
-			CompletionTokens: outputTokens,
-			ErrorMessage:     "",
+			CompletionTokens:  outputTokens,
+			RequestBody:       string(reqBodyBytes),
+			ResponseBody:      rawResponseLines.String(),
+			ErrorMessage:      "",
 		}, nil
 	} else {
 		// 非流式响应处理
@@ -495,16 +500,18 @@ func (c *AnthropicClient) Request(prompt string, stream bool) (*ResponseMetrics,
 		}
 
 		return &ResponseMetrics{
-			TimeToFirstToken: totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
-			TotalTime:        totalTime,
-			DNSTime:          dnsTime,
-			ConnectTime:      connectTime,
-			TLSHandshakeTime: tlsTime,
-			TargetIP:         targetIP,
-			PromptTokens:     anthropicResp.Usage.InputTokens,
+			TimeToFirstToken:  totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
+			TotalTime:         totalTime,
+			DNSTime:           dnsTime,
+			ConnectTime:       connectTime,
+			TLSHandshakeTime:  tlsTime,
+			TargetIP:          targetIP,
+			PromptTokens:      anthropicResp.Usage.InputTokens,
 			CachedInputTokens: anthropicResp.Usage.CacheReadInputTokens,
-			CompletionTokens: anthropicResp.Usage.OutputTokens,
-			ErrorMessage:     "",
+			CompletionTokens:  anthropicResp.Usage.OutputTokens,
+			RequestBody:       string(reqBodyBytes),
+			ResponseBody:      string(responseData),
+			ErrorMessage:      "",
 		}, nil
 	}
 }

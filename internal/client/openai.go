@@ -211,7 +211,7 @@ func (c *OpenAIClient) buildRequestBody(prompt string, stream bool) ([]byte, err
 	return json.Marshal(reqBody)
 }
 
-func (c *OpenAIClient) parseResponsesStream(resp *http.Response, t0 time.Time, dnsTime, connectTime, tlsTime time.Duration, targetIP string) (*ResponseMetrics, error) {
+func (c *OpenAIClient) parseResponsesStream(resp *http.Response, t0 time.Time, dnsTime, connectTime, tlsTime time.Duration, targetIP string, requestBody []byte) (*ResponseMetrics, error) {
 	scanner := bufio.NewScanner(resp.Body)
 	firstTokenTime := time.Duration(0)
 	gotFirst := false
@@ -220,9 +220,12 @@ func (c *OpenAIClient) parseResponsesStream(resp *http.Response, t0 time.Time, d
 	var cachedInputTokens int
 	var thinkingTokens int
 	var streamChunks []string
+	var rawResponseBody strings.Builder
 
 	for scanner.Scan() {
 		line := scanner.Text()
+		rawResponseBody.WriteString(line)
+		rawResponseBody.WriteByte('\n')
 		if !strings.HasPrefix(line, "data: ") {
 			continue
 		}
@@ -239,9 +242,11 @@ func (c *OpenAIClient) parseResponsesStream(resp *http.Response, t0 time.Time, d
 			continue
 		}
 
-		if !gotFirst && event.Delta != "" {
-			firstTokenTime = time.Since(t0)
-			gotFirst = true
+		if event.Delta != "" {
+			if !gotFirst {
+				firstTokenTime = time.Since(t0)
+				gotFirst = true
+			}
 		}
 
 		if event.Usage != nil {
@@ -285,11 +290,13 @@ func (c *OpenAIClient) parseResponsesStream(resp *http.Response, t0 time.Time, d
 		CachedInputTokens: cachedInputTokens,
 		CompletionTokens:  completionTokens,
 		ThinkingTokens:    thinkingTokens,
+		RequestBody:       string(requestBody),
+		ResponseBody:      rawResponseBody.String(),
 		ErrorMessage:      "",
 	}, nil
 }
 
-func (c *OpenAIClient) parseResponsesNonStream(responseData []byte, totalTime, dnsTime, connectTime, tlsTime time.Duration, targetIP string) (*ResponseMetrics, error) {
+func (c *OpenAIClient) parseResponsesNonStream(responseData []byte, totalTime, dnsTime, connectTime, tlsTime time.Duration, targetIP string, requestBody []byte) (*ResponseMetrics, error) {
 	var apiResp ResponsesAPIResponse
 	if err := json.Unmarshal(responseData, &apiResp); err != nil {
 		if c.logger != nil && c.logger.IsEnabled() {
@@ -318,6 +325,8 @@ func (c *OpenAIClient) parseResponsesNonStream(responseData []byte, totalTime, d
 		CachedInputTokens: extractCachedInputTokens(apiResp.Usage.InputTokensDetails),
 		CompletionTokens:  apiResp.Usage.OutputTokens,
 		ThinkingTokens:    extractThinkingTokens(apiResp.Usage.OutputTokensDetails),
+		RequestBody:       string(requestBody),
+		ResponseBody:      string(responseData),
 		ErrorMessage:      "",
 	}, nil
 }
@@ -531,7 +540,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		}
 
 		if c.Provider == types.ProtocolOpenAIResponses {
-			return c.parseResponsesStream(resp, t0, dnsTime, connectTime, tlsTime, targetIP)
+			return c.parseResponsesStream(resp, t0, dnsTime, connectTime, tlsTime, targetIP, jsonData)
 		}
 
 		scanner := bufio.NewScanner(resp.Body)
@@ -543,6 +552,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		var cachedInputTokens int
 		var thinkingTokens int
 		var streamChunks []string // 用于记录所有流式数据块
+		var rawResponseLines strings.Builder
 
 		// 记录流式响应开始日志
 		if c.logger != nil && c.logger.IsEnabled() {
@@ -559,6 +569,8 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 
 		for scanner.Scan() {
 			line := scanner.Text()
+			rawResponseLines.WriteString(line)
+			rawResponseLines.WriteByte('\n')
 			if strings.HasPrefix(line, "data: ") {
 				data := strings.TrimPrefix(line, "data: ")
 				if data == "[DONE]" {
@@ -638,6 +650,8 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			CachedInputTokens: cachedInputTokens,
 			CompletionTokens:  completionTokens,
 			ThinkingTokens:    thinkingTokens,
+			RequestBody:       string(jsonData),
+			ResponseBody:      rawResponseLines.String(),
 			ErrorMessage:      "",
 		}, nil
 	} else {
@@ -721,7 +735,7 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 		}
 
 		if c.Provider == types.ProtocolOpenAIResponses {
-			return c.parseResponsesNonStream(responseData, totalTime, dnsTime, connectTime, tlsTime, targetIP)
+			return c.parseResponsesNonStream(responseData, totalTime, dnsTime, connectTime, tlsTime, targetIP, jsonData)
 		}
 
 		var chatResp ChatCompletionResponse
@@ -755,8 +769,10 @@ func (c *OpenAIClient) Request(prompt string, stream bool) (*ResponseMetrics, er
 			CachedInputTokens: extractCachedInputTokens(chatResp.Usage.PromptTokensDetails),
 			CompletionTokens:  chatResp.Usage.CompletionTokens,
 			ThinkingTokens:    thinkingTokens,
+			RequestBody:       string(jsonData),
+			ResponseBody:      string(responseData),
 			ErrorMessage:      "",
- 		}, nil
+		}, nil
 	}
 }
 

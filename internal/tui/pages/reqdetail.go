@@ -195,16 +195,16 @@ func buildReqNetworkPanel(r *server.RequestMetrics, st Styles, maxH, width int) 
 	return strings.Join(lines[:maxH], "\n")
 }
 
-// buildInputSection 构建输入 (Prompt) 区域。
+// buildInputSection 构建输入 (请求体) 区域。
 func buildInputSection(r *server.RequestMetrics, st Styles, width, maxH int) string {
 	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("输入 (Prompt)"))
+	lines = append(lines, " "+st.SectionHead.Render("请求体 (Request Body)"))
 	lines = append(lines, " "+dividerLine(st, width-2))
 
-	if r.PromptText == "" {
+	if r.RequestBody == "" {
 		lines = append(lines, " "+st.Muted.Render("(未记录)"))
 	} else {
-		for _, l := range wrapText(r.PromptText, width-3) {
+		for _, l := range wrapText(r.RequestBody, width-3) {
 			if len(lines) >= maxH-1 {
 				break
 			}
@@ -218,16 +218,16 @@ func buildInputSection(r *server.RequestMetrics, st Styles, width, maxH int) str
 	return strings.Join(lines[:maxH], "\n")
 }
 
-// buildOutputSection 构建输出 (Response) 区域。
+// buildOutputSection 构建输出 (响应体) 区域。
 func buildOutputSection(r *server.RequestMetrics, scrollY int, st Styles, width, maxH int) string {
 	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("输出 (Response)"))
+	lines = append(lines, " "+st.SectionHead.Render("响应体 (Response Body)"))
 	lines = append(lines, " "+dividerLine(st, width-2))
 
-	if r.ResponseText == "" {
+	if r.ResponseBody == "" {
 		lines = append(lines, " "+st.Muted.Render("(未记录)"))
 	} else {
-		allLines := wrapText(r.ResponseText, width-3)
+		allLines := wrapText(r.ResponseBody, width-3)
 		if scrollY >= len(allLines) {
 			scrollY = len(allLines) - 1
 		}

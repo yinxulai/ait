@@ -89,9 +89,9 @@ type RequestMetrics struct {
 	TLSTime          time.Duration
 	TargetIP         string
 	ErrorMessage     string
-	// 以下字段当前为空，待 client.ResponseMetrics 支持后填充
-	PromptText   string
-	ResponseText string
+	// 原始请求/响应数据（供请求详情页展示和复制）
+	RequestBody  string
+	ResponseBody string
 }
 
 // EventKind 事件类型枚举。
@@ -111,8 +111,8 @@ const (
 )
 
 // Event 是推送给 TUI 层的通知。Payload 类型随 Kind 不同：
-//   - EventRequestDone  → *RequestMetrics
-//   - EventProgressTick → *RunState（快照）
+//   - EventRequestDone  → *RunState（含最新请求结果的完整快照）
+//   - EventProgressTick → *RunState（定时聚合快照）
 //   - EventLevelDone    → types.TurboLevelResult
 //   - EventRunComplete  → *RunState（最终快照）
 //   - EventRunFailed    → error

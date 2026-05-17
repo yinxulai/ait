@@ -147,7 +147,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	}
 	l := PageLayout{
 		CtxItems:    cbItems,
-		FooterParts: []string{"[q] 退出"},
+		FooterParts: []string{"[b/Esc] 返回列表", "[q] 退出"},
 	}
 
 	// ── 计算高度 ──

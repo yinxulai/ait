@@ -34,27 +34,33 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 	case "up", "k":
 		if s.HistorySel > 0 {
 			s.HistorySel--
+			s.LatestExpanded = false
 		}
 
 	case "down", "j":
 		if s.HistorySel < len(s.History)-1 {
 			s.HistorySel++
+			s.LatestExpanded = false
+		}
+
+	case "enter":
+		if len(s.History) > 0 {
+			s.LatestExpanded = !s.LatestExpanded
 		}
 
 	case "left", "esc", "b":
 		nav = NavAction{To: NavTaskList}
 
-	case "enter":
+	case "r":
 		return s, client.StartRunCmd(s.Task.ID), nav
 
-	case "r":
+	case "g":
 		if s.HistorySel >= 0 && s.HistorySel < len(s.History) {
 			runID := strings.TrimSpace(s.History[s.HistorySel].RunID)
 			if runID != "" {
 				return s, client.GenerateReportCmd(server.RunID(runID), server.ReportFormatJSON), nav
 			}
 		}
-		return s, client.StartRunCmd(s.Task.ID), nav
 
 	case "e":
 		t := s.Task
@@ -184,7 +190,10 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	if len(s.History) == 0 {
 		rightLines = append(rightLines, padRight(" "+st.Muted.Render("暂无运行记录"), rightW))
 	} else {
-		detailLines := buildTaskHistoryDetailLines(s, st, rightW)
+		var detailLines []string
+		if s.LatestExpanded {
+			detailLines = buildTaskHistoryDetailLines(s, st, rightW)
+		}
 		tableMaxH := maxH - len(detailLines)
 		if tableMaxH < 5 {
 			allowedDetail := maxInt(0, maxH-5)

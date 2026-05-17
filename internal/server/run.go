@@ -69,6 +69,8 @@ func mapRequestMetrics(m *client.ResponseMetrics, idx int, err error) *RequestMe
 	if err != nil && rm.ErrorMessage == "" {
 		rm.ErrorMessage = err.Error()
 	}
+	rm.RequestBody = m.RequestBody
+	rm.ResponseBody = m.ResponseBody
 
 	if m.TotalTime > 0 && m.CompletionTokens > 0 {
 		rm.TPS = float64(m.CompletionTokens) / m.TotalTime.Seconds()
@@ -146,6 +148,24 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 	ar.rnr = rnr
 	ar.mu.Unlock()
 
+	// 启动 500ms 进度快照 goroutine，定期向订阅者推送 EventProgressTick。
+	stopTick := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				ar.mu.RLock()
+				snap := ar.snapshotState()
+				ar.mu.RUnlock()
+				s.bus.Publish(Event{RunID: runID, Kind: EventProgressTick, Payload: snap})
+			case <-stopTick:
+				return
+			}
+		}
+	}()
+
 	reportData, err := rnr.RunWithCallback(func(metrics *client.ResponseMetrics, idx int, cbErr error) {
 		rm := mapRequestMetrics(metrics, idx, cbErr)
 
@@ -173,10 +193,13 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 		if done > 0 {
 			ar.state.SuccessRate = float64(successCount) / float64(done) * 100
 		}
+		snap := ar.snapshotState()
 		ar.mu.Unlock()
 
-		s.bus.Publish(Event{RunID: runID, Kind: EventRequestDone, Payload: rm})
+		s.bus.Publish(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
 	})
+
+	close(stopTick)
 
 	if err != nil {
 		s.failRun(ar, runID, taskDef, historyDir, err)

@@ -173,7 +173,7 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	}
 	l := PageLayout{
 		CtxItems:    cbItems,
-		FooterParts: []string{"[q] 退出"},
+		FooterParts: []string{"[b/Esc] 返回列表", "[q] 退出"},
 	}
 
 	// ── 计算高度 ──
@@ -319,6 +319,21 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		i := requestIndexFromDisplayPos(pos, len(reqs))
 		r := reqs[i]
 		isSel := i == d.ReqSel
+
+		if r == nil {
+			// 该请求尚未开始，渲染为等待中
+			marker := selectionMarker(isSel)
+			rowContent := padRight(marker, markW) +
+				padRight(fmt.Sprintf("#%d", i+1), idW) +
+				padRight(st.Muted.Render("…"), statW) +
+				padRight(st.Muted.Render("等待中"), timeW) +
+				padRight("─", ttftW) +
+				padRight("─", cacheW) +
+				padRight("─", tokW) +
+				"─"
+			lines = append(lines, renderTableRow(st, width, isSel, rowContent))
+			continue
+		}
 
 		statusText := "✓"
 		if !r.Success {

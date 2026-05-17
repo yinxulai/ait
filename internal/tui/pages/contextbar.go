@@ -31,7 +31,7 @@ func CtxBar_TaskList_Running() []ContextBarItem {
 // CtxBar_TaskDetail_NoHistory 任务详情页，无运行记录时。
 func CtxBar_TaskDetail_NoHistory() []ContextBarItem {
 	return []ContextBarItem{
-		{Key: "Enter/r", Desc: "运行"},
+		{Key: "r", Desc: "运行"},
 		{Key: "e", Desc: "编辑"},
 		{Key: "y", Desc: "复制"},
 		{Key: "d", Desc: "删除"},
@@ -42,8 +42,9 @@ func CtxBar_TaskDetail_NoHistory() []ContextBarItem {
 func CtxBar_TaskDetail_HasHistory() []ContextBarItem {
 	return []ContextBarItem{
 		{Key: "↑↓", Desc: "选择记录"},
-		{Key: "r", Desc: "导出 JSON 报告"},
-		{Key: "Enter", Desc: "再次运行"},
+		{Key: "Enter", Desc: "展开/折叠详情"},
+		{Key: "r", Desc: "再次运行"},
+		{Key: "g", Desc: "导出 JSON 报告"},
 		{Key: "e", Desc: "编辑"},
 		{Key: "y", Desc: "复制任务"},
 		{Key: "d", Desc: "删除"},

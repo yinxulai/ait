@@ -28,6 +28,10 @@ type ResponseMetrics struct {
 	
 	// 错误信息
 	ErrorMessage     string        // 错误信息（如果有）
+
+	// 原始数据（供请求详情页展示和复制）
+	RequestBody      string        // 发送给 API 的原始 JSON 请求体
+	ResponseBody     string        // API 返回的原始数据（非流式为 JSON，流式为所有 SSE 行拼接）
 }
 
 // ModelClient 定义统一的模型客户端接口

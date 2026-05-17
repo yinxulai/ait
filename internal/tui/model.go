@@ -333,11 +333,7 @@ func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 		if m.taskList != nil {
 			delete(m.taskList.ActiveRuns, taskID)
 		}
-		task := m.findTask(taskID)
-		if task != nil {
-			m.detail = pages.NewTaskDetailState(*task)
-		}
-		m.view = viewTaskDetail
+		// 在后台刷新任务列表和历史，不自动跳转页面；用户可按 b/Esc 返回
 		return m, tea.Batch(
 			m.client.LoadTasksCmd(),
 			m.client.LoadHistoryCmd(taskID, 10),
@@ -361,11 +357,7 @@ func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 		if m.taskList != nil {
 			delete(m.taskList.ActiveRuns, taskID)
 		}
-		task := m.findTask(taskID)
-		if task != nil {
-			m.detail = pages.NewTaskDetailState(*task)
-		}
-		m.view = viewTaskDetail
+		// 在后台刷新任务列表和历史，不自动跳转页面；用户可按 b/Esc 返回
 		return m, tea.Batch(
 			m.client.LoadTasksCmd(),
 			m.client.LoadHistoryCmd(taskID, 10),
