@@ -350,6 +350,73 @@ func (r *ReportData) MarshalJSON() ([]byte, error) {
 	})
 }
 
+// UnmarshalJSON 自定义 JSON 反序列化，将字符串形式的 Duration 还原为 time.Duration。
+// 与 MarshalJSON 配对使用，确保持久化后的数据能正确加载。
+func (r *ReportData) UnmarshalJSON(data []byte) error {
+	type Alias ReportData
+	aux := &struct {
+		*Alias
+		TotalTime           string `json:"total_time"`
+		AvgTotalTime        string `json:"avg_total_time"`
+		MinTotalTime        string `json:"min_total_time"`
+		MaxTotalTime        string `json:"max_total_time"`
+		AvgDNSTime          string `json:"avg_dns_time"`
+		MinDNSTime          string `json:"min_dns_time"`
+		MaxDNSTime          string `json:"max_dns_time"`
+		AvgConnectTime      string `json:"avg_connect_time"`
+		MinConnectTime      string `json:"min_connect_time"`
+		MaxConnectTime      string `json:"max_connect_time"`
+		AvgTLSHandshakeTime string `json:"avg_tls_handshake_time"`
+		MinTLSHandshakeTime string `json:"min_tls_handshake_time"`
+		MaxTLSHandshakeTime string `json:"max_tls_handshake_time"`
+		AvgTTFT             string `json:"avg_ttft"`
+		MinTTFT             string `json:"min_ttft"`
+		MaxTTFT             string `json:"max_ttft"`
+		AvgTPOT             string `json:"avg_tpot"`
+		MinTPOT             string `json:"min_tpot"`
+		MaxTPOT             string `json:"max_tpot"`
+		StdDevTotalTime     string `json:"stddev_total_time"`
+		StdDevTTFT          string `json:"stddev_ttft"`
+		StdDevTPOT          string `json:"stddev_tpot"`
+	}{Alias: (*Alias)(r)}
+
+	if err := json.Unmarshal(data, aux); err != nil {
+		return err
+	}
+
+	parseDur := func(s string) time.Duration {
+		if s == "" || s == "-" {
+			return 0
+		}
+		d, _ := time.ParseDuration(s)
+		return d
+	}
+
+	r.TotalTime = parseDur(aux.TotalTime)
+	r.AvgTotalTime = parseDur(aux.AvgTotalTime)
+	r.MinTotalTime = parseDur(aux.MinTotalTime)
+	r.MaxTotalTime = parseDur(aux.MaxTotalTime)
+	r.AvgDNSTime = parseDur(aux.AvgDNSTime)
+	r.MinDNSTime = parseDur(aux.MinDNSTime)
+	r.MaxDNSTime = parseDur(aux.MaxDNSTime)
+	r.AvgConnectTime = parseDur(aux.AvgConnectTime)
+	r.MinConnectTime = parseDur(aux.MinConnectTime)
+	r.MaxConnectTime = parseDur(aux.MaxConnectTime)
+	r.AvgTLSHandshakeTime = parseDur(aux.AvgTLSHandshakeTime)
+	r.MinTLSHandshakeTime = parseDur(aux.MinTLSHandshakeTime)
+	r.MaxTLSHandshakeTime = parseDur(aux.MaxTLSHandshakeTime)
+	r.AvgTTFT = parseDur(aux.AvgTTFT)
+	r.MinTTFT = parseDur(aux.MinTTFT)
+	r.MaxTTFT = parseDur(aux.MaxTTFT)
+	r.AvgTPOT = parseDur(aux.AvgTPOT)
+	r.MinTPOT = parseDur(aux.MinTPOT)
+	r.MaxTPOT = parseDur(aux.MaxTPOT)
+	r.StdDevTotalTime = parseDur(aux.StdDevTotalTime)
+	r.StdDevTTFT = parseDur(aux.StdDevTTFT)
+	r.StdDevTPOT = parseDur(aux.StdDevTPOT)
+	return nil
+}
+
 // formatTTFT 格式化 TTFT 字段，非流式模式返回 "-"
 func formatTTFT(duration time.Duration, isStream bool) string {
 	if !isStream {

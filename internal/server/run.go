@@ -579,20 +579,34 @@ func (s *serverImpl) GetHistory(taskID string, limit int) ([]types.TaskRunSummar
 }
 
 // GenerateReport 为已完成的标准运行生成报告文件。
+// 先查内存中的 activeRuns，若不存在则从磁盘快照加载（支持跨 session 历史运行）。
 func (s *serverImpl) GenerateReport(runID RunID, format ReportFormat) (string, error) {
 	s.mu.RLock()
 	ar, ok := s.activeRuns[runID]
+	historyDir := s.historyDir
 	s.mu.RUnlock()
 
-	if !ok {
-		return "", fmt.Errorf("run %q not found", runID)
-	}
+	var status RunStatus
+	var mode string
+	var standardResult *types.ReportData
 
-	ar.mu.RLock()
-	status := ar.state.Status
-	mode := ar.state.Mode
-	standardResult := ar.state.StandardResult
-	ar.mu.RUnlock()
+	if ok {
+		ar.mu.RLock()
+		status = ar.state.Status
+		mode = ar.state.Mode
+		standardResult = ar.state.StandardResult
+		ar.mu.RUnlock()
+	} else {
+		// 不在内存中，尝试从磁盘快照加载（历史运行 / 程序重启后）
+		st := store.NewJSONStore[*RunState](runStatePath(historyDir, runID))
+		snap, err := st.Load()
+		if err != nil || snap == nil {
+			return "", fmt.Errorf("run %q not found", runID)
+		}
+		status = snap.Status
+		mode = snap.Mode
+		standardResult = snap.StandardResult
+	}
 
 	if status == RunStatusRunning {
 		return "", fmt.Errorf("run %q is still in progress", runID)

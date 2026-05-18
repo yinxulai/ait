@@ -225,7 +225,7 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 // buildDashParamsPanel 构建左侧任务参数面板。
 func buildDashParamsPanel(d *DashboardState, rs *server.RunState, st Styles, maxH, width int) string {
 	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("任务参数"))
+	lines = append(lines, " "+st.SectionHead.Render("运行进度"))
 	lines = append(lines, "")
 
 	if rs == nil {
