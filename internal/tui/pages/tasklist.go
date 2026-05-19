@@ -13,7 +13,7 @@ import (
 
 // TaskListState 任务列表页状态。
 type TaskListState struct {
-	Tasks    []server.TaskOverview
+	Tasks    []types.TaskOverview
 	Selected int
 	Offset   int
 	Visible  int

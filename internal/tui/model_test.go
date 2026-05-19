@@ -11,8 +11,8 @@ import (
 // stubServer 是 server.Server 的测试桩，所有方法都返回零值。
 type stubServer struct{}
 
-func (s *stubServer) ListTasks() []server.TaskOverview                                     { return nil }
-func (s *stubServer) GetTask(id string) (types.TaskDefinition, bool)                       { return types.TaskDefinition{}, false }
+func (s *stubServer) ListTasks() ([]types.TaskOverview, error)                            { return nil, nil }
+func (s *stubServer) GetTask(id string) (types.TaskDefinition, error)                     { return types.TaskDefinition{}, nil }
 func (s *stubServer) CreateTask(cfg server.TaskConfig) (types.TaskDefinition, error)       { return types.TaskDefinition{}, nil }
 func (s *stubServer) UpdateTask(id string, cfg server.TaskConfig) (types.TaskDefinition, error) {
 	return types.TaskDefinition{}, nil

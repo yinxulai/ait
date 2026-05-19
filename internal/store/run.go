@@ -13,8 +13,8 @@ import (
 )
 
 type RunMetadata struct {
-	RunID      string     `json:"run_id"`
-	TaskID     string     `json:"task_id"`
+	RunID      string     `json:"-"`
+	TaskID     string     `json:"-"`
 	Mode       string     `json:"mode"`
 	Protocol   string     `json:"protocol"`
 	Model      string     `json:"model"`
@@ -24,14 +24,7 @@ type RunMetadata struct {
 }
 
 type RunResult struct {
-	TotalReqs            int                `json:"total_reqs"`
-	DoneReqs             int                `json:"done_reqs"`
-	SuccessReqs          int                `json:"success_reqs"`
-	FailedReqs           int                `json:"failed_reqs"`
-	SuccessRate          float64            `json:"success_rate"`
-	AvgTTFT              time.Duration      `json:"avg_ttft"`
-	AvgTPS               float64            `json:"avg_tps"`
-	CacheHitRate         float64            `json:"cache_hit_rate"`
+	TotalReqs            int                `json:"total_reqs,omitempty"`
 	MaxStableConcurrency int                `json:"max_stable_concurrency,omitempty"`
 	ErrorSummary         string             `json:"error_summary,omitempty"`
 	StandardResult       *types.ReportData  `json:"standard_result,omitempty"`
@@ -147,36 +140,6 @@ func (s *RunStore) SaveFinal(meta RunMetadata, result RunResult) error {
 	return NewJSONStore[RunResult](s.ResultPath(meta.TaskID, meta.RunID)).Save(result)
 }
 
-func (s *RunStore) SaveSummary(summary types.TaskRunSummary) error {
-	if summary.TaskID == "" || summary.RunID == "" {
-		return fmt.Errorf("task id and run id are required")
-	}
-
-	var finishedAt *time.Time
-	if !summary.FinishedAt.IsZero() {
-		finished := summary.FinishedAt
-		finishedAt = &finished
-	}
-
-	return s.SaveFinal(RunMetadata{
-		RunID:      summary.RunID,
-		TaskID:     summary.TaskID,
-		Mode:       summary.Mode,
-		Protocol:   summary.Protocol,
-		Model:      summary.Model,
-		Status:     summary.Status,
-		StartedAt:  summary.StartedAt,
-		FinishedAt: finishedAt,
-	}, RunResult{
-		SuccessRate:          summary.SuccessRate,
-		AvgTTFT:              summary.AvgTTFT,
-		AvgTPS:               summary.AvgTPS,
-		CacheHitRate:         summary.CacheHitRate,
-		MaxStableConcurrency: summary.MaxStableConcurrency,
-		ErrorSummary:         summary.ErrorSummary,
-	})
-}
-
 func (s *RunStore) Load(taskID, runID string) (*StoredRun, error) {
 	metaPath := s.MetadataPath(taskID, runID)
 	if _, err := os.Stat(metaPath); os.IsNotExist(err) {
@@ -189,6 +152,8 @@ func (s *RunStore) Load(taskID, runID string) (*StoredRun, error) {
 	if err != nil {
 		return nil, err
 	}
+	meta.TaskID = taskID
+	meta.RunID = runID
 
 	resultPath := s.ResultPath(taskID, runID)
 	var result *RunResult
@@ -279,7 +244,47 @@ func (s *RunStore) DeleteTask(taskID string) error {
 	return os.RemoveAll(s.TaskDir(taskID))
 }
 
-func (r StoredRun) Summary() types.TaskRunSummary {
+func (s *RunStore) LoadSummary(taskID, runID string) (*types.TaskRunSummary, error) {
+	run, err := s.Load(taskID, runID)
+	if err != nil || run == nil {
+		return nil, err
+	}
+	requests, err := s.LoadRequests(taskID, runID)
+	if err != nil {
+		return nil, err
+	}
+	summary := run.Summary(requests)
+	return &summary, nil
+}
+
+func (s *RunStore) LatestSummaryByTask(taskID string) (*types.TaskRunSummary, error) {
+	summaries, err := s.ListSummariesByTask(taskID, 1)
+	if err != nil {
+		return nil, err
+	}
+	if len(summaries) == 0 {
+		return nil, nil
+	}
+	return &summaries[0], nil
+}
+
+func (s *RunStore) ListSummariesByTask(taskID string, limit int) ([]types.TaskRunSummary, error) {
+	runs, err := s.ListByTask(taskID, limit)
+	if err != nil {
+		return nil, err
+	}
+	summaries := make([]types.TaskRunSummary, 0, len(runs))
+	for _, run := range runs {
+		requests, err := s.LoadRequests(run.Metadata.TaskID, run.Metadata.RunID)
+		if err != nil {
+			return nil, err
+		}
+		summaries = append(summaries, run.Summary(requests))
+	}
+	return summaries, nil
+}
+
+func (r StoredRun) Summary(requests []types.RequestMetrics) types.TaskRunSummary {
 	summary := types.TaskRunSummary{
 		RunID:     r.Metadata.RunID,
 		TaskID:    r.Metadata.TaskID,
@@ -292,14 +297,85 @@ func (r StoredRun) Summary() types.TaskRunSummary {
 	if r.Metadata.FinishedAt != nil {
 		summary.FinishedAt = *r.Metadata.FinishedAt
 	}
+	derived := summarizeRequests(requests)
+	summary.SuccessRate = derived.SuccessRate
+	summary.AvgTTFT = derived.AvgTTFT
+	summary.AvgTPS = derived.AvgTPS
+	summary.CacheHitRate = derived.CacheHitRate
 	if r.Result != nil {
-		summary.SuccessRate = r.Result.SuccessRate
-		summary.AvgTTFT = r.Result.AvgTTFT
-		summary.AvgTPS = r.Result.AvgTPS
-		summary.CacheHitRate = r.Result.CacheHitRate
-		summary.MaxStableConcurrency = r.Result.MaxStableConcurrency
 		summary.ErrorSummary = r.Result.ErrorSummary
+		summary.MaxStableConcurrency = r.Result.MaxStableConcurrency
+		if r.Result.StandardResult != nil {
+			summary.SuccessRate = r.Result.StandardResult.SuccessRate
+			summary.AvgTTFT = r.Result.StandardResult.AvgTTFT
+			summary.AvgTPS = r.Result.StandardResult.AvgTPS
+			summary.CacheHitRate = r.Result.StandardResult.AvgCacheHitRate
+		}
+		if r.Result.TurboResult != nil {
+			summary.MaxStableConcurrency = r.Result.TurboResult.MaxStableConcurrency
+		}
 	}
+	return summary
+}
+
+func (r StoredRun) TotalReqs(requests []types.RequestMetrics) int {
+	if r.Result == nil {
+		return len(requests)
+	}
+	if r.Result.StandardResult != nil && r.Result.StandardResult.TotalRequests > 0 {
+		return r.Result.StandardResult.TotalRequests
+	}
+	if r.Result.TurboResult != nil {
+		total := 0
+		for _, level := range r.Result.TurboResult.Levels {
+			total += level.TotalRequests
+		}
+		if total > 0 {
+			return total
+		}
+	}
+	if r.Result.TotalReqs > 0 {
+		return r.Result.TotalReqs
+	}
+	return len(requests)
+}
+
+type requestSummary struct {
+	DoneReqs     int
+	SuccessReqs  int
+	FailedReqs   int
+	SuccessRate  float64
+	AvgTTFT      time.Duration
+	AvgTPS       float64
+	CacheHitRate float64
+}
+
+func summarizeRequests(requests []types.RequestMetrics) requestSummary {
+	summary := requestSummary{DoneReqs: len(requests)}
+	var ttftSum time.Duration
+	var tpsSum float64
+	var cacheSum float64
+
+	for _, request := range requests {
+		if !request.Success {
+			continue
+		}
+		summary.SuccessReqs++
+		ttftSum += request.TTFT
+		tpsSum += request.TPS
+		cacheSum += request.CacheHitRate
+	}
+
+	summary.FailedReqs = summary.DoneReqs - summary.SuccessReqs
+	if summary.DoneReqs > 0 {
+		summary.SuccessRate = float64(summary.SuccessReqs) / float64(summary.DoneReqs) * 100
+	}
+	if summary.SuccessReqs > 0 {
+		summary.AvgTTFT = ttftSum / time.Duration(summary.SuccessReqs)
+		summary.AvgTPS = tpsSum / float64(summary.SuccessReqs)
+		summary.CacheHitRate = cacheSum / float64(summary.SuccessReqs)
+	}
+
 	return summary
 }
 

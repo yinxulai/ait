@@ -27,13 +27,6 @@ type TaskConfig struct {
 	Input types.Input
 }
 
-// TaskOverview 是面向列表/摘要读取的任务视图。
-// 它组合任务定义本体与最近一次运行摘要，不进入持久化层。
-type TaskOverview struct {
-	types.TaskDefinition
-	LatestRun *types.TaskRunSummary
-}
-
 // RunStatus 运行的生命周期状态。
 type RunStatus string
 

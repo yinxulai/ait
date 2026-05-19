@@ -24,12 +24,11 @@ func newTestServer(t *testing.T) *serverImpl {
 		t.Fatalf("mkdir runs: %v", err)
 	}
 	ts := store.NewTaskStore(tasksDir)
-	if err := ts.Load(); err != nil {
-		t.Fatalf("load task store: %v", err)
-	}
+	rs := store.NewRunStore(runsDir)
 	return &serverImpl{
 		taskStore:  ts,
-		runStore:   store.NewRunStore(runsDir),
+		taskViews:  store.NewTaskViewStore(ts, rs),
+		runStore:   rs,
 		bus:        newEventBus(),
 		activeRuns: make(map[RunID]*activeRun),
 	}
@@ -380,13 +379,6 @@ func TestGetRunState_LoadsCompletedRunFromDisk(t *testing.T) {
 		StartedAt:  startedAt,
 		FinishedAt: &finishedAt,
 	}, store.RunResult{
-		TotalReqs:      4,
-		DoneReqs:       1,
-		SuccessReqs:    1,
-		AvgTPS:         18.5,
-		AvgTTFT:        120 * time.Millisecond,
-		SuccessRate:    25,
-		CacheHitRate:   0.4,
 		ErrorSummary:   "",
 		StandardResult: &types.ReportData{TotalRequests: 4, AvgTPS: 18.5, AvgTTFT: 120 * time.Millisecond, SuccessRate: 25},
 	}); err != nil {
@@ -432,7 +424,10 @@ func TestGetRunState_LoadsCompletedRunFromDisk(t *testing.T) {
 
 func TestListTasks_Empty(t *testing.T) {
 	s := newTestServer(t)
-	tasks := s.ListTasks()
+	tasks, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
 	if len(tasks) != 0 {
 		t.Errorf("expected empty list, got %d tasks", len(tasks))
 	}
@@ -455,7 +450,10 @@ func TestCreateTask_ReturnsTaskWithID(t *testing.T) {
 func TestCreateTask_AppearsInList(t *testing.T) {
 	s := newTestServer(t)
 	s.CreateTask(makeTaskConfig("task-a"))
-	all := s.ListTasks()
+	all, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
 	if len(all) != 1 {
 		t.Errorf("expected 1 task, got %d", len(all))
 	}
@@ -471,17 +469,21 @@ func TestCreateTask_MultipleTasksAllListed(t *testing.T) {
 			t.Fatalf("CreateTask %q: %v", name, err)
 		}
 	}
-	if len(s.ListTasks()) != 3 {
-		t.Errorf("expected 3 tasks, got %d", len(s.ListTasks()))
+	tasks, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(tasks) != 3 {
+		t.Errorf("expected 3 tasks, got %d", len(tasks))
 	}
 }
 
 func TestGetTask_Found(t *testing.T) {
 	s := newTestServer(t)
 	created, _ := s.CreateTask(makeTaskConfig("task-get"))
-	got, ok := s.GetTask(created.ID)
-	if !ok {
-		t.Fatal("GetTask returned not found")
+	got, err := s.GetTask(created.ID)
+	if err != nil {
+		t.Fatalf("GetTask: %v", err)
 	}
 	if got.ID != created.ID {
 		t.Errorf("ID mismatch: %q vs %q", got.ID, created.ID)
@@ -490,9 +492,9 @@ func TestGetTask_Found(t *testing.T) {
 
 func TestGetTask_NotFound(t *testing.T) {
 	s := newTestServer(t)
-	_, ok := s.GetTask("nonexistent")
-	if ok {
-		t.Fatal("expected not found for nonexistent ID")
+	_, err := s.GetTask("nonexistent")
+	if !errors.Is(err, store.ErrTaskNotFound) {
+		t.Fatalf("expected ErrTaskNotFound, got %v", err)
 	}
 }
 
@@ -507,9 +509,9 @@ func TestUpdateTask_Success(t *testing.T) {
 		t.Errorf("Name: got %q, want renamed", updated.Name)
 	}
 	// Verify persistence via GetTask.
-	fetched, ok := s.GetTask(created.ID)
-	if !ok || fetched.Name != "renamed" {
-		t.Errorf("GetTask after update: ok=%v name=%q", ok, fetched.Name)
+	fetched, err := s.GetTask(created.ID)
+	if err != nil || fetched.Name != "renamed" {
+		t.Errorf("GetTask after update: err=%v name=%q", err, fetched.Name)
 	}
 }
 
@@ -527,10 +529,14 @@ func TestDeleteTask_Success(t *testing.T) {
 	if err := s.DeleteTask(created.ID); err != nil {
 		t.Fatalf("DeleteTask: %v", err)
 	}
-	if _, ok := s.GetTask(created.ID); ok {
-		t.Error("task still accessible after delete")
+	if _, err := s.GetTask(created.ID); !errors.Is(err, store.ErrTaskNotFound) {
+		t.Errorf("expected deleted task to be missing, got %v", err)
 	}
-	if len(s.ListTasks()) != 0 {
+	tasks, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(tasks) != 0 {
 		t.Error("expected empty list after delete")
 	}
 }
@@ -539,6 +545,26 @@ func TestDeleteTask_NotFound(t *testing.T) {
 	s := newTestServer(t)
 	if err := s.DeleteTask("missing-id"); err == nil {
 		t.Fatal("expected error for missing task")
+	}
+}
+
+func TestDeleteTask_RunningTaskRejected(t *testing.T) {
+	s := newTestServer(t)
+	created, _ := s.CreateTask(makeTaskConfig("still-running"))
+	runID := RunID("run_live_delete")
+
+	s.mu.Lock()
+	s.activeRuns[runID] = &activeRun{
+		state: &RunState{
+			RunID:  runID,
+			TaskID: created.ID,
+			Status: RunStatusRunning,
+		},
+	}
+	s.mu.Unlock()
+
+	if err := s.DeleteTask(created.ID); err == nil {
+		t.Fatal("expected delete to fail while task is running")
 	}
 }
 
@@ -555,8 +581,12 @@ func TestCopyTask_CreatesNewTask(t *testing.T) {
 	if copied.Name != "original (copy)" {
 		t.Errorf("Name: got %q, want %q", copied.Name, "original (copy)")
 	}
-	if len(s.ListTasks()) != 2 {
-		t.Errorf("expected 2 tasks after copy, got %d", len(s.ListTasks()))
+	tasks, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
+	if len(tasks) != 2 {
+		t.Errorf("expected 2 tasks after copy, got %d", len(tasks))
 	}
 }
 
@@ -649,16 +679,16 @@ func TestGetHistory_PersistsAfterRun(t *testing.T) {
 	s := newTestServer(t)
 	task, _ := s.CreateTask(makeTaskConfig("persist-task"))
 
-	summary := types.TaskRunSummary{
-		RunID:   "run_test",
-		TaskID:  task.ID,
-		Mode:    "standard",
-		Status:  string(RunStatusCompleted),
-		StartedAt: time.Now().Add(-time.Second),
-		FinishedAt: time.Now(),
-	}
-	if err := s.persistRunResult(summary); err != nil {
-		t.Fatalf("persistRunResult: %v", err)
+	finishedAt := time.Now()
+	if err := s.runStore.SaveFinal(store.RunMetadata{
+		RunID:      "run_test",
+		TaskID:     task.ID,
+		Mode:       "standard",
+		Status:     string(RunStatusCompleted),
+		StartedAt:  finishedAt.Add(-time.Second),
+		FinishedAt: &finishedAt,
+	}, store.RunResult{}); err != nil {
+		t.Fatalf("SaveFinal: %v", err)
 	}
 
 	history, err := s.GetHistory(task.ID, 0)
@@ -694,7 +724,10 @@ func TestGetTask_DerivesRunningSummaryFromActiveRun(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	tasks := s.ListTasks()
+	tasks, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task overview, got %d", len(tasks))
 	}
@@ -709,24 +742,21 @@ func TestGetTask_DerivesRunningSummaryFromActiveRun(t *testing.T) {
 	}
 }
 
-func TestPersistRunResult_DerivesLatestTaskSummary(t *testing.T) {
+func TestStoredRun_DerivesLatestTaskSummary(t *testing.T) {
 	s := newTestServer(t)
 	task, _ := s.CreateTask(makeTaskConfig("finalize-task"))
 	startedAt := time.Now().Add(-2 * time.Second)
 
 	finishedAt := time.Now()
-	if err := s.persistRunResult(types.TaskRunSummary{
-		RunID:       "run_same",
-		TaskID:      task.ID,
-		Mode:        "standard",
-		Status:      string(RunStatusCompleted),
-		StartedAt:   startedAt,
-		FinishedAt:  finishedAt,
-		SuccessRate: 100,
-		AvgTTFT:     80 * time.Millisecond,
-		AvgTPS:      24.2,
-	}); err != nil {
-		t.Fatalf("persistRunResult: %v", err)
+	if err := s.runStore.SaveFinal(store.RunMetadata{
+		RunID:      "run_same",
+		TaskID:     task.ID,
+		Mode:       "standard",
+		Status:     string(RunStatusCompleted),
+		StartedAt:  startedAt,
+		FinishedAt: &finishedAt,
+	}, store.RunResult{}); err != nil {
+		t.Fatalf("SaveFinal: %v", err)
 	}
 
 	history, err := s.GetHistory(task.ID, 0)
@@ -743,7 +773,10 @@ func TestPersistRunResult_DerivesLatestTaskSummary(t *testing.T) {
 		t.Fatal("expected FinishedAt to be persisted for completed run")
 	}
 
-	tasks := s.ListTasks()
+	tasks, err := s.ListTasks()
+	if err != nil {
+		t.Fatalf("ListTasks: %v", err)
+	}
 	if len(tasks) != 1 {
 		t.Fatalf("expected 1 task overview, got %d", len(tasks))
 	}
@@ -757,13 +790,14 @@ func TestGetHistory_LimitRespected(t *testing.T) {
 	task, _ := s.CreateTask(makeTaskConfig("limit-task"))
 
 	for i := 0; i < 5; i++ {
-		if err := s.persistRunResult(types.TaskRunSummary{
+		finishedAt := time.Now()
+		if err := s.runStore.SaveFinal(store.RunMetadata{
 			RunID:      "run_" + string(rune('0'+i)),
 			TaskID:     task.ID,
-			StartedAt:  time.Now(),
-			FinishedAt: time.Now(),
-		}); err != nil {
-			t.Fatalf("persistRunResult: %v", err)
+			StartedAt:  finishedAt,
+			FinishedAt: &finishedAt,
+		}, store.RunResult{}); err != nil {
+			t.Fatalf("SaveFinal: %v", err)
 		}
 	}
 

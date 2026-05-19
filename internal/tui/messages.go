@@ -7,7 +7,7 @@ import (
 
 // TasksLoadedMsg 任务列表加载完成（初始化或刷新后）。
 type TasksLoadedMsg struct {
-	Tasks []server.TaskOverview
+	Tasks []types.TaskOverview
 }
 
 // TaskSavedMsg 新建或更新任务完成。

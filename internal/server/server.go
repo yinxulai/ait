@@ -12,8 +12,8 @@ import (
 // 所有方法均为线程安全。
 type Server interface {
 	// --- 任务 CRUD ---
-	ListTasks() []TaskOverview
-	GetTask(id string) (types.TaskDefinition, bool)
+	ListTasks() ([]types.TaskOverview, error)
+	GetTask(id string) (types.TaskDefinition, error)
 	CreateTask(cfg TaskConfig) (types.TaskDefinition, error)
 	UpdateTask(id string, cfg TaskConfig) (types.TaskDefinition, error)
 	DeleteTask(id string) error
@@ -46,6 +46,7 @@ type Server interface {
 type serverImpl struct {
 	mu         sync.RWMutex
 	taskStore  *store.TaskStore
+	taskViews  *store.TaskViewStore
 	runStore   *store.RunStore
 	bus        *eventBus
 	activeRuns map[RunID]*activeRun
@@ -69,13 +70,12 @@ func New() (Server, error) {
 	}
 
 	ts := store.NewTaskStore(tasksDir)
-	if err := ts.Load(); err != nil {
-		return nil, err
-	}
+	rs := store.NewRunStore(runsDir)
 
 	return &serverImpl{
 		taskStore:  ts,
-		runStore:   store.NewRunStore(runsDir),
+		taskViews:  store.NewTaskViewStore(ts, rs),
+		runStore:   rs,
 		bus:        newEventBus(),
 		activeRuns: make(map[RunID]*activeRun),
 	}, nil

@@ -237,6 +237,11 @@ type TaskDefinition struct {
 	UpdatedAt time.Time `json:"updated_at"`
 }
 
+type TaskOverview struct {
+	TaskDefinition
+	LatestRun *TaskRunSummary `json:"latest_run,omitempty"`
+}
+
 type TaskRunSummary struct {
 	RunID                string        `json:"run_id"`
 	TaskID               string        `json:"task_id"`

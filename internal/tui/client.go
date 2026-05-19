@@ -25,7 +25,11 @@ func NewClient(srv server.Server) *Client {
 // LoadTasksCmd 异步加载任务列表。
 func (c *Client) LoadTasksCmd() tea.Cmd {
 	return func() tea.Msg {
-		return TasksLoadedMsg{Tasks: c.srv.ListTasks()}
+		tasks, err := c.srv.ListTasks()
+		if err != nil {
+			return ErrorMsg{Err: fmt.Errorf("加载任务失败: %w", err)}
+		}
+		return TasksLoadedMsg{Tasks: tasks}
 	}
 }
 

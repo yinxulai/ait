@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"sync"
 	"sync/atomic"
@@ -128,65 +129,57 @@ func buildStoredRunMetadata(taskDef types.TaskDefinition, snap *RunState) store.
 
 func buildStoredRunResult(snap *RunState) store.RunResult {
 	result := store.RunResult{
-		TotalReqs:      snap.TotalReqs,
-		DoneReqs:       snap.DoneReqs,
-		SuccessReqs:    snap.SuccessReqs,
-		FailedReqs:     snap.FailedReqs,
-		SuccessRate:    snap.SuccessRate,
-		AvgTTFT:        snap.AvgTTFT,
-		AvgTPS:         snap.AvgTPS,
-		CacheHitRate:   snap.CacheHitRate,
 		ErrorSummary:   snap.ErrorMsg,
 		StandardResult: snap.StandardResult,
 		TurboResult:    snap.TurboResult,
 	}
-	if snap.TurboResult != nil {
-		result.MaxStableConcurrency = snap.TurboResult.MaxStableConcurrency
-	} else if snap.CurrentLevel > 0 {
+	if snap.StandardResult == nil && snap.TurboResult == nil && snap.TotalReqs > 0 {
+		result.TotalReqs = snap.TotalReqs
+	}
+	if snap.TurboResult == nil && snap.CurrentLevel > 0 {
 		result.MaxStableConcurrency = snap.CurrentLevel
 	}
 	return result
 }
 
-func buildRunStateFromStoredRun(run *store.StoredRun, requests []*types.RequestMetrics) *RunState {
+func buildRunStateFromStoredRun(run *store.StoredRun, requests []types.RequestMetrics) *RunState {
 	if run == nil {
 		return nil
 	}
 
+	summary := run.Summary(requests)
 	state := &RunState{
 		RunID:     RunID(run.Metadata.RunID),
 		TaskID:    run.Metadata.TaskID,
 		Status:    RunStatus(run.Metadata.Status),
 		Mode:      run.Metadata.Mode,
 		StartedAt: run.Metadata.StartedAt,
-		Requests:  requests,
+		Requests:  requestPointers(requests),
+		AvgTTFT:   summary.AvgTTFT,
+		AvgTPS:    summary.AvgTPS,
+		SuccessRate: summary.SuccessRate,
+		CacheHitRate: summary.CacheHitRate,
+		ErrorMsg:  summary.ErrorSummary,
+		CurrentLevel: summary.MaxStableConcurrency,
 	}
 	if run.Metadata.FinishedAt != nil {
 		finished := *run.Metadata.FinishedAt
 		state.FinishedAt = &finished
 	}
+	state.DoneReqs = len(requests)
+	for _, request := range requests {
+		if request.Success {
+			state.SuccessReqs++
+		}
+	}
+	state.FailedReqs = state.DoneReqs - state.SuccessReqs
+	state.TotalReqs = run.TotalReqs(requests)
 	if run.Result == nil {
 		return state
 	}
 
-	state.TotalReqs = run.Result.TotalReqs
-	state.DoneReqs = run.Result.DoneReqs
-	state.SuccessReqs = run.Result.SuccessReqs
-	state.FailedReqs = run.Result.FailedReqs
-	state.SuccessRate = run.Result.SuccessRate
-	state.AvgTTFT = run.Result.AvgTTFT
-	state.AvgTPS = run.Result.AvgTPS
-	state.CacheHitRate = run.Result.CacheHitRate
 	state.StandardResult = run.Result.StandardResult
 	state.TurboResult = run.Result.TurboResult
-	state.ErrorMsg = run.Result.ErrorSummary
-	state.CurrentLevel = run.Result.MaxStableConcurrency
-	if state.DoneReqs == 0 && len(requests) > 0 {
-		state.DoneReqs = len(requests)
-	}
-	if state.TotalReqs == 0 && len(requests) > 0 {
-		state.TotalReqs = len(requests)
-	}
 	if run.Result.TurboResult != nil {
 		state.Levels = run.Result.TurboResult.Levels
 		state.CurrentLevel = run.Result.TurboResult.MaxStableConcurrency
@@ -219,14 +212,14 @@ func buildRunningRunSummary(taskDef types.TaskDefinition, snap *RunState) types.
 
 // StartRun 启动一次新的运行，立即返回 RunID。
 func (s *serverImpl) StartRun(taskID string) (RunID, error) {
-	s.mu.RLock()
-	taskDef, ok := s.taskStore.Get(taskID)
-	runStore := s.runStore
-	s.mu.RUnlock()
-
-	if !ok {
-		return "", fmt.Errorf("task %q not found", taskID)
+	taskDef, err := s.taskStore.Get(taskID)
+	if err != nil {
+		if errors.Is(err, store.ErrTaskNotFound) {
+			return "", fmt.Errorf("task %q not found: %w", taskID, err)
+		}
+		return "", fmt.Errorf("get task %q: %w", taskID, err)
 	}
+	runStore := s.runStore
 
 	// 解析 PromptSource（将 PromptText/PromptFile 转换为可调用的 PromptSource）
 	hydratedInput, err := task.HydrateInput(taskDef.Input)
@@ -472,10 +465,6 @@ func (s *serverImpl) persistFinalRun(runStore *store.RunStore, taskDef types.Tas
 	return runStore.SaveFinal(buildStoredRunMetadata(taskDef, snap), buildStoredRunResult(snap))
 }
 
-func (s *serverImpl) persistRunResult(summary types.TaskRunSummary) error {
-	return s.runStore.SaveSummary(summary)
-}
-
 func (s *serverImpl) removeActiveRun(runID RunID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -529,7 +518,7 @@ func (s *serverImpl) GetRunState(runID RunID) (*RunState, bool) {
 	if err != nil {
 		return nil, false
 	}
-	return buildRunStateFromStoredRun(run, requestPointers(requests)), true
+	return buildRunStateFromStoredRun(run, requests), true
 }
 
 // Subscribe 订阅指定运行的事件流。
@@ -539,15 +528,7 @@ func (s *serverImpl) Subscribe(runID RunID) (<-chan Event, CancelFunc) {
 
 // GetHistory 返回任务的历史运行摘要，最新在前。
 func (s *serverImpl) GetHistory(taskID string, limit int) ([]types.TaskRunSummary, error) {
-	runs, err := s.runStore.ListByTask(taskID, limit)
-	if err != nil {
-		return nil, err
-	}
-	history := make([]types.TaskRunSummary, 0, len(runs))
-	for _, run := range runs {
-		history = append(history, run.Summary())
-	}
-	return history, nil
+	return s.runStore.ListSummariesByTask(taskID, limit)
 }
 
 // GenerateReport 为已完成的标准运行生成报告文件。
