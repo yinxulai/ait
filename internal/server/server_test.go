@@ -18,19 +18,20 @@ import (
 func newTestServer(t *testing.T) *serverImpl {
 	t.Helper()
 	dir := t.TempDir()
-	historyDir := filepath.Join(dir, "history")
-	if err := os.MkdirAll(historyDir, 0o755); err != nil {
-		t.Fatalf("mkdir history: %v", err)
+	tasksDir := filepath.Join(dir, "tasks")
+	runsDir := filepath.Join(dir, "runs")
+	if err := os.MkdirAll(runsDir, 0o755); err != nil {
+		t.Fatalf("mkdir runs: %v", err)
 	}
-	ts := store.NewTaskStore(filepath.Join(dir, "tasks.json"))
+	ts := store.NewTaskStore(tasksDir)
 	if err := ts.Load(); err != nil {
 		t.Fatalf("load task store: %v", err)
 	}
 	return &serverImpl{
 		taskStore:  ts,
+		runStore:   store.NewRunStore(runsDir),
 		bus:        newEventBus(),
 		activeRuns: make(map[RunID]*activeRun),
-		historyDir: historyDir,
 	}
 }
 
@@ -292,16 +293,16 @@ func TestMapRequestMetrics_ZeroPromptTokensSkipsCacheHitRate(t *testing.T) {
 // ── snapshotState ─────────────────────────────────────────────────────────────
 
 func TestSnapshotState_DeepCopiesRequests(t *testing.T) {
-	original := &RequestMetrics{Index: 0, Success: true}
+	original := &types.RequestMetrics{Index: 0, Success: true}
 	ar := &activeRun{
 		state: &RunState{
-			Requests: []*RequestMetrics{original},
+			Requests: []*types.RequestMetrics{original},
 		},
 	}
 	snap := ar.snapshotState()
 
 	// Mutate original slice — snapshot must remain unchanged.
-	ar.state.Requests[0] = &RequestMetrics{Index: 99}
+	ar.state.Requests[0] = &types.RequestMetrics{Index: 99}
 	if snap.Requests[0].Index != 0 {
 		t.Error("Requests slice was not deep-copied: snapshot reflects mutation of original")
 	}
@@ -337,13 +338,93 @@ func TestSnapshotState_EmptySlicesNotCopied(t *testing.T) {
 	}
 }
 
-// ── historyPath ───────────────────────────────────────────────────────────────
+func TestAppendRequestToDisk_CreatesParentDirectory(t *testing.T) {
+	s := newTestServer(t)
+	taskID := "task-1"
+	runID := RunID("run_disk_append")
+	req := types.RequestMetrics{Index: 0, Success: true, TotalTime: time.Second, TTFT: 100 * time.Millisecond, TPS: 12.5}
 
-func TestHistoryPath(t *testing.T) {
-	got := historyPath("/data/history", "task-abc")
-	want := filepath.Join("/data/history", "task-abc.json")
-	if got != want {
-		t.Errorf("historyPath: got %q, want %q", got, want)
+	if err := s.runStore.AppendRequest(taskID, string(runID), req); err != nil {
+		t.Fatalf("AppendRequest() returned unexpected error: %v", err)
+	}
+
+	reqs, err := s.runStore.LoadRequests(taskID, string(runID))
+	if err != nil {
+		t.Fatalf("LoadRequests() returned unexpected error: %v", err)
+	}
+	if len(reqs) != 1 {
+		t.Fatalf("expected 1 request loaded from disk, got %d", len(reqs))
+	}
+	if reqs[0].Index != req.Index {
+		t.Errorf("Index: got %d, want %d", reqs[0].Index, req.Index)
+	}
+	if reqs[0].TPS != req.TPS {
+		t.Errorf("TPS: got %v, want %v", reqs[0].TPS, req.TPS)
+	}
+}
+
+func TestGetRunState_LoadsCompletedRunFromDisk(t *testing.T) {
+	s := newTestServer(t)
+	runID := RunID("run_disk_result")
+	taskID := "task-1"
+	startedAt := time.Now().Add(-2 * time.Second).UTC().Truncate(time.Second)
+	finishedAt := time.Now().UTC().Truncate(time.Second)
+
+	if err := s.runStore.SaveFinal(store.RunMetadata{
+		RunID:      string(runID),
+		TaskID:     taskID,
+		Mode:       "standard",
+		Protocol:   types.ProtocolOpenAICompletions,
+		Model:      "test-model",
+		Status:     string(RunStatusCompleted),
+		StartedAt:  startedAt,
+		FinishedAt: &finishedAt,
+	}, store.RunResult{
+		TotalReqs:      4,
+		DoneReqs:       1,
+		SuccessReqs:    1,
+		AvgTPS:         18.5,
+		AvgTTFT:        120 * time.Millisecond,
+		SuccessRate:    25,
+		CacheHitRate:   0.4,
+		ErrorSummary:   "",
+		StandardResult: &types.ReportData{TotalRequests: 4, AvgTPS: 18.5, AvgTTFT: 120 * time.Millisecond, SuccessRate: 25},
+	}); err != nil {
+		t.Fatalf("SaveFinal() returned unexpected error: %v", err)
+	}
+	if err := s.runStore.AppendRequest(taskID, string(runID), types.RequestMetrics{
+		Index:            0,
+		Success:          true,
+		TotalTime:        time.Second,
+		TTFT:             120 * time.Millisecond,
+		TPS:              18.5,
+		PromptTokens:     100,
+		CompletionTokens: 18,
+	}); err != nil {
+		t.Fatalf("AppendRequest() returned unexpected error: %v", err)
+	}
+
+	state, ok := s.GetRunState(runID)
+	if !ok {
+		t.Fatal("expected completed run to load from disk")
+	}
+	if state.Status != RunStatusCompleted {
+		t.Fatalf("Status: got %q, want %q", state.Status, RunStatusCompleted)
+	}
+	if state.TaskID != taskID {
+		t.Errorf("TaskID: got %q, want %q", state.TaskID, taskID)
+	}
+	if state.DoneReqs != 1 {
+		t.Errorf("DoneReqs: got %d, want 1", state.DoneReqs)
+	}
+	if len(state.Requests) != 1 {
+		t.Fatalf("expected 1 request in loaded state, got %d", len(state.Requests))
+	}
+	if state.Requests[0].Index != 0 {
+		t.Errorf("request index: got %d, want 0", state.Requests[0].Index)
+	}
+	if state.Requests[0].TTFT != 120*time.Millisecond {
+		t.Errorf("request TTFT: got %v, want 120ms", state.Requests[0].TTFT)
 	}
 }
 
@@ -576,7 +657,9 @@ func TestGetHistory_PersistsAfterRun(t *testing.T) {
 		StartedAt: time.Now().Add(-time.Second),
 		FinishedAt: time.Now(),
 	}
-	s.persistRunResult(task.ID, s.historyDir, summary)
+	if err := s.persistRunResult(summary); err != nil {
+		t.Fatalf("persistRunResult: %v", err)
+	}
 
 	history, err := s.GetHistory(task.ID, 0)
 	if err != nil {
@@ -590,17 +673,98 @@ func TestGetHistory_PersistsAfterRun(t *testing.T) {
 	}
 }
 
+func TestGetTask_DerivesRunningSummaryFromActiveRun(t *testing.T) {
+	s := newTestServer(t)
+	task, _ := s.CreateTask(makeTaskConfig("running-task"))
+	startedAt := time.Now().Add(-2 * time.Second)
+
+	runID := RunID("run_live")
+	s.mu.Lock()
+	s.activeRuns[runID] = &activeRun{
+		state: &RunState{
+			RunID:       runID,
+			TaskID:      task.ID,
+			Mode:        "standard",
+			Status:      RunStatusRunning,
+			StartedAt:   startedAt,
+			SuccessRate: 100,
+			AvgTTFT:     120 * time.Millisecond,
+			AvgTPS:      18.5,
+		},
+	}
+	s.mu.Unlock()
+
+	tasks := s.ListTasks()
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task overview, got %d", len(tasks))
+	}
+	if tasks[0].LatestRun == nil {
+		t.Fatal("expected LatestRun to be derived when run starts")
+	}
+	if tasks[0].LatestRun.Status != string(RunStatusRunning) {
+		t.Fatalf("LatestRun.Status: got %q, want %q", tasks[0].LatestRun.Status, RunStatusRunning)
+	}
+	if !tasks[0].LatestRun.FinishedAt.IsZero() {
+		t.Fatal("expected running LatestRun to have zero FinishedAt")
+	}
+}
+
+func TestPersistRunResult_DerivesLatestTaskSummary(t *testing.T) {
+	s := newTestServer(t)
+	task, _ := s.CreateTask(makeTaskConfig("finalize-task"))
+	startedAt := time.Now().Add(-2 * time.Second)
+
+	finishedAt := time.Now()
+	if err := s.persistRunResult(types.TaskRunSummary{
+		RunID:       "run_same",
+		TaskID:      task.ID,
+		Mode:        "standard",
+		Status:      string(RunStatusCompleted),
+		StartedAt:   startedAt,
+		FinishedAt:  finishedAt,
+		SuccessRate: 100,
+		AvgTTFT:     80 * time.Millisecond,
+		AvgTPS:      24.2,
+	}); err != nil {
+		t.Fatalf("persistRunResult: %v", err)
+	}
+
+	history, err := s.GetHistory(task.ID, 0)
+	if err != nil {
+		t.Fatalf("GetHistory: %v", err)
+	}
+	if len(history) != 1 {
+		t.Fatalf("expected 1 history entry after finalize, got %d", len(history))
+	}
+	if history[0].Status != string(RunStatusCompleted) {
+		t.Fatalf("Status: got %q, want %q", history[0].Status, RunStatusCompleted)
+	}
+	if history[0].FinishedAt.IsZero() {
+		t.Fatal("expected FinishedAt to be persisted for completed run")
+	}
+
+	tasks := s.ListTasks()
+	if len(tasks) != 1 {
+		t.Fatalf("expected 1 task overview, got %d", len(tasks))
+	}
+	if tasks[0].LatestRun == nil || !tasks[0].LatestRun.FinishedAt.Equal(finishedAt) {
+		t.Fatalf("expected LatestRun.FinishedAt to equal %v, got %+v", finishedAt, tasks[0].LatestRun)
+	}
+}
+
 func TestGetHistory_LimitRespected(t *testing.T) {
 	s := newTestServer(t)
 	task, _ := s.CreateTask(makeTaskConfig("limit-task"))
 
 	for i := 0; i < 5; i++ {
-		s.persistRunResult(task.ID, s.historyDir, types.TaskRunSummary{
+		if err := s.persistRunResult(types.TaskRunSummary{
 			RunID:      "run_" + string(rune('0'+i)),
 			TaskID:     task.ID,
 			StartedAt:  time.Now(),
 			FinishedAt: time.Now(),
-		})
+		}); err != nil {
+			t.Fatalf("persistRunResult: %v", err)
+		}
 	}
 
 	history, err := s.GetHistory(task.ID, 3)

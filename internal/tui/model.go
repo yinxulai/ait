@@ -433,7 +433,7 @@ func (m *Model) findTask(taskID string) *types.TaskDefinition {
 	}
 	for i := range m.taskList.Tasks {
 		if m.taskList.Tasks[i].ID == taskID {
-			return &m.taskList.Tasks[i]
+			return &m.taskList.Tasks[i].TaskDefinition
 		}
 	}
 	return nil
@@ -522,7 +522,7 @@ func (m *Model) currentRunTaskID(isDash bool) string {
 	return ""
 }
 
-func (m *Model) collectRequests() []*server.RequestMetrics {
+func (m *Model) collectRequests() []*types.RequestMetrics {
 	// 优先使用当前活跃视图的数据，避免两个面板均有 RunState 时取错
 	switch m.view {
 	case viewTurboDash:

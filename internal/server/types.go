@@ -27,6 +27,13 @@ type TaskConfig struct {
 	Input types.Input
 }
 
+// TaskOverview 是面向列表/摘要读取的任务视图。
+// 它组合任务定义本体与最近一次运行摘要，不进入持久化层。
+type TaskOverview struct {
+	types.TaskDefinition
+	LatestRun *types.TaskRunSummary
+}
+
 // RunStatus 运行的生命周期状态。
 type RunStatus string
 
@@ -60,7 +67,7 @@ type RunState struct {
 	CacheHitRate float64
 
 	// 详细请求列表（按 index 排序）
-	Requests []*RequestMetrics
+	Requests []*types.RequestMetrics
 
 	// Turbo 专用
 	Levels       []types.TurboLevelResult
@@ -71,27 +78,6 @@ type RunState struct {
 	TurboResult    *types.TurboResult
 
 	ErrorMsg string
-}
-
-// RequestMetrics 单次请求的详细指标，供请求列表页展示。
-type RequestMetrics struct {
-	Index            int
-	Success          bool
-	TotalTime        time.Duration
-	TTFT             time.Duration
-	TPS              float64
-	PromptTokens     int
-	CompletionTokens int
-	CachedTokens     int
-	CacheHitRate     float64
-	DNSTime          time.Duration
-	ConnectTime      time.Duration
-	TLSTime          time.Duration
-	TargetIP         string
-	ErrorMessage     string
-	// 原始请求/响应数据（供请求详情页展示和复制）
-	RequestBody  string
-	ResponseBody string
 }
 
 // EventKind 事件类型枚举。

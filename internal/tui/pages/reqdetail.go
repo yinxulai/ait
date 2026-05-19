@@ -7,19 +7,20 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // ReqDetailState 请求详情页状态。
 type ReqDetailState struct {
 	RunID    server.RunID
-	Requests []*server.RequestMetrics
+	Requests []*types.RequestMetrics
 	Index    int       // 当前查看的请求索引
 	ScrollY  int       // 输出区域滚动偏移
 	BackNav  NavAction // 按 b/esc 时的返回目标
 }
 
 // NewReqDetailState 创建请求详情状态。
-func NewReqDetailState(runID server.RunID, reqs []*server.RequestMetrics, index int) *ReqDetailState {
+func NewReqDetailState(runID server.RunID, reqs []*types.RequestMetrics, index int) *ReqDetailState {
 	return &ReqDetailState{
 		RunID:    runID,
 		Requests: reqs,
@@ -152,7 +153,7 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 }
 
 // buildReqPerfPanel 构建请求左侧性能指标面板。
-func buildReqPerfPanel(r *server.RequestMetrics, st Styles, maxH, width int) string {
+func buildReqPerfPanel(r *types.RequestMetrics, st Styles, maxH, width int) string {
 	var lines []string
 	lines = append(lines, " "+st.SectionHead.Render("性能指标"))
 	lines = append(lines, "")
@@ -191,7 +192,7 @@ func buildReqPerfPanel(r *server.RequestMetrics, st Styles, maxH, width int) str
 }
 
 // buildReqNetworkPanel 构建请求右侧网络指标面板。
-func buildReqNetworkPanel(r *server.RequestMetrics, st Styles, maxH, width int) string {
+func buildReqNetworkPanel(r *types.RequestMetrics, st Styles, maxH, width int) string {
 	var lines []string
 	lines = append(lines, " "+st.SectionHead.Render("网络指标"))
 	lines = append(lines, "")
@@ -218,7 +219,7 @@ func buildReqNetworkPanel(r *server.RequestMetrics, st Styles, maxH, width int) 
 }
 
 // buildInputSection 构建输入 (请求体) 区域。
-func buildInputSection(r *server.RequestMetrics, st Styles, width, maxH int) string {
+func buildInputSection(r *types.RequestMetrics, st Styles, width, maxH int) string {
 	var lines []string
 	lines = append(lines, " "+st.SectionHead.Render("请求体 (Request Body)"))
 	lines = append(lines, " "+dividerLine(st, width-2))
@@ -241,7 +242,7 @@ func buildInputSection(r *server.RequestMetrics, st Styles, width, maxH int) str
 }
 
 // buildOutputSection 构建输出 (响应体) 区域。
-func buildOutputSection(r *server.RequestMetrics, scrollY int, st Styles, width, maxH int) string {
+func buildOutputSection(r *types.RequestMetrics, scrollY int, st Styles, width, maxH int) string {
 	var lines []string
 	lines = append(lines, " "+st.SectionHead.Render("响应体 (Response Body)"))
 	lines = append(lines, " "+dividerLine(st, width-2))

@@ -1,17 +1,20 @@
 package config
 
 import (
-	"encoding/json"
-	"errors"
 	"os"
 	"path/filepath"
+
+	storepkg "github.com/yinxulai/ait/internal/store"
 )
 
 const (
 	appDirName    = ".ait"
 	configJSON    = "config.json"
-	tasksJSON     = "tasks.json"
-	historyDirName = "history"
+	tasksDirName  = "tasks"
+	runsDirName   = "runs"
+	runMetaJSON   = "run.json"
+	runResultJSON = "result.json"
+	runReqsJSONL  = "requests.jsonl"
 )
 
 type Config struct {
@@ -26,19 +29,11 @@ func Load() (*Config, error) {
 		return nil, err
 	}
 
-	data, err := os.ReadFile(path)
-	if errors.Is(err, os.ErrNotExist) {
-		return &Config{}, nil
-	}
+	loaded, err := storepkg.NewJSONStore[Config](path).Load()
 	if err != nil {
 		return nil, err
 	}
-
-	var cfg Config
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		return nil, err
-	}
-	return &cfg, nil
+	return &loaded, nil
 }
 
 func (c *Config) Save() error {
@@ -46,15 +41,7 @@ func (c *Config) Save() error {
 	if err != nil {
 		return err
 	}
-	if _, err := EnsureAppDir(); err != nil {
-		return err
-	}
-
-	data, err := json.MarshalIndent(c, "", "  ")
-	if err != nil {
-		return err
-	}
-	return os.WriteFile(path, data, 0o644)
+	return storepkg.NewJSONStore[Config](path).Save(*c)
 }
 
 func AppDir() (string, error) {
@@ -84,18 +71,58 @@ func ConfigPath() (string, error) {
 	return filepath.Join(dir, configJSON), nil
 }
 
-func TasksPath() (string, error) {
+func TasksDir() (string, error) {
 	dir, err := AppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, tasksJSON), nil
+	return filepath.Join(dir, tasksDirName), nil
 }
 
-func HistoryDir() (string, error) {
+func RunsDir() (string, error) {
 	dir, err := AppDir()
 	if err != nil {
 		return "", err
 	}
-	return filepath.Join(dir, historyDirName), nil
+	return filepath.Join(dir, runsDirName), nil
+}
+
+func TaskPath(taskID string) (string, error) {
+	dir, err := TasksDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, taskID+".json"), nil
+}
+
+func RunDir(taskID, runID string) (string, error) {
+	dir, err := RunsDir()
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, taskID, runID), nil
+}
+
+func RunMetadataPath(taskID, runID string) (string, error) {
+	dir, err := RunDir(taskID, runID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, runMetaJSON), nil
+}
+
+func RunResultPath(taskID, runID string) (string, error) {
+	dir, err := RunDir(taskID, runID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, runResultJSON), nil
+}
+
+func RunRequestsPath(taskID, runID string) (string, error) {
+	dir, err := RunDir(taskID, runID)
+	if err != nil {
+		return "", err
+	}
+	return filepath.Join(dir, runReqsJSONL), nil
 }

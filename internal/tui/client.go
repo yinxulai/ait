@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/server"
@@ -154,10 +155,19 @@ func (c *Client) GetRunStateForHistoryCmd(runID server.RunID, summary *types.Tas
 
 // summaryToRunState 用 TaskRunSummary 摘要数据构造最小化 RunState，供无磁盘快照时回退展示。
 func summaryToRunState(s *types.TaskRunSummary) *server.RunState {
-	finished := s.FinishedAt
 	status := server.RunStatusCompleted
-	if s.Status == string(server.RunStatusFailed) {
+	switch s.Status {
+	case string(server.RunStatusRunning):
+		status = server.RunStatusRunning
+	case string(server.RunStatusFailed):
 		status = server.RunStatusFailed
+	case string(server.RunStatusStopped):
+		status = server.RunStatusStopped
+	}
+	var finished *time.Time
+	if !s.FinishedAt.IsZero() {
+		finishedAt := s.FinishedAt
+		finished = &finishedAt
 	}
 	return &server.RunState{
 		RunID:        server.RunID(s.RunID),
@@ -165,7 +175,7 @@ func summaryToRunState(s *types.TaskRunSummary) *server.RunState {
 		Status:       status,
 		Mode:         s.Mode,
 		StartedAt:    s.StartedAt,
-		FinishedAt:   &finished,
+		FinishedAt:   finished,
 		AvgTPS:       s.AvgTPS,
 		AvgTTFT:      s.AvgTTFT,
 		SuccessRate:  s.SuccessRate,

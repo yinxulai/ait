@@ -198,11 +198,13 @@ type CancelFunc func()
 | **Server 层** | `internal/server` | 暴露业务 API；编排下层；管理运行状态；分发 Event |
 | **执行层** | `internal/runner` `internal/turbo` | 并发请求执行；回调推送指标；**不感知 UI** |
 | **协议层** | `internal/client` | OpenAI / Anthropic HTTP 客户端；不感知上层 |
-| **持久化层** | `internal/task` `internal/config` | 任务 / 历史 / 配置的 JSON 文件读写 |
+| **持久化层** | `internal/store` `internal/config` | `internal/store` 是下一版唯一持久化实现；`internal/config` 仅负责应用目录与路径解析 |
 | **渲染层** | `internal/report` | JSON / CSV / Turbo 报告渲染；纯函数，无副作用 |
 | **工具层** | `internal/prompt` `internal/network` `internal/logger` `internal/upload` | 公共工具，无业务依赖 |
 | **TUI Client** | `internal/tui` | BubbleTea 状态机；**只依赖 server.Server 接口**；渲染终端 UI |
 | **Web Client** _(Future)_ | `internal/webui` | HTTP/WS 桥接；**只依赖 server.Server 接口**；提供 Web API |
+
+> 存储设计请优先参考 [docs/storage.md](storage.md)。该文档描述目标存储架构，不以当前实现与兼容层为约束。
 
 ### 3.4 目录结构
 

@@ -12,7 +12,7 @@ import (
 // 所有方法均为线程安全。
 type Server interface {
 	// --- 任务 CRUD ---
-	ListTasks() []types.TaskDefinition
+	ListTasks() []TaskOverview
 	GetTask(id string) (types.TaskDefinition, bool)
 	CreateTask(cfg TaskConfig) (types.TaskDefinition, error)
 	UpdateTask(id string, cfg TaskConfig) (types.TaskDefinition, error)
@@ -46,37 +46,37 @@ type Server interface {
 type serverImpl struct {
 	mu         sync.RWMutex
 	taskStore  *store.TaskStore
+	runStore   *store.RunStore
 	bus        *eventBus
 	activeRuns map[RunID]*activeRun
-	historyDir string
 }
 
 // New 创建并初始化 Server 实例。
-// 会自动加载 ~/.ait/tasks.json；historyDir 用于存放每个任务的运行历史文件。
+// 会自动加载 ~/.ait/tasks/ 与 ~/.ait/runs/ 下的业务数据。
 func New() (Server, error) {
 	if _, err := config.EnsureAppDir(); err != nil {
 		return nil, err
 	}
 
-	tasksPath, err := config.TasksPath()
+	tasksDir, err := config.TasksDir()
 	if err != nil {
 		return nil, err
 	}
 
-	historyDir, err := config.HistoryDir()
+	runsDir, err := config.RunsDir()
 	if err != nil {
 		return nil, err
 	}
 
-	ts := store.NewTaskStore(tasksPath)
+	ts := store.NewTaskStore(tasksDir)
 	if err := ts.Load(); err != nil {
 		return nil, err
 	}
 
 	return &serverImpl{
 		taskStore:  ts,
+		runStore:   store.NewRunStore(runsDir),
 		bus:        newEventBus(),
 		activeRuns: make(map[RunID]*activeRun),
-		historyDir: historyDir,
 	}, nil
 }

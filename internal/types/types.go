@@ -230,13 +230,11 @@ type ReportData struct {
 }
 
 type TaskDefinition struct {
-	ID             string          `json:"id"`
-	Name           string          `json:"name"`
-	Input          Input           `json:"input"`
-	CreatedAt      time.Time       `json:"created_at"`
-	UpdatedAt      time.Time       `json:"updated_at"`
-	LastRunAt      *time.Time      `json:"last_run_at,omitempty"`
-	LastRunSummary *TaskRunSummary `json:"last_run_summary,omitempty"`
+	ID        string    `json:"id"`
+	Name      string    `json:"name"`
+	Input     Input     `json:"input"`
+	CreatedAt time.Time `json:"created_at"`
+	UpdatedAt time.Time `json:"updated_at"`
 }
 
 type TaskRunSummary struct {
@@ -253,9 +251,26 @@ type TaskRunSummary struct {
 	AvgTPS               float64       `json:"avg_tps"`
 	CacheHitRate         float64       `json:"cache_hit_rate"`
 	MaxStableConcurrency int           `json:"max_stable_concurrency,omitempty"`
-	ReportJSONPath       string        `json:"report_json_path,omitempty"`
-	ReportCSVPath        string        `json:"report_csv_path,omitempty"`
 	ErrorSummary         string        `json:"error_summary,omitempty"`
+}
+
+type RequestMetrics struct {
+	Index            int           `json:"index"`
+	Success          bool          `json:"success"`
+	TotalTime        time.Duration `json:"total_time"`
+	TTFT             time.Duration `json:"ttft"`
+	TPS              float64       `json:"tps"`
+	PromptTokens     int           `json:"prompt_tokens"`
+	CompletionTokens int           `json:"completion_tokens"`
+	CachedTokens     int           `json:"cached_tokens"`
+	CacheHitRate     float64       `json:"cache_hit_rate"`
+	DNSTime          time.Duration `json:"dns_time"`
+	ConnectTime      time.Duration `json:"connect_time"`
+	TLSTime          time.Duration `json:"tls_time"`
+	TargetIP         string        `json:"target_ip"`
+	ErrorMessage     string        `json:"error_message,omitempty"`
+	RequestBody      string        `json:"request_body,omitempty"`
+	ResponseBody     string        `json:"response_body,omitempty"`
 }
 
 type TurboConfig struct {

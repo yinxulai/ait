@@ -759,7 +759,7 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 		addRow("目标长度", strconv.Itoa(wz.PromptLength), st.Muted)
 	}
 
-	lines = append(lines, "", st.Muted.Render("保存位置: ~/.ait/tasks.json"))
+	lines = append(lines, "", st.Muted.Render("保存位置: ~/.ait/tasks/<task-id>.json"))
 
 	return lines
 }

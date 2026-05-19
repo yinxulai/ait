@@ -1,12 +1,7 @@
 package server
 
 import (
-	"bufio"
-	"encoding/json"
 	"fmt"
-	"os"
-	"path/filepath"
-	"sort"
 	"sync"
 	"sync/atomic"
 	"time"
@@ -54,7 +49,7 @@ func (ar *activeRun) snapshotState() *RunState {
 	snap := *s
 	// 深拷贝切片
 	if len(s.Requests) > 0 {
-		snap.Requests = make([]*RequestMetrics, len(s.Requests))
+		snap.Requests = make([]*types.RequestMetrics, len(s.Requests))
 		copy(snap.Requests, s.Requests)
 	}
 	if len(s.Levels) > 0 {
@@ -64,9 +59,9 @@ func (ar *activeRun) snapshotState() *RunState {
 	return &snap
 }
 
-// mapRequestMetrics 将 client.ResponseMetrics 映射到 server.RequestMetrics。
-func mapRequestMetrics(m *client.ResponseMetrics, idx int, err error) *RequestMetrics {
-	rm := &RequestMetrics{Index: idx}
+// mapRequestMetrics 将 client.ResponseMetrics 映射到 types.RequestMetrics。
+func mapRequestMetrics(m *client.ResponseMetrics, idx int, err error) *types.RequestMetrics {
+	rm := &types.RequestMetrics{Index: idx}
 	if m == nil {
 		rm.Success = false
 		if err != nil {
@@ -101,82 +96,132 @@ func mapRequestMetrics(m *client.ResponseMetrics, idx int, err error) *RequestMe
 	return rm
 }
 
-// historyPath 返回指定任务的历史文件路径。
-func historyPath(historyDir, taskID string) string {
-	return filepath.Join(historyDir, taskID+".json")
-}
-
-// runStatePath 返回指定运行的完整状态快照文件路径（用于历史回放）。
-func runStatePath(historyDir string, runID RunID) string {
-	return filepath.Join(historyDir, "runs", string(runID)+".json")
-}
-
-// requestsFilePath 返回指定运行的请求详情 JSONL 文件路径。
-func requestsFilePath(historyDir string, runID RunID) string {
-	return filepath.Join(historyDir, "runs", string(runID)+".jsonl")
-}
-
-// appendRequestToDisk 将单条 RequestMetrics 以 JSON 行的形式追加写入磁盘。
-func appendRequestToDisk(historyDir string, runID RunID, rm *RequestMetrics) {
-	path := requestsFilePath(historyDir, runID)
-	f, err := os.OpenFile(path, os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0644)
-	if err != nil {
-		return
-	}
-	defer f.Close()
-	data, err := json.Marshal(rm)
-	if err != nil {
-		return
-	}
-	_, _ = f.Write(data)
-	_, _ = f.Write([]byte{'\n'})
-}
-
-// loadRequestsFromDisk 从 JSONL 文件中加载所有 RequestMetrics，按 Index 排序。
-func loadRequestsFromDisk(historyDir string, runID RunID) []*RequestMetrics {
-	path := requestsFilePath(historyDir, runID)
-	f, err := os.Open(path)
-	if err != nil {
+func requestPointers(requests []types.RequestMetrics) []*types.RequestMetrics {
+	if len(requests) == 0 {
 		return nil
 	}
-	defer f.Close()
-
-	const maxLineSize = 16 * 1024 * 1024 // 16 MB per line
-	buf := make([]byte, maxLineSize)
-	scanner := bufio.NewScanner(f)
-	scanner.Buffer(buf, maxLineSize)
-
-	var reqs []*RequestMetrics
-	for scanner.Scan() {
-		line := scanner.Bytes()
-		if len(line) == 0 {
-			continue
-		}
-		var rm RequestMetrics
-		if err := json.Unmarshal(line, &rm); err != nil {
-			continue
-		}
-		reqs = append(reqs, &rm)
+	pointers := make([]*types.RequestMetrics, 0, len(requests))
+	for i := range requests {
+		request := requests[i]
+		pointers = append(pointers, &request)
 	}
-	sort.Slice(reqs, func(i, j int) bool {
-		return reqs[i].Index < reqs[j].Index
-	})
-	return reqs
+	return pointers
 }
 
-// persistRunState 将 RunState 元数据写入磁盘（不含 Requests，请求详情在 JSONL 文件中）。
-func persistRunState(historyDir string, snap *RunState) {
-	toSave := *snap
-	toSave.Requests = nil // 请求详情已逐条写入 JSONL，避免重复存储
-	st := store.NewJSONStore[*RunState](runStatePath(historyDir, snap.RunID))
-	_ = st.Save(&toSave) // 失败不影响主流程
+func buildStoredRunMetadata(taskDef types.TaskDefinition, snap *RunState) store.RunMetadata {
+	var finishedAt *time.Time
+	if snap.FinishedAt != nil {
+		finished := *snap.FinishedAt
+		finishedAt = &finished
+	}
+	return store.RunMetadata{
+		RunID:      string(snap.RunID),
+		TaskID:     snap.TaskID,
+		Mode:       snap.Mode,
+		Protocol:   taskDef.Input.NormalizedProtocol(),
+		Model:      taskDef.Input.Model,
+		Status:     string(snap.Status),
+		StartedAt:  snap.StartedAt,
+		FinishedAt: finishedAt,
+	}
+}
+
+func buildStoredRunResult(snap *RunState) store.RunResult {
+	result := store.RunResult{
+		TotalReqs:      snap.TotalReqs,
+		DoneReqs:       snap.DoneReqs,
+		SuccessReqs:    snap.SuccessReqs,
+		FailedReqs:     snap.FailedReqs,
+		SuccessRate:    snap.SuccessRate,
+		AvgTTFT:        snap.AvgTTFT,
+		AvgTPS:         snap.AvgTPS,
+		CacheHitRate:   snap.CacheHitRate,
+		ErrorSummary:   snap.ErrorMsg,
+		StandardResult: snap.StandardResult,
+		TurboResult:    snap.TurboResult,
+	}
+	if snap.TurboResult != nil {
+		result.MaxStableConcurrency = snap.TurboResult.MaxStableConcurrency
+	} else if snap.CurrentLevel > 0 {
+		result.MaxStableConcurrency = snap.CurrentLevel
+	}
+	return result
+}
+
+func buildRunStateFromStoredRun(run *store.StoredRun, requests []*types.RequestMetrics) *RunState {
+	if run == nil {
+		return nil
+	}
+
+	state := &RunState{
+		RunID:     RunID(run.Metadata.RunID),
+		TaskID:    run.Metadata.TaskID,
+		Status:    RunStatus(run.Metadata.Status),
+		Mode:      run.Metadata.Mode,
+		StartedAt: run.Metadata.StartedAt,
+		Requests:  requests,
+	}
+	if run.Metadata.FinishedAt != nil {
+		finished := *run.Metadata.FinishedAt
+		state.FinishedAt = &finished
+	}
+	if run.Result == nil {
+		return state
+	}
+
+	state.TotalReqs = run.Result.TotalReqs
+	state.DoneReqs = run.Result.DoneReqs
+	state.SuccessReqs = run.Result.SuccessReqs
+	state.FailedReqs = run.Result.FailedReqs
+	state.SuccessRate = run.Result.SuccessRate
+	state.AvgTTFT = run.Result.AvgTTFT
+	state.AvgTPS = run.Result.AvgTPS
+	state.CacheHitRate = run.Result.CacheHitRate
+	state.StandardResult = run.Result.StandardResult
+	state.TurboResult = run.Result.TurboResult
+	state.ErrorMsg = run.Result.ErrorSummary
+	state.CurrentLevel = run.Result.MaxStableConcurrency
+	if state.DoneReqs == 0 && len(requests) > 0 {
+		state.DoneReqs = len(requests)
+	}
+	if state.TotalReqs == 0 && len(requests) > 0 {
+		state.TotalReqs = len(requests)
+	}
+	if run.Result.TurboResult != nil {
+		state.Levels = run.Result.TurboResult.Levels
+		state.CurrentLevel = run.Result.TurboResult.MaxStableConcurrency
+	}
+	return state
+}
+
+func buildRunningRunSummary(taskDef types.TaskDefinition, snap *RunState) types.TaskRunSummary {
+	summary := types.TaskRunSummary{
+		RunID:        string(snap.RunID),
+		TaskID:       taskDef.ID,
+		Mode:         snap.Mode,
+		Status:       string(snap.Status),
+		Protocol:     taskDef.Input.NormalizedProtocol(),
+		Model:        taskDef.Input.Model,
+		StartedAt:    snap.StartedAt,
+		SuccessRate:  snap.SuccessRate,
+		AvgTTFT:      snap.AvgTTFT,
+		AvgTPS:       snap.AvgTPS,
+		CacheHitRate: snap.CacheHitRate,
+	}
+	if snap.FinishedAt != nil {
+		summary.FinishedAt = *snap.FinishedAt
+	}
+	if snap.ErrorMsg != "" {
+		summary.ErrorSummary = snap.ErrorMsg
+	}
+	return summary
 }
 
 // StartRun 启动一次新的运行，立即返回 RunID。
 func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	s.mu.RLock()
 	taskDef, ok := s.taskStore.Get(taskID)
-	historyDir := s.historyDir
+	runStore := s.runStore
 	s.mu.RUnlock()
 
 	if !ok {
@@ -219,19 +264,19 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	s.mu.Unlock()
 
 	if hydratedInput.Turbo {
-		go s.runTurbo(ar, runID, taskDef, hydratedInput, historyDir)
+		go s.runTurbo(ar, runID, taskDef, hydratedInput, runStore)
 	} else {
-		go s.runStandard(ar, runID, taskDef, hydratedInput, historyDir)
+		go s.runStandard(ar, runID, taskDef, hydratedInput, runStore)
 	}
 
 	return runID, nil
 }
 
 // runStandard 在 goroutine 中执行标准运行。
-func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, historyDir string) {
+func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
 	rnr, err := runner.NewRunner(taskDef.ID, input)
 	if err != nil {
-		s.failRun(ar, runID, taskDef, historyDir, err)
+		s.failRun(ar, runID, taskDef, runStore, err)
 		return
 	}
 
@@ -259,7 +304,7 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 
 	reportData, err := rnr.RunWithCallback(func(metrics *client.ResponseMetrics, idx int, cbErr error) {
 		rm := mapRequestMetrics(metrics, idx, cbErr)
-		appendRequestToDisk(historyDir, runID, rm)
+		_ = runStore.AppendRequest(taskDef.ID, string(runID), *rm)
 
 		ar.mu.Lock()
 		ar.state.Requests = append(ar.state.Requests, rm)
@@ -292,15 +337,15 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 	close(stopTick)
 
 	if err != nil {
-		s.failRun(ar, runID, taskDef, historyDir, err)
+		s.failRun(ar, runID, taskDef, runStore, err)
 		return
 	}
 
-	s.completeStandardRun(ar, runID, taskDef, historyDir, reportData)
+	s.completeStandardRun(ar, runID, taskDef, runStore, reportData)
 }
 
 // runTurbo 在 goroutine 中执行 Turbo 运行。
-func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, historyDir string) {
+func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
 	// 全局请求计数器（原子递增），确保跨多个并发级别的请求索引唯一
 	var globalIdx int64
 
@@ -314,7 +359,7 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 			cb: func(metrics *client.ResponseMetrics, _ int, cbErr error) {
 				gIdx := int(atomic.AddInt64(&globalIdx, 1)) - 1
 				rm := mapRequestMetrics(metrics, gIdx, cbErr)
-				appendRequestToDisk(historyDir, runID, rm)
+				_ = runStore.AppendRequest(taskDef.ID, string(runID), *rm)
 
 				ar.mu.Lock()
 				ar.state.Requests = append(ar.state.Requests, rm)
@@ -352,15 +397,15 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 
 	turboResult, err := engine.Run(input)
 	if err != nil {
-		s.failRun(ar, runID, taskDef, historyDir, err)
+		s.failRun(ar, runID, taskDef, runStore, err)
 		return
 	}
 
-	s.completeTurboRun(ar, runID, taskDef, historyDir, turboResult)
+	s.completeTurboRun(ar, runID, taskDef, runStore, turboResult)
 }
 
 // completeStandardRun 处理标准运行成功完成的后续工作。
-func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, historyDir string, data *types.ReportData) {
+func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, data *types.ReportData) {
 	finishedAt := time.Now()
 
 	ar.mu.Lock()
@@ -378,35 +423,13 @@ func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef typ
 
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
 	s.bus.CloseRun(runID)
-
-	// 将元数据写入磁盘（Requests 已造话就写 JSONL，此处仅写 RunState 元数据）
-	persistRunState(historyDir, snap)
-
-	// 运行已完成且数据已落盘，释放内存中的请求详情
-	ar.mu.Lock()
-	ar.state.Requests = nil
-	ar.mu.Unlock()
-
-	summary := types.TaskRunSummary{
-		RunID:       string(runID),
-		TaskID:      taskDef.ID,
-		Mode:        "standard",
-		Status:      string(RunStatusCompleted),
-		Protocol:    taskDef.Input.NormalizedProtocol(),
-		Model:       taskDef.Input.Model,
-		StartedAt:   snap.StartedAt,
-		FinishedAt:  finishedAt,
-		SuccessRate: snap.SuccessRate,
-		AvgTTFT:     snap.AvgTTFT,
-		AvgTPS:      snap.AvgTPS,
-		CacheHitRate: snap.CacheHitRate,
+	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
+		s.removeActiveRun(runID)
 	}
-
-	s.persistRunResult(taskDef.ID, historyDir, summary)
 }
 
 // completeTurboRun 处理 Turbo 运行成功完成的后续工作。
-func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, historyDir string, result *types.TurboResult) {
+func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, result *types.TurboResult) {
 	finishedAt := time.Now()
 
 	ar.mu.Lock()
@@ -422,40 +445,13 @@ func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.
 
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
 	s.bus.CloseRun(runID)
-
-	// 将元数据写入磁盘（Requests 已造话就写 JSONL，此处仅写 RunState 元数据）
-	persistRunState(historyDir, snap)
-
-	// 运行已完成且数据已落盘，释放内存中的请求详情
-	ar.mu.Lock()
-	ar.state.Requests = nil
-	ar.mu.Unlock()
-
-	var maxStable int
-	var peakTPS float64
-	if result != nil {
-		maxStable = result.MaxStableConcurrency
-		peakTPS = result.PeakTPS
+	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
+		s.removeActiveRun(runID)
 	}
-
-	summary := types.TaskRunSummary{
-		RunID:                string(runID),
-		TaskID:               taskDef.ID,
-		Mode:                 "turbo",
-		Status:               string(RunStatusCompleted),
-		Protocol:             taskDef.Input.NormalizedProtocol(),
-		Model:                taskDef.Input.Model,
-		StartedAt:            snap.StartedAt,
-		FinishedAt:           finishedAt,
-		MaxStableConcurrency: maxStable,
-		AvgTPS:               peakTPS,
-	}
-
-	s.persistRunResult(taskDef.ID, historyDir, summary)
 }
 
 // failRun 处理运行失败的后续工作。
-func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, historyDir string, runErr error) {
+func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, runErr error) {
 	finishedAt := time.Now()
 
 	ar.mu.Lock()
@@ -467,46 +463,23 @@ func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefin
 
 	s.bus.Publish(Event{RunID: runID, Kind: EventRunFailed, Payload: snap})
 	s.bus.CloseRun(runID)
-
-	// 将元数据写入磁盘（Requests 已造话就写 JSONL，此处仅写 RunState 元数据）
-	persistRunState(historyDir, snap)
-
-	// 运行已完成且数据已落盘，释放内存中的请求详情
-	ar.mu.Lock()
-	ar.state.Requests = nil
-	ar.mu.Unlock()
-
-	summary := types.TaskRunSummary{
-		RunID:        string(runID),
-		TaskID:       taskDef.ID,
-		Mode:         ar.state.Mode,
-		Status:       string(RunStatusFailed),
-		Protocol:     taskDef.Input.NormalizedProtocol(),
-		Model:        taskDef.Input.Model,
-		StartedAt:    snap.StartedAt,
-		FinishedAt:   finishedAt,
-		ErrorSummary: runErr.Error(),
+	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
+		s.removeActiveRun(runID)
 	}
-
-	s.persistRunResult(taskDef.ID, historyDir, summary)
 }
 
-// persistRunResult 将运行摘要写入历史文件，并更新任务的 LastRunAt/LastRunSummary。
-func (s *serverImpl) persistRunResult(taskID, historyDir string, summary types.TaskRunSummary) {
-	// 写历史文件
-	hs := store.NewHistoryStore(historyPath(historyDir, taskID))
-	_ = hs.Append(summary) // 历史记录失败不影响主流程
+func (s *serverImpl) persistFinalRun(runStore *store.RunStore, taskDef types.TaskDefinition, snap *RunState) error {
+	return runStore.SaveFinal(buildStoredRunMetadata(taskDef, snap), buildStoredRunResult(snap))
+}
 
-	// 更新任务的最后运行时间和摘要
+func (s *serverImpl) persistRunResult(summary types.TaskRunSummary) error {
+	return s.runStore.SaveSummary(summary)
+}
+
+func (s *serverImpl) removeActiveRun(runID RunID) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	existing, ok := s.taskStore.Get(taskID)
-	if ok {
-		existing.LastRunAt = &summary.FinishedAt
-		existing.LastRunSummary = &summary
-		s.taskStore.Upsert(existing)
-		_ = s.taskStore.Save()
-	}
+	delete(s.activeRuns, runID)
 }
 
 // StopRun 请求停止指定运行。
@@ -534,33 +507,29 @@ func (s *serverImpl) StopRun(runID RunID) error {
 }
 
 // GetRunState 返回指定运行的当前状态快照。
-// 先查内存中的 activeRuns；若不存在，再尝试从磁盘加载持久化的快照（历史回放）。
+// 先查内存中的 activeRuns；若不存在，再尝试从磁盘加载最终运行结果（历史回放）。
 func (s *serverImpl) GetRunState(runID RunID) (*RunState, bool) {
 	s.mu.RLock()
 	ar, ok := s.activeRuns[runID]
-	historyDir := s.historyDir
+	runStore := s.runStore
 	s.mu.RUnlock()
 
 	if ok {
 		ar.mu.RLock()
 		snap := ar.snapshotState()
 		ar.mu.RUnlock()
-		// 运行已完成且 Requests 已从内存清除（节省内存），从 JSONL 文件补充加载
-		if snap.Status != RunStatusRunning && snap.Requests == nil {
-			snap.Requests = loadRequestsFromDisk(historyDir, snap.RunID)
-		}
 		return snap, true
 	}
 
-	// 不在内存中，尝试从磁盘加载持久化的 RunState 快照
-	st := store.NewJSONStore[*RunState](runStatePath(historyDir, runID))
-	snap, err := st.Load()
-	if err != nil || snap == nil {
+	run, err := runStore.LoadByRunID(string(runID))
+	if err != nil || run == nil {
 		return nil, false
 	}
-	// 从 JSONL 文件加载请求详情
-	snap.Requests = loadRequestsFromDisk(historyDir, runID)
-	return snap, true
+	requests, err := runStore.LoadRequests(run.Metadata.TaskID, string(runID))
+	if err != nil {
+		return nil, false
+	}
+	return buildRunStateFromStoredRun(run, requestPointers(requests)), true
 }
 
 // Subscribe 订阅指定运行的事件流。
@@ -570,20 +539,23 @@ func (s *serverImpl) Subscribe(runID RunID) (<-chan Event, CancelFunc) {
 
 // GetHistory 返回任务的历史运行摘要，最新在前。
 func (s *serverImpl) GetHistory(taskID string, limit int) ([]types.TaskRunSummary, error) {
-	s.mu.RLock()
-	historyDir := s.historyDir
-	s.mu.RUnlock()
-
-	hs := store.NewHistoryStore(historyPath(historyDir, taskID))
-	return hs.Load(limit)
+	runs, err := s.runStore.ListByTask(taskID, limit)
+	if err != nil {
+		return nil, err
+	}
+	history := make([]types.TaskRunSummary, 0, len(runs))
+	for _, run := range runs {
+		history = append(history, run.Summary())
+	}
+	return history, nil
 }
 
 // GenerateReport 为已完成的标准运行生成报告文件。
-// 先查内存中的 activeRuns，若不存在则从磁盘快照加载（支持跨 session 历史运行）。
+// 先查内存中的 activeRuns，若不存在则从最终结果文件加载（支持跨 session 历史运行）。
 func (s *serverImpl) GenerateReport(runID RunID, format ReportFormat) (string, error) {
 	s.mu.RLock()
 	ar, ok := s.activeRuns[runID]
-	historyDir := s.historyDir
+	runStore := s.runStore
 	s.mu.RUnlock()
 
 	var status RunStatus
@@ -597,15 +569,15 @@ func (s *serverImpl) GenerateReport(runID RunID, format ReportFormat) (string, e
 		standardResult = ar.state.StandardResult
 		ar.mu.RUnlock()
 	} else {
-		// 不在内存中，尝试从磁盘快照加载（历史运行 / 程序重启后）
-		st := store.NewJSONStore[*RunState](runStatePath(historyDir, runID))
-		snap, err := st.Load()
-		if err != nil || snap == nil {
+		run, err := runStore.LoadByRunID(string(runID))
+		if err != nil || run == nil {
 			return "", fmt.Errorf("run %q not found", runID)
 		}
-		status = snap.Status
-		mode = snap.Mode
-		standardResult = snap.StandardResult
+		status = RunStatus(run.Metadata.Status)
+		mode = run.Metadata.Mode
+		if run.Result != nil {
+			standardResult = run.Result.StandardResult
+		}
 	}
 
 	if status == RunStatusRunning {

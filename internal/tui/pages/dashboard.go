@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/types"
 )
 
 // DashboardState 标准模式运行仪表盘页状态。
@@ -69,7 +70,7 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 		return d, nil, NavAction{To: NavTaskList}
 	}
 
-	var reqs []*server.RequestMetrics
+	var reqs []*types.RequestMetrics
 	if d.RunState != nil {
 		reqs = d.RunState.Requests
 	}

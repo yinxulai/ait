@@ -3,6 +3,7 @@ package pages
 import (
 	"fmt"
 	"strings"
+	"time"
 
 	"github.com/charmbracelet/lipgloss"
 	tea "github.com/charmbracelet/bubbletea"
@@ -27,11 +28,25 @@ func NewTaskDetailState(task types.TaskDefinition) *TaskDetailState {
 	return &TaskDetailState{Task: task}
 }
 
+func taskDetailHistoryEntries(s *TaskDetailState) []types.TaskRunSummary {
+	if s == nil || len(s.History) == 0 {
+		return nil
+	}
+	if s.ActiveRun == nil {
+		return s.History
+	}
+	if strings.TrimSpace(s.History[0].RunID) == strings.TrimSpace(string(s.ActiveRun.RunID)) {
+		return s.History[1:]
+	}
+	return s.History
+}
+
 // HandleTaskDetailKey 处理任务详情页按键。
 func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*TaskDetailState, tea.Cmd, NavAction) {
 	nav := NavAction{}
 	hasActive := s.ActiveRun != nil
-	effectiveLen := len(s.History)
+	historyEntries := taskDetailHistoryEntries(s)
+	effectiveLen := len(historyEntries)
 	if hasActive {
 		effectiveLen++
 	}
@@ -57,10 +72,10 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 				if hasActive {
 					histIdx--
 				}
-				if histIdx >= 0 && histIdx < len(s.History) {
-					runID := strings.TrimSpace(s.History[histIdx].RunID)
+				if histIdx >= 0 && histIdx < len(historyEntries) {
+					runID := strings.TrimSpace(historyEntries[histIdx].RunID)
 					if runID != "" {
-						sum := s.History[histIdx]
+						sum := historyEntries[histIdx]
 						nav = NavAction{To: NavRunDetail, RunID: server.RunID(runID), Summary: &sum}
 					}
 				}
@@ -84,8 +99,11 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 			if hasActive {
 				histIdx--
 			}
-			if histIdx >= 0 && histIdx < len(s.History) {
-				runID := strings.TrimSpace(s.History[histIdx].RunID)
+			if histIdx >= 0 && histIdx < len(historyEntries) {
+				if historyEntries[histIdx].Status == string(server.RunStatusRunning) {
+					break
+				}
+				runID := strings.TrimSpace(historyEntries[histIdx].RunID)
 				if runID != "" {
 					return s, client.GenerateReportCmd(server.RunID(runID), server.ReportFormatJSON), nav
 				}
@@ -140,7 +158,7 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 
 	var cbItems []ContextBarItem
 	hasActive := s.ActiveRun != nil
-	effectiveLen := len(s.History)
+	effectiveLen := len(taskDetailHistoryEntries(s))
 	if hasActive {
 		effectiveLen++
 	}
@@ -209,11 +227,12 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 
 	// ─── 右栏：历史运行记录 ─────────────────────────────────────
 	var rightLines []string
+	historyEntries := taskDetailHistoryEntries(s)
 	rightLines = append(rightLines, padRight(" "+st.SectionHead.Render("历史运行记录"), rightW))
 	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
 
 	hasActive := s.ActiveRun != nil
-	effectiveLen := len(s.History)
+	effectiveLen := len(historyEntries)
 	if hasActive {
 		effectiveLen++
 	}
@@ -246,7 +265,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 				}
 			}
 			if histIdx >= 0 {
-				detailLines = buildTaskHistoryDetailLines(s, histIdx, st, rightW)
+				detailLines = buildTaskHistoryDetailLines(historyEntries, histIdx, st, rightW)
 			}
 		}
 		tableMaxH := maxH - len(detailLines)
@@ -292,21 +311,25 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 				if hasActive {
 					histIdx--
 				}
-				run := s.History[histIdx]
-				statusText := "✓"
-				if run.Status != "completed" {
-					statusText = "✗"
+				run := historyEntries[histIdx]
+				statusText := "✗"
+				statusStyle := st.ErrStyle
+				switch run.Status {
+				case string(server.RunStatusRunning):
+					statusText = "●"
+					statusStyle = st.Ok
+				case string(server.RunStatusCompleted):
+					statusText = "✓"
+					statusStyle = st.Ok
+				case string(server.RunStatusStopped):
+					statusText = "■"
+					statusStyle = st.Muted
 				}
 				modeShort := "标准"
 				if run.Mode == "turbo" {
 					modeShort = "Turbo"
 				}
-				statusIcon := statusText
-				if run.Status == "completed" {
-					statusIcon = styleWhenNotSelected(isSel, st.Ok, statusText)
-				} else {
-					statusIcon = styleWhenNotSelected(isSel, st.ErrStyle, statusText)
-				}
+				statusIcon := styleWhenNotSelected(isSel, statusStyle, statusText)
 				row = padRight(marker, markW) +
 					padRight(statusIcon, statW) +
 					padRight(run.StartedAt.Format("2006-01-02 15:04"), timeW) +
@@ -354,31 +377,41 @@ func UpdateTaskDetailHistory(s *TaskDetailState, history []types.TaskRunSummary,
 		return s
 	}
 	s.History = history
-	if len(history) == 0 {
+	effectiveLen := len(taskDetailHistoryEntries(s))
+	if s.ActiveRun != nil {
+		effectiveLen++
+	}
+	if effectiveLen == 0 {
 		s.HistorySel = 0
 		s.HistoryOff = 0
 	} else {
 		if s.HistorySel < 0 {
 			s.HistorySel = 0
 		}
-		if s.HistorySel >= len(history) {
-			s.HistorySel = len(history) - 1
+		if s.HistorySel >= effectiveLen {
+			s.HistorySel = effectiveLen - 1
 		}
-		s.HistoryOff = ensureVisibleOffset(s.HistorySel, len(history), s.HistoryOff, s.HistoryVis)
+		s.HistoryOff = ensureVisibleOffset(s.HistorySel, effectiveLen, s.HistoryOff, s.HistoryVis)
 	}
-	if autoExpand && len(history) > 0 {
+	if autoExpand && len(taskDetailHistoryEntries(s)) > 0 {
 		// autoExpand 参数保留接口兼容性，展开行为已由渲染层自动处理
 		_ = autoExpand
 	}
 	return s
 }
 
-func buildTaskHistoryDetailLines(s *TaskDetailState, histIdx int, st Styles, width int) []string {
-	if histIdx < 0 || histIdx >= len(s.History) {
+func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st Styles, width int) []string {
+	if histIdx < 0 || histIdx >= len(history) {
 		return nil
 	}
-	sel := s.History[histIdx]
+	sel := history[histIdx]
 	elapsed := sel.FinishedAt.Sub(sel.StartedAt)
+	elapsedText := fmtDuration(elapsed)
+	finishedText := sel.FinishedAt.Format("2006-01-02 15:04")
+	if sel.FinishedAt.IsZero() {
+		elapsedText = fmtDuration(time.Since(sel.StartedAt))
+		finishedText = "进行中"
+	}
 	labelW := 8
 	indent := " "
 	gap := 4
@@ -388,6 +421,9 @@ func buildTaskHistoryDetailLines(s *TaskDetailState, histIdx int, st Styles, wid
 	statusText := sel.Status
 	statusStyle := st.Value
 	switch sel.Status {
+	case "running":
+		statusText = "运行中"
+		statusStyle = st.Ok
 	case "completed":
 		statusText = "完成"
 		statusStyle = st.Ok
@@ -447,10 +483,10 @@ func buildTaskHistoryDetailLines(s *TaskDetailState, histIdx int, st Styles, wid
 	)
 	lines = appendPairRow(lines,
 		"开始", sel.StartedAt.Format("2006-01-02 15:04"), st.Value,
-		"结束", sel.FinishedAt.Format("2006-01-02 15:04"), st.Value,
+		"结束", finishedText, st.Value,
 	)
 	lines = appendPairRow(lines,
-		"耗时", fmtDuration(elapsed), st.Value,
+		"耗时", elapsedText, st.Value,
 		"成功率", fmt.Sprintf("%.1f%%", sel.SuccessRate), st.Value,
 	)
 	lines = appendPairRow(lines,
@@ -461,16 +497,6 @@ func buildTaskHistoryDetailLines(s *TaskDetailState, histIdx int, st Styles, wid
 	lines = appendSingleField(lines, "模型", sel.Model, st.Value)
 	if sel.CacheHitRate > 0 {
 		lines = appendSingleField(lines, "缓存", fmt.Sprintf("%.1f%%", sel.CacheHitRate*100), st.Value)
-	}
-	if sel.ReportJSONPath != "" || sel.ReportCSVPath != "" {
-		reports := make([]string, 0, 2)
-		if sel.ReportJSONPath != "" {
-			reports = append(reports, "JSON")
-		}
-		if sel.ReportCSVPath != "" {
-			reports = append(reports, "CSV")
-		}
-		lines = appendSingleField(lines, "报告", strings.Join(reports, " / "), st.Muted)
 	}
 	if sel.ErrorSummary != "" {
 		lines = append(lines, indent+st.Label.Render("错误摘要"))

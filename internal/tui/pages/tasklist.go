@@ -13,7 +13,7 @@ import (
 
 // TaskListState 任务列表页状态。
 type TaskListState struct {
-	Tasks    []types.TaskDefinition
+	Tasks    []server.TaskOverview
 	Selected int
 	Offset   int
 	Visible  int
@@ -33,7 +33,7 @@ func (s *TaskListState) CurrentTask() (types.TaskDefinition, bool) {
 	if len(s.Tasks) == 0 || s.Selected < 0 || s.Selected >= len(s.Tasks) {
 		return types.TaskDefinition{}, false
 	}
-	return s.Tasks[s.Selected], true
+	return s.Tasks[s.Selected].TaskDefinition, true
 }
 
 // IsTaskRunning 判断某任务是否正在运行。
@@ -48,9 +48,10 @@ func (s *TaskListState) IsTaskRunning(taskID string) bool {
 func (s *TaskListState) latestRunAt() *time.Time {
 	var latest *time.Time
 	for _, t := range s.Tasks {
-		if t.LastRunAt != nil {
-			if latest == nil || t.LastRunAt.After(*latest) {
-				latest = t.LastRunAt
+		if t.LatestRun != nil && !t.LatestRun.FinishedAt.IsZero() {
+			finishedAt := t.LatestRun.FinishedAt
+			if latest == nil || finishedAt.After(*latest) {
+				latest = &finishedAt
 			}
 		}
 	}
@@ -231,13 +232,13 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 
 		// ── 上次运行时间 ──
 		lastRunText := "─"
-		if hasActiveRun {
+		if hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning)) {
 			lastRunText = "运行中"
-		} else if t.LastRunAt != nil {
-			lastRunText = fmtRelativeTime(*t.LastRunAt)
+		} else if t.LatestRun != nil && !t.LatestRun.FinishedAt.IsZero() {
+			lastRunText = fmtRelativeTime(t.LatestRun.FinishedAt)
 		}
 		lastRunStyle := st.Muted
-		if hasActiveRun {
+		if hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning)) {
 			lastRunStyle = st.Ok
 		}
 		lastRunCol := padRight(styleWhenNotSelected(isSel, lastRunStyle, lastRunText), lastRunW)
@@ -246,8 +247,8 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		ttftText := "─"
 		if hasActiveRun && rs != nil && rs.AvgTTFT > 0 {
 			ttftText = fmtDuration(rs.AvgTTFT)
-		} else if !hasActiveRun && t.LastRunSummary != nil {
-			ttftText = fmtDuration(t.LastRunSummary.AvgTTFT)
+		} else if !hasActiveRun && t.LatestRun != nil {
+			ttftText = fmtDuration(t.LatestRun.AvgTTFT)
 		}
 		ttftCol := padRight(styleWhenNotSelected(isSel, st.Value, ttftText), ttftW)
 
@@ -255,11 +256,11 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		tpsText := "─"
 		if hasActiveRun && rs != nil && rs.AvgTPS > 0 {
 			tpsText = fmt.Sprintf("%.1f", rs.AvgTPS)
-		} else if !hasActiveRun && t.LastRunSummary != nil {
-			if t.Input.Turbo && t.LastRunSummary.MaxStableConcurrency > 0 {
-				tpsText = fmt.Sprintf("并发%d", t.LastRunSummary.MaxStableConcurrency)
+		} else if !hasActiveRun && t.LatestRun != nil {
+			if t.Input.Turbo && t.LatestRun.MaxStableConcurrency > 0 {
+				tpsText = fmt.Sprintf("并发%d", t.LatestRun.MaxStableConcurrency)
 			} else if !t.Input.Turbo {
-				tpsText = fmt.Sprintf("%.1f", t.LastRunSummary.AvgTPS)
+				tpsText = fmt.Sprintf("%.1f", t.LatestRun.AvgTPS)
 			}
 		}
 		tpsCol := styleWhenNotSelected(isSel, st.Value, tpsText)
