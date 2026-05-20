@@ -101,11 +101,6 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 		}
 
 	case "b", "esc":
-		if d.CancelFn != nil {
-			d.CancelFn()
-		}
-		d.EventCh = nil
-		d.CancelFn = nil
 		if d.BackNav.To != NavNone {
 			nav = d.BackNav
 		} else {
@@ -169,20 +164,22 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	}
 	l := PageLayout{
 		CtxItems:    cbItems,
-		FooterParts: []string{"[b/Esc] 返回列表", "[q] 退出"},
+		FooterParts: []string{"[b/Esc] 返回上一页", "[q] 退出"},
 	}
+	innerW := ContentWidth(width)
+	innerH := l.ContentHeight(height)
 
 	// ── 计算高度 ──
 	splitH := 9
 	progressPanel := 3
-	levelListH := height - l.ChromeHeight() - splitH - progressPanel - 2
+	levelListH := innerH - splitH - progressPanel - 2
 	if levelListH < 3 {
 		levelListH = 3
 	}
 
 	// ── 双栏面板（任务参数 | 当前级别指标）──
-	leftW := width * 45 / 100
-	rightW := width - leftW
+	leftW := innerW * 45 / 100
+	rightW := innerW - leftW
 	leftContent := buildTurboDashParams(rs, st, splitH-2, leftW-2)
 	rightContent := buildTurboDashMetrics(rs, st, splitH-2, rightW-2)
 	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
@@ -190,15 +187,15 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// ── 进度条面板 ──
-	progressLine := buildTurboProgressLine(rs, st, ContentWidth(width))
-	progressPanelStr := wrapPanel(st, progressLine, width)
+	progressLine := buildTurboProgressLine(rs, st, ContentWidth(innerW))
+	progressPanelStr := wrapPanel(st, progressLine, innerW)
 
 	// ── 级别列表面板 ──
-	levelList := buildLevelList(d, rs, st, ContentWidth(width), levelListH)
-	levelPanelStr := wrapPanel(st, levelList, width)
+	levelList := buildLevelList(d, rs, st, ContentWidth(innerW), levelListH)
+	levelPanelStr := wrapPanel(st, levelList, innerW)
 
 	content := strings.Join([]string{split, progressPanelStr, levelPanelStr}, "\n")
-	return l.Assemble(content, st, width)
+	return l.Assemble(wrapPanel(st, content, width), st, width)
 }
 
 // buildTurboDashParams 构建 Turbo 仪表盘左侧任务参数面板。

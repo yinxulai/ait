@@ -15,6 +15,7 @@ import (
 type TaskDetailState struct {
 	Task    types.TaskDefinition
 	History []types.TaskRunSummary
+	BackNav NavAction
 	// HistorySel 当前选中的历史记录索引（0 = 最近一次；若有正在运行的实例，0 = 运行中条目）
 	HistorySel int
 	HistoryOff int
@@ -25,7 +26,7 @@ type TaskDetailState struct {
 
 // NewTaskDetailState 创建初始任务详情状态。
 func NewTaskDetailState(task types.TaskDefinition) *TaskDetailState {
-	return &TaskDetailState{Task: task}
+	return &TaskDetailState{Task: task, BackNav: NavAction{To: NavTaskList}}
 }
 
 func taskDetailHistoryEntries(s *TaskDetailState) []types.TaskRunSummary {
@@ -83,7 +84,11 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 		}
 
 	case "left", "esc", "b":
-		nav = NavAction{To: NavTaskList}
+		if s.BackNav.To != NavNone {
+			nav = s.BackNav
+		} else {
+			nav = NavAction{To: NavTaskList}
+		}
 
 	case "r":
 		if s.ActiveRun == nil {
@@ -172,7 +177,7 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	}
 	l := PageLayout{
 		CtxItems:    cbItems,
-		FooterParts: []string{"[b/Esc] 返回列表", "◆ AIT  v0.1"},
+		FooterParts: []string{"[b/Esc] 返回上一页", "◆ AIT  v0.1"},
 	}
 
 	content := buildTaskDetailContent(s, st, t, inp, ContentWidth(width), l.ContentHeight(height))
@@ -198,6 +203,10 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	leftLines = append(leftLines, padRight(" "+st.Label.Render("协议")+"  "+st.Value.Render(proto), leftW))
 	endpoint := truncate(inp.ResolvedEndpointURL(), leftW-8)
 	leftLines = append(leftLines, padRight(" "+st.Label.Render("接口")+"  "+st.Value.Render(endpoint), leftW))
+	if inp.ProxyURL != "" {
+		proxy := truncate(inp.ProxyURL, leftW-8)
+		leftLines = append(leftLines, padRight(" "+st.Label.Render("代理")+"  "+st.Value.Render(proxy), leftW))
+	}
 	leftLines = append(leftLines, padRight("", leftW))
 
 	model := truncate(inp.Model, leftW-10)

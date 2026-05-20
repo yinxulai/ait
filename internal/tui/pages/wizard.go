@@ -37,6 +37,7 @@ type WizardState struct {
 	Name        string
 	Protocol    string // types.Protocol* 常量
 	EndpointURL string
+	ProxyURL    string
 	APIKey      string
 	Model       string
 
@@ -80,7 +81,9 @@ func NewWizardState() *WizardState {
 		StepSize:        2,
 		LevelRequests:   30,
 		MinSuccessRate:  90,
-		PromptMode:      PromptModeText,
+		Stream:          true,
+		PromptMode:      PromptModeGenerated,
+		PromptLength:    100,
 	}
 }
 
@@ -97,15 +100,24 @@ func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 	wz.Name = t.Name
 	wz.Protocol = types.NormalizeProtocol(inp.Protocol)
 	wz.EndpointURL = inp.EndpointURL
+	wz.ProxyURL = inp.ProxyURL
 	wz.APIKey = inp.ApiKey
 	wz.Model = inp.Model
 	wz.Turbo = inp.Turbo
 	wz.Stream = inp.Stream
 	wz.PromptText = inp.PromptText
 	wz.PromptFile = inp.PromptFile
-	wz.PromptLength = inp.PromptLength
+	if inp.PromptLength > 0 {
+		wz.PromptLength = inp.PromptLength
+	}
 	if inp.PromptMode != "" {
 		wz.PromptMode = inp.PromptMode
+	} else if inp.PromptFile != "" {
+		wz.PromptMode = PromptModeFile
+	} else if inp.PromptLength > 0 {
+		wz.PromptMode = PromptModeGenerated
+	} else {
+		wz.PromptMode = PromptModeText
 	}
 	if inp.Concurrency > 0 {
 		wz.Concurrency = inp.Concurrency
@@ -149,6 +161,7 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 		Input: types.Input{
 			Protocol:    wz.Protocol,
 			EndpointURL: wz.EndpointURL,
+			ProxyURL:    wz.ProxyURL,
 			ApiKey:      wz.APIKey,
 			Model:       wz.Model,
 			Concurrency: wz.Concurrency,
@@ -254,6 +267,11 @@ func step1Fields() []fieldDef {
 			set: func(wz *WizardState, v string) { wz.EndpointURL = v },
 		},
 		{
+			kind: fieldText, label: "代理地址",
+			get: func(wz *WizardState) string { return wz.ProxyURL },
+			set: func(wz *WizardState, v string) { wz.ProxyURL = v },
+		},
+		{
 			kind: fieldText, label: "API 密钥",
 			get: func(wz *WizardState) string { return wz.APIKey },
 			set: func(wz *WizardState, v string) { wz.APIKey = v },
@@ -343,6 +361,9 @@ func step2Fields(turbo bool) []fieldDef {
 					idx = (idx - 1 + len(promptModes)) % len(promptModes)
 				}
 				wz.PromptMode = promptModes[idx]
+				if wz.PromptMode == PromptModeGenerated && wz.PromptLength <= 0 {
+					wz.PromptLength = 100
+				}
 			},
 		},
 	)
@@ -709,11 +730,12 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 	}
 
 	renderedValue := fieldStyle.Width(fieldW).Render(valueStyle.Render(valueStr))
-	// 用 JoinHorizontal 而非字符串拼接：renderedValue 有 3 行（上边框/内容/下边框），
-	// 直接 + 只有第一行有 label 前缀，后两行会从列 0 开始，导致布局混乱。
-	// JoinHorizontal(Top, ...) 会将 label 块和 field 块按顶部对齐水平拼接，
-	// label 块高度自动补齐到与 field 相同（3 行），布局整齐。
-	labelBlock := lipgloss.NewStyle().Width(15).Render(st.Label.Render(wizardFieldLabel(f, wz)))
+	labelLines := []string{
+		strings.Repeat(" ", 15),
+		lipgloss.NewStyle().Width(15).Render(st.Label.Render(wizardFieldLabel(f, wz))),
+		strings.Repeat(" ", 15),
+	}
+	labelBlock := strings.Join(labelLines, "\n")
 	return lipgloss.JoinHorizontal(lipgloss.Top, labelBlock, renderedValue)
 }
 
@@ -732,6 +754,7 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 		endpointDisplay = types.DefaultEndpointURL(wz.Protocol)
 	}
 	addRow("接口地址", endpointDisplay, st.Value)
+	addRow("代理地址", wizardFallback(wz.ProxyURL, "直连"), st.Value)
 	addRow("API 密钥", wizardFallback(maskAPIKey(wz.APIKey), "未填写"), st.Value)
 	addRow("测试模型", wizardFallback(wz.Model, "未填写"), st.Value)
 

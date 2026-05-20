@@ -122,18 +122,20 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 		CtxItems:    CtxBar_ReqDetail(),
 		FooterParts: []string{"[q] 退出"},
 	}
+	innerW := ContentWidth(width)
+	innerH := l.ContentHeight(height)
 
 	// ── 计算高度 ──
 	splitH := 9
 	inputH := 5
-	outputH := height - l.ChromeHeight() - splitH - inputH - 2 - 2 // -2 for input panel border, -2 for output panel border
+	outputH := innerH - splitH - inputH - 2 - 2 // -2 for input panel border, -2 for output panel border
 	if outputH < 4 {
 		outputH = 4
 	}
 
 	// ── 双栏面板（性能指标 | 网络指标）──
-	leftW := width * 50 / 100
-	rightW := width - leftW
+	leftW := innerW * 50 / 100
+	rightW := innerW - leftW
 	leftContent := buildReqPerfPanel(r, st, splitH-2, leftW-2)
 	rightContent := buildReqNetworkPanel(r, st, splitH-2, rightW-2)
 	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
@@ -141,15 +143,15 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// ── 输入区面板 ──
-	inputSection := buildInputSection(r, st, ContentWidth(width), inputH)
-	inputPanelStr := wrapPanel(st, inputSection, width)
+	inputSection := buildInputSection(r, st, ContentWidth(innerW), inputH)
+	inputPanelStr := wrapPanel(st, inputSection, innerW)
 
 	// ── 输出区面板 ──
-	outputSection := buildOutputSection(r, s.ScrollY, st, ContentWidth(width), outputH)
-	outputPanelStr := wrapPanel(st, outputSection, width)
+	outputSection := buildOutputSection(r, s.ScrollY, st, ContentWidth(innerW), outputH)
+	outputPanelStr := wrapPanel(st, outputSection, innerW)
 
 	content := strings.Join([]string{split, inputPanelStr, outputPanelStr}, "\n")
-	return l.Assemble(content, st, width)
+	return l.Assemble(wrapPanel(st, content, width), st, width)
 }
 
 // buildReqPerfPanel 构建请求左侧性能指标面板。

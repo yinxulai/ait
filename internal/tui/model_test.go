@@ -58,8 +58,14 @@ func TestOpenWizard_NewTask_Defaults(t *testing.T) {
 	if m.wizard.Concurrency <= 0 {
 		t.Errorf("default concurrency should be positive, got %d", m.wizard.Concurrency)
 	}
-	if m.wizard.PromptMode != pages.PromptModeText {
-		t.Errorf("default PromptMode = %q, want %q", m.wizard.PromptMode, pages.PromptModeText)
+	if !m.wizard.Stream {
+		t.Error("default Stream = false, want true")
+	}
+	if m.wizard.PromptMode != pages.PromptModeGenerated {
+		t.Errorf("default PromptMode = %q, want %q", m.wizard.PromptMode, pages.PromptModeGenerated)
+	}
+	if m.wizard.PromptLength != 100 {
+		t.Errorf("default PromptLength = %d, want 100", m.wizard.PromptLength)
 	}
 }
 
@@ -71,6 +77,7 @@ func TestOpenWizard_EditTask_Populate(t *testing.T) {
 		Input: types.Input{
 			Model:       "gpt-4",
 			Protocol:    types.ProtocolOpenAICompletions,
+			ProxyURL:    "http://proxy.internal:8080",
 			ApiKey:      "sk-test",
 			Concurrency: 5,
 			Count:       50,
@@ -91,6 +98,9 @@ func TestOpenWizard_EditTask_Populate(t *testing.T) {
 	if m.wizard.Concurrency != 5 {
 		t.Errorf("Concurrency = %d, want 5", m.wizard.Concurrency)
 	}
+	if m.wizard.ProxyURL != "http://proxy.internal:8080" {
+		t.Errorf("ProxyURL = %q, want %q", m.wizard.ProxyURL, "http://proxy.internal:8080")
+	}
 }
 
 func TestBuildTaskInput_Standard(t *testing.T) {
@@ -99,6 +109,7 @@ func TestBuildTaskInput_Standard(t *testing.T) {
 	wz := m.wizard
 	wz.Model = "gpt-4.1"
 	wz.APIKey = "sk-test"
+	wz.ProxyURL = "http://proxy.internal:8080"
 	wz.Concurrency = 8
 	wz.Count = 120
 	wz.PromptMode = pages.PromptModeText
@@ -114,6 +125,9 @@ func TestBuildTaskInput_Standard(t *testing.T) {
 	}
 	if inp.Count != 120 {
 		t.Errorf("count = %d, want 120", inp.Count)
+	}
+	if inp.ProxyURL != "http://proxy.internal:8080" {
+		t.Errorf("proxy_url = %q, want %q", inp.ProxyURL, "http://proxy.internal:8080")
 	}
 	if inp.PromptMode != pages.PromptModeText || inp.PromptText != "hello" {
 		t.Errorf("unexpected prompt config: mode=%q text=%q", inp.PromptMode, inp.PromptText)
@@ -151,5 +165,51 @@ func TestBuildTaskInput_Turbo(t *testing.T) {
 	}
 	if inp.Protocol != types.ProtocolAnthropicMessages {
 		t.Errorf("protocol = %q, want anthropic-messages", inp.Protocol)
+	}
+}
+
+func TestRunStateMsg_FromHistory_ReopensExistingDashboard(t *testing.T) {
+	m := NewModel(&stubServer{})
+	m.view = viewTaskDetail
+	m.dash = pages.NewDashboardState("run-1", "task-1")
+
+	updated, _ := m.Update(RunStateMsg{
+		State: &server.RunState{
+			RunID:  "run-1",
+			TaskID: "task-1",
+			Mode:   "standard",
+		},
+		FromHistory: true,
+	})
+
+	got := updated.(*Model)
+	if got.view != viewDashboard {
+		t.Fatalf("view = %q, want %q", got.view, viewDashboard)
+	}
+	if got.dash == nil || got.dash.RunState == nil {
+		t.Fatal("dashboard should hold loaded history run state")
+	}
+	if got.dash.BackNav.To != pages.NavTaskDetail {
+		t.Fatalf("dash.BackNav.To = %v, want %v", got.dash.BackNav.To, pages.NavTaskDetail)
+	}
+}
+
+func TestOpenWizard_EditTask_InferLegacyPromptMode(t *testing.T) {
+	m := NewModel(&stubServer{})
+	task := types.TaskDefinition{
+		ID:   "task-legacy",
+		Name: "legacy-task",
+		Input: types.Input{
+			Protocol:   types.ProtocolOpenAICompletions,
+			PromptText: "legacy prompt",
+		},
+	}
+
+	m.wizard = pages.NewWizardStateEdit(&task)
+	if m.wizard.PromptMode != pages.PromptModeText {
+		t.Errorf("PromptMode = %q, want %q", m.wizard.PromptMode, pages.PromptModeText)
+	}
+	if m.wizard.PromptText != "legacy prompt" {
+		t.Errorf("PromptText = %q, want %q", m.wizard.PromptText, "legacy prompt")
 	}
 }

@@ -32,7 +32,7 @@ type MockClient struct {
 	model           string
 }
 
-func (m *MockClient) Request(prompt string, stream bool) (*client.ResponseMetrics, error) {
+func (m *MockClient) Request(systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
 	callIndex := atomic.AddInt64(&m.callCount, 1) - 1
 	
 	if m.requestDelay > 0 {
@@ -1499,7 +1499,7 @@ type MockClientWithErrorMetrics struct {
 	errorMetrics               *client.ResponseMetrics
 }
 
-func (m *MockClientWithErrorMetrics) Request(prompt string, stream bool) (*client.ResponseMetrics, error) {
+func (m *MockClientWithErrorMetrics) Request(systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
 	callIndex := atomic.AddInt64(&m.callCount, 1) - 1
 	
 	// 检查是否应该失败

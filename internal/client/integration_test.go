@@ -80,7 +80,7 @@ func TestOpenAIClient_Request_NonStream(t *testing.T) {
 	client := NewOpenAIClient(createIntegrationTestConfig(server.URL, "test-key", "gpt-3.5-turbo"))
 
 	start := time.Now()
-	metrics, err := client.Request("test prompt", false)
+	metrics, err := client.Request("", "test prompt", false)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -104,7 +104,7 @@ func TestOpenAIClient_Request_Stream(t *testing.T) {
 	client := NewOpenAIClient(createIntegrationTestConfig(server.URL, "test-key", "gpt-3.5-turbo"))
 
 	start := time.Now()
-	metrics, err := client.Request("test prompt", true)
+	metrics, err := client.Request("", "test prompt", true)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -129,7 +129,7 @@ func TestOpenAIClient_Request_ServerError(t *testing.T) {
 
 	client := NewOpenAIClient(createIntegrationTestConfig(server.URL, "test-key", "gpt-3.5-turbo"))
 
-	_, err := client.Request("test prompt", false)
+	_, err := client.Request("", "test prompt", false)
 
 	if err == nil {
 		t.Error("Request() should return error for server error")
@@ -140,7 +140,7 @@ func TestOpenAIClient_Request_NetworkError(t *testing.T) {
 	// 使用一个无效的地址来模拟网络错误
 	client := NewOpenAIClient(createIntegrationTestConfig("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo"))
 
-	metrics, err := client.Request("test prompt", false)
+	metrics, err := client.Request("", "test prompt", false)
 
 	// 应该返回错误
 	if err == nil {
@@ -171,7 +171,7 @@ func TestOpenAIClient_Request_StreamNetworkError(t *testing.T) {
 	// 测试流式模式下的网络错误
 	client := NewOpenAIClient(createIntegrationTestConfig("http://invalid-host-that-does-not-exist.example", "test-key", "gpt-3.5-turbo"))
 
-	metrics, err := client.Request("test prompt", true)
+	metrics, err := client.Request("", "test prompt", true)
 
 	// 应该返回错误
 	if err == nil {
@@ -194,7 +194,7 @@ func TestOpenAIClient_Request_InvalidURL(t *testing.T) {
 	// 使用一个格式错误的 URL
 	client := NewOpenAIClient(createIntegrationTestConfig("://invalid-url", "test-key", "gpt-3.5-turbo"))
 
-	metrics, err := client.Request("test prompt", false)
+	metrics, err := client.Request("", "test prompt", false)
 
 	// 应该返回错误
 	if err == nil {

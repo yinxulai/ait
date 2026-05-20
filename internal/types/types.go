@@ -89,6 +89,7 @@ type Input struct {
 	Protocol     string        `json:"protocol"`
 	EndpointURL  string        `json:"endpoint_url,omitempty"`
 	BaseUrl      string        `json:"base_url,omitempty"`
+	ProxyURL     string        `json:"proxy_url,omitempty"`
 	ApiKey       string        `json:"api_key,omitempty"`
 	Model        string        `json:"model"`
 	Concurrency  int           `json:"concurrency,omitempty"`

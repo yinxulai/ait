@@ -80,11 +80,7 @@ type AnthropicClient struct {
 //   网络栈性能，包括 DNS 解析、TCP 连接建立、TLS 握手等。
 // - DisableCompression=false: 启用压缩以节省带宽
 func NewAnthropicClient(config types.Input) *AnthropicClient {
-	// 禁用连接复用以确保每个请求都是独立的
-	transport := &http.Transport{
-		DisableKeepAlives:  true,
-		DisableCompression: false,
-	}
+	transport := newMeasuredTransport(config)
 
 	return &AnthropicClient{
 		EndpointURL: config.ResolvedEndpointURL(),

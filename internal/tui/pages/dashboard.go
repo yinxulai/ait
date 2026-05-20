@@ -123,11 +123,6 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 		}
 
 	case "b", "esc":
-		if d.CancelFn != nil {
-			d.CancelFn()
-		}
-		d.EventCh = nil
-		d.CancelFn = nil
 		if d.BackNav.To != NavNone {
 			nav = d.BackNav
 		} else {
@@ -191,20 +186,22 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	}
 	l := PageLayout{
 		CtxItems:    cbItems,
-		FooterParts: []string{"[b/Esc] 返回列表", "[q] 退出"},
+		FooterParts: []string{"[b/Esc] 返回上一页", "[q] 退出"},
 	}
+	innerW := ContentWidth(width)
+	innerH := l.ContentHeight(height)
 
 	// ── 计算高度 ──
 	splitH := 9      // 双栏面板外部总高度（含面板边框）
 	progressPanel := 3 // 进度条面板外部高度（1内容+2边框）
-	reqListH := height - l.ChromeHeight() - splitH - progressPanel - 2 // -2 for req panel border
+	reqListH := innerH - splitH - progressPanel - 2 // -2 for req panel border
 	if reqListH < 3 {
 		reqListH = 3
 	}
 
 	// ── 双栏面板（任务参数 | 实时指标）──
-	leftW := width * 45 / 100
-	rightW := width - leftW
+	leftW := innerW * 45 / 100
+	rightW := innerW - leftW
 	leftContent := buildDashParamsPanel(d, rs, st, splitH-2, leftW-2)
 	rightContent := buildDashMetricsPanel(rs, st, splitH-2, rightW-2)
 	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
@@ -212,15 +209,15 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
 
 	// ── 进度条面板 ──
-	progressLine := buildProgressLine(rs, st, ContentWidth(width))
-	progressPanelStr := wrapPanel(st, progressLine, width)
+	progressLine := buildProgressLine(rs, st, ContentWidth(innerW))
+	progressPanelStr := wrapPanel(st, progressLine, innerW)
 
 	// ── 请求列表面板 ──
-	reqList := buildRequestList(d, rs, st, ContentWidth(width), reqListH)
-	reqPanelStr := wrapPanel(st, reqList, width)
+	reqList := buildRequestList(d, rs, st, ContentWidth(innerW), reqListH)
+	reqPanelStr := wrapPanel(st, reqList, innerW)
 
 	content := strings.Join([]string{split, progressPanelStr, reqPanelStr}, "\n")
-	return l.Assemble(content, st, width)
+	return l.Assemble(wrapPanel(st, content, width), st, width)
 }
 
 // buildDashParamsPanel 构建左侧任务参数面板。

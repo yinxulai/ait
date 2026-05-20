@@ -152,24 +152,29 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if msg.State == nil {
 			return m, nil
 		}
-		if m.dash != nil && m.dash.RunID == msg.State.RunID {
-			m.dash.RunState = msg.State
-		} else if m.turboDash != nil && m.turboDash.RunID == msg.State.RunID {
-			m.turboDash.RunState = msg.State
-		} else if msg.FromHistory {
-			// 从历史记录导航过来：根据运行模式选择对应仪表盘，并设置返回目标为任务详情
-			backNav := pages.NavAction{To: pages.NavTaskDetail}
+		if msg.FromHistory {
+			backNav := pages.NavAction{To: pages.NavTaskDetail, TaskID: msg.State.TaskID}
 			if msg.State.Mode == "turbo" {
-				m.turboDash = pages.NewTurboDashState(msg.State.RunID, msg.State.TaskID)
+				if m.turboDash == nil || m.turboDash.RunID != msg.State.RunID {
+					m.turboDash = pages.NewTurboDashState(msg.State.RunID, msg.State.TaskID)
+				}
 				m.turboDash.RunState = msg.State
 				m.turboDash.BackNav = backNav
 				m.view = viewTurboDash
 			} else {
-				m.dash = pages.NewDashboardState(msg.State.RunID, msg.State.TaskID)
+				if m.dash == nil || m.dash.RunID != msg.State.RunID {
+					m.dash = pages.NewDashboardState(msg.State.RunID, msg.State.TaskID)
+				}
 				m.dash.RunState = msg.State
 				m.dash.BackNav = backNav
 				m.view = viewDashboard
 			}
+			return m, nil
+		}
+		if m.dash != nil && m.dash.RunID == msg.State.RunID {
+			m.dash.RunState = msg.State
+		} else if m.turboDash != nil && m.turboDash.RunID == msg.State.RunID {
+			m.turboDash.RunState = msg.State
 		}
 		return m, nil
 
@@ -270,11 +275,19 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 		return m.client.LoadTasksCmd()
 
 	case pages.NavTaskDetail:
+		backNav := m.taskDetailBackNav()
 		task := m.findTask(nav.TaskID)
 		if task != nil {
-			m.detail = pages.NewTaskDetailState(*task)
+			if m.detail != nil && m.detail.Task.ID == task.ID {
+				m.detail.Task = *task
+			} else {
+				m.detail = pages.NewTaskDetailState(*task)
+			}
 		} else if m.detail == nil {
 			return nil
+		}
+		if m.detail != nil {
+			m.detail.BackNav = backNav
 		}
 		// 若该任务有正在运行的实例，注入快照
 		if m.detail != nil && m.taskList != nil {
@@ -520,6 +533,24 @@ func (m *Model) currentRunTaskID(isDash bool) string {
 		return m.turboDash.TaskID
 	}
 	return ""
+}
+
+func (m *Model) taskDetailBackNav() pages.NavAction {
+	switch m.view {
+	case viewDashboard:
+		if m.dash != nil {
+			return pages.NavAction{To: pages.NavDashboard}
+		}
+	case viewTurboDash:
+		if m.turboDash != nil {
+			return pages.NavAction{To: pages.NavTurboDash}
+		}
+	case viewTaskDetail:
+		if m.detail != nil && m.detail.BackNav.To != pages.NavNone {
+			return m.detail.BackNav
+		}
+	}
+	return pages.NavAction{To: pages.NavTaskList}
 }
 
 func (m *Model) collectRequests() []*types.RequestMetrics {

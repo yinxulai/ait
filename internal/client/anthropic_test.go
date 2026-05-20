@@ -124,10 +124,10 @@ func TestNewAnthropicClient(t *testing.T) {
 			},
 			want: &AnthropicClient{
 				EndpointURL: "https://api.anthropic.com/v1/messages",
-				ApiKey:   "test-key",
-				Model:    "claude-3-sonnet-20240229",
-				Provider: types.ProtocolAnthropicMessages,
-				Thinking: false,
+				ApiKey:      "test-key",
+				Model:       "claude-3-sonnet-20240229",
+				Provider:    types.ProtocolAnthropicMessages,
+				Thinking:    false,
 			},
 		},
 	}
@@ -183,7 +183,7 @@ func TestAnthropicClient_Request_NonStream(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("test prompt", false)
+	metrics, err := client.Request("", "test prompt", false)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -220,7 +220,7 @@ func TestAnthropicClient_Request_Stream(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("test prompt", true)
+	metrics, err := client.Request("", "test prompt", true)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -252,7 +252,7 @@ func TestAnthropicClient_Request_ServerError(t *testing.T) {
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
-	metrics, err := client.Request("test prompt", false)
+	metrics, err := client.Request("", "test prompt", false)
 
 	if err == nil {
 		t.Error("Request() should return error for server error")
@@ -294,7 +294,7 @@ func TestAnthropicClient_Request_InvalidEndpoint(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	// 这应该成功，因为我们使用的是正确的端点
-	_, err := client.Request("test prompt", false)
+	_, err := client.Request("", "test prompt", false)
 	if err != nil {
 		t.Errorf("Request() should succeed with correct endpoint, got error: %v", err)
 	}
@@ -326,7 +326,7 @@ func TestAnthropicClient_Request_MissingHeaders(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	// 这应该成功，因为我们的客户端发送了正确的请求头
-	_, err := client.Request("test prompt", false)
+	_, err := client.Request("", "test prompt", false)
 	if err != nil {
 		t.Errorf("Request() should succeed with correct headers, got error: %v", err)
 	}
@@ -336,7 +336,7 @@ func TestAnthropicClient_Request_NetworkError(t *testing.T) {
 	// 使用一个无效的地址来模拟网络错误
 	client := NewAnthropicClient(createTestConfig("http://invalid-host-that-does-not-exist.example", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
-	metrics, err := client.Request("test prompt", false)
+	metrics, err := client.Request("", "test prompt", false)
 
 	// 应该返回错误
 	if err == nil {
@@ -367,7 +367,7 @@ func TestAnthropicClient_Request_InvalidURL(t *testing.T) {
 	// 使用一个格式错误的 URL
 	client := NewAnthropicClient(createTestConfig("://invalid-url", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
-	metrics, err := client.Request("test prompt", false)
+	metrics, err := client.Request("", "test prompt", false)
 
 	// 应该返回错误
 	if err == nil {
@@ -465,17 +465,17 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 	// 创建一个测试服务器，记录连接数
 	connectionCount := 0
 	var connMu sync.Mutex
-	
+
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		// 每个请求到达时记录
 		connMu.Lock()
 		connectionCount++
 		currentCount := connectionCount
 		connMu.Unlock()
-		
+
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		// 返回简单的非流式响应
 		response := fmt.Sprintf(`{"id":"msg-%d","type":"message","role":"assistant","content":[{"type":"text","text":"Response %d"}],"model":"claude-3","usage":{"input_tokens":1,"output_tokens":1}}`, currentCount, currentCount)
 		w.Write([]byte(response))
@@ -489,7 +489,7 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 	if !ok {
 		t.Fatal("Expected client to use http.Transport")
 	}
-	
+
 	if !transport.DisableKeepAlives {
 		t.Error("Expected DisableKeepAlives to be true to prevent connection reuse")
 	}
@@ -497,17 +497,17 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 	// 发送多个串行请求来验证不复用连接的行为
 	requestCount := 3
 	for i := 0; i < requestCount; i++ {
-		metrics, err := client.Request(fmt.Sprintf("test prompt %d", i), false)
+		metrics, err := client.Request("", fmt.Sprintf("test prompt %d", i), false)
 		if err != nil {
 			t.Errorf("Request %d failed: %v", i, err)
 			continue
 		}
-		
+
 		if metrics == nil {
 			t.Errorf("Request %d returned nil metrics", i)
 			continue
 		}
-		
+
 		// 验证每个请求都有合理的时间指标
 		if metrics.TotalTime <= 0 {
 			t.Errorf("Request %d has invalid TotalTime: %v", i, metrics.TotalTime)
@@ -518,7 +518,7 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 	connMu.Lock()
 	finalCount := connectionCount
 	connMu.Unlock()
-	
+
 	if finalCount != requestCount {
 		t.Errorf("Expected %d requests to reach server, got %d", requestCount, finalCount)
 	}
@@ -528,17 +528,17 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 func TestAnthropicClient_NoConnectionReuse(t *testing.T) {
 	// 验证客户端的 Transport 配置确实禁用了连接复用
 	client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", "claude-3-sonnet", 30*time.Second, false))
-	
+
 	transport, ok := client.httpClient.Transport.(*http.Transport)
 	if !ok {
 		t.Fatal("Expected client to use http.Transport")
 	}
-	
+
 	// 关键验证：DisableKeepAlives 应该为 true
 	if !transport.DisableKeepAlives {
 		t.Error("DisableKeepAlives should be true to prevent connection reuse, which could affect timing measurements")
 	}
-	
+
 	// DisableCompression 应该为 false（我们想要压缩以节省带宽）
 	if transport.DisableCompression {
 		t.Error("DisableCompression should be false to enable compression")
@@ -591,7 +591,7 @@ func TestAnthropicClient_Request_MalformedJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 			// 流式响应：发送畸形的 JSON
 			w.Write([]byte("event: content_block_delta\n"))
@@ -611,7 +611,7 @@ func TestAnthropicClient_Request_MalformedJSON(t *testing.T) {
 
 	// 测试非流式请求的 JSON 解析错误
 	t.Run("non-stream malformed JSON", func(t *testing.T) {
-		_, err := client.Request("test prompt", false)
+		_, err := client.Request("", "test prompt", false)
 		if err == nil {
 			t.Error("Expected error for malformed JSON response")
 		}
@@ -619,7 +619,7 @@ func TestAnthropicClient_Request_MalformedJSON(t *testing.T) {
 
 	// 测试流式请求（应该跳过畸形的 JSON 并处理有效的）
 	t.Run("stream with some malformed JSON", func(t *testing.T) {
-		metrics, err := client.Request("test prompt", true)
+		metrics, err := client.Request("", "test prompt", true)
 		if err != nil {
 			t.Errorf("Request should succeed even with some malformed JSON: %v", err)
 		}
@@ -649,7 +649,7 @@ func TestAnthropicClient_Request_BodyReadError(t *testing.T) {
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
-	_, err := client.Request("test prompt", false)
+	_, err := client.Request("", "test prompt", false)
 	if err == nil {
 		t.Error("Expected error when response body cannot be read")
 	}
@@ -660,7 +660,7 @@ func TestAnthropicClient_Request_ScannerError(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/event-stream")
 		w.WriteHeader(http.StatusOK)
-		
+
 		// 发送一个非常长的行，可能导致 scanner 错误
 		longLine := strings.Repeat("x", 1024*1024) // 1MB 的数据
 		fmt.Fprintf(w, "event: content_block_delta\ndata: %s\n\n", longLine)
@@ -671,7 +671,7 @@ func TestAnthropicClient_Request_ScannerError(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 这个测试可能会因为 scanner 的缓冲区限制而失败
-	metrics, err := client.Request("test prompt", true)
+	metrics, err := client.Request("", "test prompt", true)
 	// 无论成功还是失败都是正常的，关键是要覆盖这个代码路径
 	if err != nil {
 		t.Logf("Scanner error (expected in some cases): %v", err)
@@ -724,7 +724,7 @@ func TestAnthropicClient_Request_EdgeCases(t *testing.T) {
 			defer server.Close()
 
 			client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-			_, err := client.Request("test", tt.stream)
+			_, err := client.Request("", "test", tt.stream)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got none")
@@ -742,14 +742,14 @@ func TestAnthropicClient_ConcurrentRequests(t *testing.T) {
 		time.Sleep(50 * time.Millisecond) // 模拟慢响应
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		response := `{"id":"test","type":"message","content":[{"type":"text","text":"concurrent response"}],"usage":{"output_tokens":2}}`
 		w.Write([]byte(response))
 	}))
 	defer server.Close()
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-	
+
 	// 并发执行多个请求
 	numRequests := 10
 	var wg sync.WaitGroup
@@ -761,9 +761,9 @@ func TestAnthropicClient_ConcurrentRequests(t *testing.T) {
 		wg.Add(1)
 		go func(id int) {
 			defer wg.Done()
-			
-			metrics, err := client.Request(fmt.Sprintf("concurrent test %d", id), false)
-			
+
+			metrics, err := client.Request("", fmt.Sprintf("concurrent test %d", id), false)
+
 			mu.Lock()
 			if err != nil {
 				errors = append(errors, err)
@@ -785,7 +785,7 @@ func TestAnthropicClient_ConcurrentRequests(t *testing.T) {
 			t.Errorf("Concurrent request error: %v", err)
 		}
 	}
-	
+
 	if successCount != numRequests {
 		t.Errorf("Expected %d successful requests, got %d", numRequests, successCount)
 	}
@@ -802,12 +802,12 @@ func TestAnthropicClient_Request_TimeoutHandling(t *testing.T) {
 
 	// 创建一个超时时间很短的客户端
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 100*time.Millisecond, false))
-	
-	_, err := client.Request("timeout test", false)
+
+	_, err := client.Request("", "timeout test", false)
 	if err == nil {
 		t.Error("Expected timeout error but got none")
 	}
-	
+
 	// 确保错误信息包含超时相关内容
 	if !strings.Contains(err.Error(), "timeout") && !strings.Contains(err.Error(), "context deadline exceeded") {
 		t.Errorf("Expected timeout-related error, got: %v", err)
@@ -818,7 +818,7 @@ func TestAnthropicClient_Request_EmptyContentArray(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
-		
+
 		if strings.Contains(r.Header.Get("Accept"), "text/event-stream") {
 			// 流式响应：发送空的 content
 			w.Write([]byte("event: message_start\n"))
@@ -835,7 +835,7 @@ func TestAnthropicClient_Request_EmptyContentArray(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 测试非流式请求
-	metrics, err := client.Request("test", false)
+	metrics, err := client.Request("", "test", false)
 	if err != nil {
 		t.Errorf("Request should succeed with empty content: %v", err)
 	}
@@ -844,7 +844,7 @@ func TestAnthropicClient_Request_EmptyContentArray(t *testing.T) {
 	}
 
 	// 测试流式请求
-	metrics, err = client.Request("test", true)
+	metrics, err = client.Request("", "test", true)
 	if err != nil {
 		t.Errorf("Stream request should succeed with empty content: %v", err)
 	}
@@ -858,26 +858,26 @@ func TestAnthropicClient_Request_StreamWithThinking(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Transfer-Encoding", "chunked")
-		
+
 		flusher, _ := w.(http.Flusher)
-		
+
 		// 发送开始事件
 		fmt.Fprint(w, "event: message_start\n")
 		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 模拟延迟，然后发送 thinking 内容
 		time.Sleep(10 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "thinking": "Let me think about this..."}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 再发送一些普通文本
 		time.Sleep(5 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Hello there!"}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 发送结束事件
 		fmt.Fprint(w, "event: message_delta\n")
 		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 10}}`+"\n\n")
@@ -886,23 +886,23 @@ func TestAnthropicClient_Request_StreamWithThinking(t *testing.T) {
 	defer server.Close()
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-	
+
 	start := time.Now()
-	metrics, err := client.Request("test prompt", true)
-	
+	metrics, err := client.Request("", "test prompt", true)
+
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
-	
+
 	if metrics.TimeToFirstToken <= 0 {
 		t.Errorf("Request() TTFT should be > 0 when thinking content is present, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	// TTFT 应该在第一个 thinking 输出时就开始计算
 	if metrics.TimeToFirstToken > time.Since(start) {
 		t.Errorf("TTFT should be calculated from thinking output, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	if metrics.CompletionTokens != 10 {
 		t.Errorf("Request() CompletionTokens = %v, want 10", metrics.CompletionTokens)
 	}
@@ -913,26 +913,26 @@ func TestAnthropicClient_Request_StreamWithPartialJSON(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Transfer-Encoding", "chunked")
-		
+
 		flusher, _ := w.(http.Flusher)
-		
+
 		// 发送开始事件
 		fmt.Fprint(w, "event: message_start\n")
 		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 模拟延迟，然后发送 partial_json 内容
 		time.Sleep(10 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": "{\"name\": \"John\""}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 继续发送更多的 partial_json
 		time.Sleep(5 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": ", \"age\": 30}"}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 发送结束事件
 		fmt.Fprint(w, "event: message_delta\n")
 		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 8}}`+"\n\n")
@@ -941,23 +941,23 @@ func TestAnthropicClient_Request_StreamWithPartialJSON(t *testing.T) {
 	defer server.Close()
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-	
+
 	start := time.Now()
-	metrics, err := client.Request("test prompt", true)
-	
+	metrics, err := client.Request("", "test prompt", true)
+
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
-	
+
 	if metrics.TimeToFirstToken <= 0 {
 		t.Errorf("Request() TTFT should be > 0 when partial_json content is present, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	// TTFT 应该在第一个 partial_json 输出时就开始计算
 	if metrics.TimeToFirstToken > time.Since(start) {
 		t.Errorf("TTFT should be calculated from partial_json output, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	if metrics.CompletionTokens != 8 {
 		t.Errorf("Request() CompletionTokens = %v, want 8", metrics.CompletionTokens)
 	}
@@ -968,32 +968,32 @@ func TestAnthropicClient_Request_StreamWithMixedContent(t *testing.T) {
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Transfer-Encoding", "chunked")
-		
+
 		flusher, _ := w.(http.Flusher)
-		
+
 		// 发送开始事件
 		fmt.Fprint(w, "event: message_start\n")
 		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 首先发送 thinking 内容
 		time.Sleep(15 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "thinking": "I need to analyze this carefully..."}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 然后发送 partial_json
 		time.Sleep(5 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": "{\"result\": \""}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 最后发送普通文本
 		time.Sleep(5 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "This is the final answer."}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 发送结束事件
 		fmt.Fprint(w, "event: message_delta\n")
 		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 20}}`+"\n\n")
@@ -1002,29 +1002,29 @@ func TestAnthropicClient_Request_StreamWithMixedContent(t *testing.T) {
 	defer server.Close()
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-	
+
 	start := time.Now()
-	metrics, err := client.Request("test prompt", true)
-	
+	metrics, err := client.Request("", "test prompt", true)
+
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
-	
+
 	if metrics.TimeToFirstToken <= 0 {
 		t.Errorf("Request() TTFT should be > 0 with mixed content, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	// TTFT 应该在第一个内容输出时就开始计算（thinking 内容）
-	expectedMinTime := 10 * time.Millisecond  // 小于第一个 thinking 输出的延迟
+	expectedMinTime := 10 * time.Millisecond // 小于第一个 thinking 输出的延迟
 	if metrics.TimeToFirstToken < expectedMinTime {
 		t.Errorf("TTFT seems too fast, expected >= %v, got %v", expectedMinTime, metrics.TimeToFirstToken)
 	}
-	
+
 	expectedMaxTime := time.Since(start)
 	if metrics.TimeToFirstToken > expectedMaxTime {
 		t.Errorf("TTFT should be calculated from first output, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	if metrics.CompletionTokens != 20 {
 		t.Errorf("Request() CompletionTokens = %v, want 20", metrics.CompletionTokens)
 	}
@@ -1035,32 +1035,32 @@ func TestAnthropicClient_Request_StreamWithEmptyThinkingAndPartialJSON(t *testin
 	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.Header().Set("Transfer-Encoding", "chunked")
-		
+
 		flusher, _ := w.(http.Flusher)
-		
+
 		// 发送开始事件
 		fmt.Fprint(w, "event: message_start\n")
 		fmt.Fprint(w, `data: {"type": "message_start", "message": {"id": "msg_test", "type": "message", "role": "assistant", "content": [], "model": "claude-3-sonnet", "usage": {"input_tokens": 10, "output_tokens": 0}}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 发送空的 thinking 内容（不应该触发 TTFT）
 		time.Sleep(10 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "thinking": ""}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 发送空的 partial_json 内容（不应该触发 TTFT）
 		time.Sleep(5 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "partial_json": ""}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 最后发送真正的文本内容（应该触发 TTFT）
 		time.Sleep(5 * time.Millisecond)
 		fmt.Fprint(w, "event: content_block_delta\n")
 		fmt.Fprint(w, `data: {"type": "content_block_delta", "index": 0, "delta": {"type": "text_delta", "text": "Real content here"}}`+"\n\n")
 		flusher.Flush()
-		
+
 		// 发送结束事件
 		fmt.Fprint(w, "event: message_delta\n")
 		fmt.Fprint(w, `data: {"type": "message_delta", "delta": {"stop_reason": "end_turn"}, "usage": {"output_tokens": 5}}`+"\n\n")
@@ -1069,29 +1069,29 @@ func TestAnthropicClient_Request_StreamWithEmptyThinkingAndPartialJSON(t *testin
 	defer server.Close()
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-	
+
 	start := time.Now()
-	metrics, err := client.Request("test prompt", true)
-	
+	metrics, err := client.Request("", "test prompt", true)
+
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
 	}
-	
+
 	if metrics.TimeToFirstToken <= 0 {
 		t.Errorf("Request() TTFT should be > 0 when real text content is present, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	// TTFT 应该在真正的文本内容输出时计算，而不是空的 thinking/partial_json
-	expectedMinTime := 15 * time.Millisecond  // 应该大于前两个空内容的延迟总和
+	expectedMinTime := 15 * time.Millisecond // 应该大于前两个空内容的延迟总和
 	if metrics.TimeToFirstToken < expectedMinTime {
 		t.Errorf("TTFT should be calculated from real text content, expected >= %v, got %v", expectedMinTime, metrics.TimeToFirstToken)
 	}
-	
+
 	expectedMaxTime := time.Since(start)
 	if metrics.TimeToFirstToken > expectedMaxTime {
 		t.Errorf("TTFT calculation error, got %v", metrics.TimeToFirstToken)
 	}
-	
+
 	if metrics.CompletionTokens != 5 {
 		t.Errorf("Request() CompletionTokens = %v, want 5", metrics.CompletionTokens)
 	}
@@ -1107,7 +1107,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("test prompt", false)
+		metrics, err := client.Request("", "test prompt", false)
 
 		// 应该有错误
 		if err == nil {
@@ -1146,7 +1146,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("test prompt", false)
+		metrics, err := client.Request("", "test prompt", false)
 
 		// 应该有错误
 		if err == nil {
@@ -1172,7 +1172,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 	t.Run("Response body read error returns metrics", func(t *testing.T) {
 		// 测试策略：创建一个声称有内容但实际没有完整内容的响应
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-			w.Header().Set("Content-Length", "1000") 
+			w.Header().Set("Content-Length", "1000")
 			w.WriteHeader(http.StatusOK)
 			w.Write([]byte("incomplete"))
 			// 在 httptest 环境中，这种情况通常不会导致 io.ReadAll 错误
@@ -1181,7 +1181,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("test prompt", false)
+		metrics, err := client.Request("", "test prompt", false)
 
 		// 这种情况下通常会是 JSON 解析错误而不是读取错误
 		if metrics == nil && err != nil {
@@ -1193,7 +1193,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			w.Header().Set("Content-Type", "text/event-stream")
 			w.WriteHeader(http.StatusOK)
-			
+
 			// 发送一些无效的 JSON 数据块，然后发送有效的
 			w.Write([]byte("data: {invalid json}\n\n"))
 			w.Write([]byte("data: {\"type\":\"content_block_delta\",\"delta\":{\"type\":\"text_delta\",\"text\":\"valid\"}}\n\n"))
@@ -1202,7 +1202,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("test prompt", true)
+		metrics, err := client.Request("", "test prompt", true)
 
 		// 流式处理应该继续，即使有些 JSON 块无效
 		if err != nil {
@@ -1253,7 +1253,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 				defer server.Close()
 
 				client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-				metrics, err := client.Request("test prompt", false)
+				metrics, err := client.Request("", "test prompt", false)
 
 				// 所有类型的错误都应该返回错误
 				if err == nil {
@@ -1267,7 +1267,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 
 				// 验证错误信息包含预期内容
 				if !strings.Contains(metrics.ErrorMessage, tc.expectedErrMsg) {
-					t.Errorf("Expected ErrorMessage to contain '%s' for %s, got: %s", 
+					t.Errorf("Expected ErrorMessage to contain '%s' for %s, got: %s",
 						tc.expectedErrMsg, tc.name, metrics.ErrorMessage)
 				}
 
@@ -1301,21 +1301,21 @@ func TestAnthropicClientWithConfig(t *testing.T) {
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			client := NewAnthropicClient(createTestConfig("https://api.anthropic.com", "test-key", "claude-3-sonnet", 30*time.Second, tt.thinking))
-			
+
 			// 验证 thinking 字段设置正确
 			if client.Thinking != tt.thinking {
 				t.Errorf("Expected Thinking = %v, got %v", tt.thinking, client.Thinking)
 			}
-			
+
 			// 验证其他基本字段
 			if client.EndpointURL != "https://api.anthropic.com/v1/messages" {
 				t.Errorf("Expected EndpointURL = https://api.anthropic.com/v1/messages, got %s", client.EndpointURL)
 			}
-			
+
 			if client.Model != "claude-3-sonnet" {
 				t.Errorf("Expected Model = claude-3-sonnet, got %s", client.Model)
 			}
-			
+
 			if client.Provider != types.ProtocolAnthropicMessages {
 				t.Errorf("Expected Provider = %s, got %s", types.ProtocolAnthropicMessages, client.Provider)
 			}

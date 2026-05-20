@@ -363,12 +363,7 @@ type OpenAIClient struct {
 //   - DisableCompression=false: 启用压缩以节省带宽
 func NewOpenAIClient(config types.Input) *OpenAIClient {
 	endpointURL := config.ResolvedEndpointURL()
-
-	// 禁用连接复用以确保每个请求都是独立的
-	transport := &http.Transport{
-		DisableKeepAlives:  true,
-		DisableCompression: false,
-	}
+	transport := newMeasuredTransport(config)
 
 	return &OpenAIClient{
 		httpClient: &http.Client{

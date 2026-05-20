@@ -70,11 +70,11 @@ func TestNewClient(t *testing.T) {
 		{
 			name: "invalid provider",
 			config: types.Input{
-				Protocol: "invalid",
+				Protocol:    "invalid",
 				EndpointURL: "https://api.test.com/v1/anything",
-				ApiKey:   "test-key",
-				Model:    "test-model",
-				Timeout:  30 * time.Second,
+				ApiKey:      "test-key",
+				Model:       "test-model",
+				Timeout:     30 * time.Second,
 			},
 			wantError: true,
 		},
@@ -157,11 +157,11 @@ func TestNewClientWithTimeout(t *testing.T) {
 		{
 			name: "invalid provider with timeout",
 			config: types.Input{
-				Protocol: "invalid",
+				Protocol:    "invalid",
 				EndpointURL: "https://api.test.com/v1/anything",
-				ApiKey:   "test-key",
-				Model:    "test-model",
-				Timeout:  5 * time.Second,
+				ApiKey:      "test-key",
+				Model:       "test-model",
+				Timeout:     5 * time.Second,
 			},
 			wantError: true,
 		},

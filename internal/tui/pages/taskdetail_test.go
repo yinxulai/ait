@@ -3,6 +3,7 @@ package pages
 import (
 	"testing"
 
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -22,5 +23,17 @@ func TestTaskDetailHistoryEntries_SkipsActiveRunDuplicate(t *testing.T) {
 	}
 	if entries[0].RunID != "run-1" {
 		t.Fatalf("RunID: got %q, want %q", entries[0].RunID, "run-1")
+	}
+}
+
+func TestHandleTaskDetailKey_UsesBackNav(t *testing.T) {
+	state := &TaskDetailState{
+		Task:    types.TaskDefinition{ID: "task-1", Name: "task"},
+		BackNav: NavAction{To: NavDashboard},
+	}
+
+	_, _, nav := HandleTaskDetailKey(state, tea.KeyMsg{Type: tea.KeyEsc}, nil)
+	if nav.To != NavDashboard {
+		t.Fatalf("nav.To = %v, want %v", nav.To, NavDashboard)
 	}
 }
