@@ -153,26 +153,42 @@ func renderHeader(st Styles, width int, title, subtitle, meta string, infoLeft, 
 		title = "AIT"
 	}
 
-	// AIT ASCII 字符画（三行，实心彩色渐变）
-	artA := [3]string{"  ██  ", " █  █ ", "██████"} // 可视宽 6
-	artI := [3]string{" █ ", " █ ", " █ "}          // 可视宽 3
-	artT := [3]string{"█████", "  █  ", "  █  "} // 可视宽 5
+	// AIT ASCII 字符画（三行，粗体像素字体，实心彩色）
+	//   A (10)     I (5)    T (10)
+	//    ████       █████   ██████████
+	//   ██  ██        █        ██
+	//  ████████    █████        ██
+	artA := [3]string{
+		"   ████   ", // 可视宽 10
+		"  ██  ██  ", // 可视宽 10
+		" ████████ ", // 可视宽 10
+	}
+	artI := [3]string{
+		"█████", // 可视宽 5
+		"  █  ", // 可视宽 5
+		"█████", // 可视宽 5
+	}
+	artT := [3]string{
+		"██████████", // 可视宽 10
+		"    ██    ", // 可视宽 10
+		"    ██    ", // 可视宽 10
+	}
 
 	styleA := lipgloss.NewStyle().Foreground(colorPink).Bold(true)
 	styleI := lipgloss.NewStyle().Foreground(colorGold).Bold(true)
 	styleT := lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
-	styleSep := lipgloss.NewStyle().Foreground(colorDivider)
+	styleSep := lipgloss.NewStyle().Foreground(colorPink)
 
-	// artVisW = 6+1+3+1+5 = 16; plus " │ " (3) + leading space (1) = total art prefix 20
-	artVisW := 6 + 1 + 3 + 1 + 5
-	artSepW := artVisW + 1 + 3 // art + " " + "│" + " "
+	// artVisW = 10+2+5+2+10 = 29; artSepW = " "(1) + art(29) + " "(1) + "┃"(1) + " "(1) = 33
+	artVisW := 10 + 2 + 5 + 2 + 10
+	artSepW := artVisW + 4
 
 	artRow := func(i int) string {
-		return styleA.Render(artA[i]) + " " + styleI.Render(artI[i]) + " " + styleT.Render(artT[i])
+		return styleA.Render(artA[i]) + "  " + styleI.Render(artI[i]) + "  " + styleT.Render(artT[i])
 	}
-	vsep := styleSep.Render("│")
+	vsep := styleSep.Render("┃")
 
-	wideEnough := w >= 48 // 宽屏才展示 ASCII art
+	wideEnough := w >= 65 // 宽屏才展示 ASCII art
 
 	// ── Line 1: [art row 0] │ title                          [meta badge] ────────
 	right1 := ""

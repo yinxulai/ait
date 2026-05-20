@@ -170,9 +170,9 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 		Hotkeys:         NewPageHotkeys(cbItems, "[↑↓] 选择", "[a] 新建", "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
-
-	content := buildTaskListContent(s, st, frame.InnerWidth, frame.InnerHeight)
-	return l.Assemble(frame.Wrap(st, content), st, width)
+	panel := NewPanelFrame(frame.OuterWidth)
+	content := buildTaskListContent(s, st, panel.InnerWidth, PanelContentHeight(frame.InnerHeight))
+	return l.Assemble(panel.Wrap(st, content), st, width)
 }
 
 // buildTaskListContent 构建任务列表内容区（含表头 + 任务条目）。

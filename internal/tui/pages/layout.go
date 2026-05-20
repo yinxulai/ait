@@ -66,20 +66,21 @@ func (l PageLayout) ChromeHeight() int {
 }
 
 // Frame 统一计算页面主内容区的外层与内层尺寸。
+// 外层无边框，InnerWidth 等于 OuterWidth（内层子面板自行管理各自的边框）。
 func (l PageLayout) Frame(totalW, totalH int) PageFrame {
 	if totalW < 1 {
 		totalW = 1
 	}
 	return PageFrame{
 		OuterWidth:  totalW,
-		InnerWidth:  ContentWidth(totalW),
+		InnerWidth:  totalW,
 		InnerHeight: l.ContentHeight(totalH),
 	}
 }
 
-// Wrap 用统一外层面板包裹页面内容。
-func (f PageFrame) Wrap(st Styles, content string) string {
-	return wrapPanel(st, content, f.OuterWidth)
+// Wrap 保留接口兼容，外层不再添加边框，直接返回内容。
+func (f PageFrame) Wrap(_ Styles, content string) string {
+	return content
 }
 
 // InnerPanel 返回可用于嵌套子面板的统一 frame。
@@ -129,10 +130,10 @@ func (f PanelFrame) Split(leftPercent, minLeftOuter int) (PanelFrame, PanelFrame
 	return NewPanelFrame(leftOuter), NewPanelFrame(rightOuter)
 }
 
-// ContentHeight 返回单面板页面主内容区的可用行数
-// （总高度 - chrome 行数 - 面板上下边框）。
+// ContentHeight 返回页面主内容区的可用行数（总高度 - chrome 行数）。
+// 外层不再有边框，故不扣除 panelBorderV。
 func (l PageLayout) ContentHeight(totalH int) int {
-	h := totalH - l.ChromeHeight() - panelBorderV
+	h := totalH - l.ChromeHeight()
 	if h < 2 {
 		h = 2
 	}

@@ -37,12 +37,12 @@ func TestPageLayoutAssembleRendersSharedChrome(t *testing.T) {
 func TestPageLayoutFrameCalculatesNestedPanelSizes(t *testing.T) {
 	l := PageLayout{}
 	frame := l.Frame(80, 30)
-	if frame.OuterWidth != 80 || frame.InnerWidth != 78 || frame.InnerHeight != 23 {
+	if frame.OuterWidth != 80 || frame.InnerWidth != 80 || frame.InnerHeight != 25 {
 		t.Fatalf("unexpected page frame: %#v", frame)
 	}
 
 	body := frame.InnerPanel()
-	if body.OuterWidth != 78 || body.InnerWidth != 76 {
+	if body.OuterWidth != 80 || body.InnerWidth != 78 {
 		t.Fatalf("unexpected inner panel frame: %#v", body)
 	}
 }

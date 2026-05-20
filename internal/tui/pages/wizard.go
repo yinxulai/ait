@@ -594,9 +594,9 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 		Hotkeys:         NewPageHotkeys(wizardHotkeyItems(wz.Step), "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
-
-	content := buildWizardPageContent(wz, st, frame.InnerWidth, frame.InnerHeight)
-	return l.Assemble(frame.Wrap(st, content), st, width)
+	panel := NewPanelFrame(frame.OuterWidth)
+	content := buildWizardPageContent(wz, st, panel.InnerWidth, PanelContentHeight(frame.InnerHeight))
+	return l.Assemble(panel.Wrap(st, content), st, width)
 }
 
 func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string {
