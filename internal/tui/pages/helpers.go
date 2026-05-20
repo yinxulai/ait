@@ -595,11 +595,11 @@ func maskAPIKey(key string) string {
 func shortProtocol(p string) string {
 	switch p {
 	case "openai-completions":
-		return "completions"
+		return "openai-completions"
 	case "openai-responses":
-		return "responses"
+		return "openai-responses"
 	case "anthropic-messages":
-		return "messages"
+		return "anthropic-messages"
 	default:
 		return p
 	}

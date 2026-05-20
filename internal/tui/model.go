@@ -129,15 +129,18 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case RunStartedMsg:
 		ch, cancel, firstCmd := m.client.SubscribeCmd(msg.RunID)
 		taskMode := m.getTaskMode(msg.TaskID)
+		backNav := pages.NavAction{To: pages.NavTaskDetail, TaskID: msg.TaskID}
 		if taskMode == "turbo" {
 			m.turboDash = pages.NewTurboDashState(msg.RunID, msg.TaskID)
 			m.turboDash.EventCh = ch
 			m.turboDash.CancelFn = cancel
+			m.turboDash.BackNav = backNav
 			m.view = viewTurboDash
 		} else {
 			m.dash = pages.NewDashboardState(msg.RunID, msg.TaskID)
 			m.dash.EventCh = ch
 			m.dash.CancelFn = cancel
+			m.dash.BackNav = backNav
 			m.view = viewDashboard
 		}
 		if m.taskList != nil {
@@ -539,20 +542,6 @@ func (m *Model) currentRunTaskID(isDash bool) string {
 }
 
 func (m *Model) taskDetailBackNav() pages.NavAction {
-	switch m.view {
-	case viewDashboard:
-		if m.dash != nil {
-			return pages.NavAction{To: pages.NavDashboard}
-		}
-	case viewTurboDash:
-		if m.turboDash != nil {
-			return pages.NavAction{To: pages.NavTurboDash}
-		}
-	case viewTaskDetail:
-		if m.detail != nil && m.detail.BackNav.To != pages.NavNone {
-			return m.detail.BackNav
-		}
-	}
 	return pages.NavAction{To: pages.NavTaskList}
 }
 
