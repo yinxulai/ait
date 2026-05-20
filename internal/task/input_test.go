@@ -21,8 +21,14 @@ func TestHydrateInputGeneratedMode(t *testing.T) {
 	if err != nil {
 		t.Fatalf("HydrateInput(generated) returned unexpected error: %v", err)
 	}
-	if input.PromptSource == nil || input.PromptSource.Count() != 1 {
+	if input.PromptSource == nil {
 		t.Fatal("expected generated PromptSource to be created")
+	}
+	if input.PromptSource.Count() <= 1 {
+		t.Fatal("expected generated PromptSource to include multiple user variants")
+	}
+	if input.PromptSource.GetSystemContent() == "" {
+		t.Fatal("expected generated PromptSource to include shared common messages")
 	}
 }
 

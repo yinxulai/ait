@@ -117,15 +117,24 @@ func TestLoadPromptByLength(t *testing.T) {
 				t.Errorf("LoadPromptByLength 不应该设置 IsFile = true")
 			}
 
-			if len(source.Contents) != 1 {
-				t.Errorf("LoadPromptByLength 应该返回 1 个内容，实际返回 %d 个", len(source.Contents))
+			if len(source.Contents) <= 1 {
+				t.Errorf("LoadPromptByLength 应该返回多条用户变体，实际返回 %d 个", len(source.Contents))
 			}
 
-			// 验证内容长度
-			content := source.GetRandomContent()
-			actualLen := utf8.RuneCountInString(content)
-			if actualLen != tt.length {
-				t.Errorf("LoadPromptByLength(%d) 返回内容长度 = %d", tt.length, actualLen)
+			if source.GetSystemContent() == "" {
+				t.Errorf("LoadPromptByLength 应该生成共享公共消息")
+			}
+
+			if strings.Count(source.GetSystemContent(), "\n\n") < 2 {
+				t.Errorf("LoadPromptByLength 应该包含多条公共消息")
+			}
+
+			// 验证单次请求的总长度保持与 length 一致
+			for i, content := range source.Contents {
+				actualLen := utf8.RuneCountInString(source.GetSystemContent()) + utf8.RuneCountInString(content)
+				if actualLen != tt.length {
+					t.Errorf("LoadPromptByLength(%d) 第 %d 条变体总长度 = %d", tt.length, i, actualLen)
+				}
 			}
 
 			// 验证 DisplayText
@@ -143,17 +152,23 @@ func TestPromptSourceWithGeneratedContent(t *testing.T) {
 		t.Fatalf("LoadPromptByLength 失败: %v", err)
 	}
 
-	// 测试多次调用 GetRandomContent 应该返回相同的内容
-	content1 := source.GetRandomContent()
-	content2 := source.GetRandomContent()
-
-	if content1 != content2 {
-		t.Errorf("GetRandomContent 在单内容源时应该返回相同内容")
+	if source.GetSystemContent() == "" {
+		t.Fatal("generated prompt 应包含公共消息")
 	}
 
-	// 测试 Count 方法
-	if source.Count() != 1 {
-		t.Errorf("Count() = %d, 期望 1", source.Count())
+	if source.Count() <= 1 {
+		t.Fatalf("Count() = %d, 期望大于 1", source.Count())
+	}
+
+	content1 := source.GetContentByIndex(0)
+	content2 := source.GetContentByIndex(1)
+	if content1 == content2 {
+		t.Errorf("不同索引的用户消息应该不同，以模拟随机用户消息")
+	}
+
+	totalLen := utf8.RuneCountInString(source.GetSystemContent()) + utf8.RuneCountInString(content1)
+	if totalLen != length {
+		t.Errorf("generated prompt 总长度 = %d, 期望 %d", totalLen, length)
 	}
 }
 

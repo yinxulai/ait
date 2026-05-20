@@ -1,6 +1,7 @@
 package client
 
 import (
+	"encoding/json"
 	"fmt"
 	"net/http"
 	"net/http/httptest"
@@ -244,6 +245,97 @@ func TestAnthropicClient_Request_Stream(t *testing.T) {
 	if metrics.DNSTime < 0 {
 		t.Errorf("Request() DNSTime should be >= 0, got %v", metrics.DNSTime)
 	}
+}
+
+func TestAnthropicClient_Request_SystemPromptUsesCacheControl(t *testing.T) {
+	server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		var body map[string]interface{}
+		if err := json.NewDecoder(r.Body).Decode(&body); err != nil {
+			t.Fatalf("decode request body: %v", err)
+		}
+
+		system, ok := body["system"].([]interface{})
+		if !ok || len(system) != 2 {
+			t.Fatalf("expected 2 system blocks, got %#v", body["system"])
+		}
+
+		lastBlock, ok := system[len(system)-1].(map[string]interface{})
+		if !ok {
+			t.Fatalf("unexpected system block: %#v", system[len(system)-1])
+		}
+		cacheControl, ok := lastBlock["cache_control"].(map[string]interface{})
+		if !ok {
+			t.Fatalf("expected cache_control on last system block, got %#v", lastBlock)
+		}
+		if cacheControl["type"] != "ephemeral" {
+			t.Fatalf("cache_control.type = %#v, want %#v", cacheControl["type"], "ephemeral")
+		}
+
+		w.Header().Set("Content-Type", "application/json")
+		fmt.Fprint(w, `{"id":"test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-3","usage":{"input_tokens":4,"output_tokens":1}}`)
+	}))
+	defer server.Close()
+
+	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
+	if _, err := client.Request("公共消息1\n\n公共消息2", "user prompt", false); err != nil {
+		t.Fatalf("Request() error = %v", err)
+	}
+}
+
+func TestAnthropicClient_Request_PromptTokensIncludeCachedAndCreatedInput(t *testing.T) {
+	t.Run("non-stream", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			fmt.Fprint(w, `{"id":"msg_test","type":"message","role":"assistant","content":[{"type":"text","text":"ok"}],"model":"claude-3-sonnet","usage":{"input_tokens":50,"cache_creation_input_tokens":100,"cache_read_input_tokens":900,"output_tokens":10}}`)
+		}))
+		defer server.Close()
+
+		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
+		metrics, err := client.Request("shared system", "user prompt", false)
+		if err != nil {
+			t.Fatalf("Request() error = %v", err)
+		}
+		if metrics.PromptTokens != 1050 {
+			t.Fatalf("PromptTokens = %d, want %d", metrics.PromptTokens, 1050)
+		}
+		if metrics.CachedInputTokens != 900 {
+			t.Fatalf("CachedInputTokens = %d, want %d", metrics.CachedInputTokens, 900)
+		}
+	})
+
+	t.Run("stream", func(t *testing.T) {
+		server := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			w.Header().Set("Content-Type", "application/json")
+			w.Header().Set("Transfer-Encoding", "chunked")
+
+			flusher, _ := w.(http.Flusher)
+			fmt.Fprint(w, "event: message_start\n")
+			fmt.Fprint(w, `data: {"type":"message_start","message":{"usage":{"input_tokens":40,"cache_creation_input_tokens":160,"cache_read_input_tokens":800,"output_tokens":0}}}`+"\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "event: content_block_delta\n")
+			fmt.Fprint(w, `data: {"type":"content_block_delta","delta":{"type":"text_delta","text":"hello"}}`+"\n\n")
+			flusher.Flush()
+			fmt.Fprint(w, "event: message_delta\n")
+			fmt.Fprint(w, `data: {"type":"message_delta","usage":{"output_tokens":12}}`+"\n\n")
+			flusher.Flush()
+		}))
+		defer server.Close()
+
+		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
+		metrics, err := client.Request("shared system", "user prompt", true)
+		if err != nil {
+			t.Fatalf("Request() error = %v", err)
+		}
+		if metrics.PromptTokens != 1000 {
+			t.Fatalf("PromptTokens = %d, want %d", metrics.PromptTokens, 1000)
+		}
+		if metrics.CachedInputTokens != 800 {
+			t.Fatalf("CachedInputTokens = %d, want %d", metrics.CachedInputTokens, 800)
+		}
+		if metrics.CompletionTokens != 12 {
+			t.Fatalf("CompletionTokens = %d, want %d", metrics.CompletionTokens, 12)
+		}
+	})
 }
 
 func TestAnthropicClient_Request_ServerError(t *testing.T) {

@@ -29,6 +29,7 @@ type AnthropicResponse struct {
 	Model string `json:"model"`
 	Usage struct {
 		InputTokens          int `json:"input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
 		CacheReadInputTokens int `json:"cache_read_input_tokens"`
 		OutputTokens         int `json:"output_tokens"`
 	} `json:"usage"`
@@ -47,6 +48,14 @@ type AnthropicErrorResponse struct {
 type AnthropicStreamChunk struct {
 	Type  string `json:"type"`
 	Index int    `json:"index,omitempty"`
+	Message *struct {
+		Usage *struct {
+			InputTokens              int `json:"input_tokens"`
+			CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+			CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+			OutputTokens             int `json:"output_tokens"`
+		} `json:"usage,omitempty"`
+	} `json:"message,omitempty"`
 	Delta struct {
 		Type string `json:"type"`
 		Text string `json:"text"`
@@ -54,10 +63,41 @@ type AnthropicStreamChunk struct {
 		PartialJSON *string `json:"partial_json,omitempty"`
 	} `json:"delta,omitempty"`
 	Usage *struct {
-		InputTokens          int `json:"input_tokens"`
-		CacheReadInputTokens int `json:"cache_read_input_tokens"`
-		OutputTokens         int `json:"output_tokens"`
+		InputTokens              int `json:"input_tokens"`
+		CacheCreationInputTokens int `json:"cache_creation_input_tokens"`
+		CacheReadInputTokens     int `json:"cache_read_input_tokens"`
+		OutputTokens             int `json:"output_tokens"`
 	} `json:"usage,omitempty"`
+}
+
+func anthropicTextBlock(text string) map[string]interface{} {
+	return map[string]interface{}{
+		"type": "text",
+		"text": text,
+	}
+}
+
+func buildAnthropicSystemBlocks(systemPrompt string) []map[string]interface{} {
+	parts := strings.Split(systemPrompt, "\n\n")
+	blocks := make([]map[string]interface{}, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed == "" {
+			continue
+		}
+		blocks = append(blocks, anthropicTextBlock(trimmed))
+	}
+	if len(blocks) == 0 {
+		return nil
+	}
+	blocks[len(blocks)-1]["cache_control"] = map[string]interface{}{
+		"type": "ephemeral",
+	}
+	return blocks
+}
+
+func anthropicTotalInputTokens(inputTokens, cacheCreationInputTokens, cacheReadInputTokens int) int {
+	return inputTokens + cacheCreationInputTokens + cacheReadInputTokens
 }
 
 // AnthropicClient Anthropic 协议客户端
@@ -117,16 +157,21 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 		"model": c.Model,
 		"messages": []map[string]interface{}{
 			{
-				"role":    "user",
-				"content": userPrompt,
+				"role": "user",
+				"content": []map[string]interface{}{
+					anthropicTextBlock(userPrompt),
+				},
 			},
 		},
 		"stream": stream,
 	}
 
-	// 如果有 system prompt，添加顶层 system 字段（Anthropic API 规范）
+	// Anthropic 的缓存需要显式 cache_control，公共前缀应放在稳定的 system blocks 上。
 	if systemPrompt != "" {
-		requestBody["system"] = systemPrompt
+		systemBlocks := buildAnthropicSystemBlocks(systemPrompt)
+		if len(systemBlocks) > 0 {
+			requestBody["system"] = systemBlocks
+		}
 	}
 
 	// 如果启用了 thinking 模式，添加 thinking 配置
@@ -303,6 +348,7 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 		var fullContent strings.Builder
 		var outputTokens int
 		var inputTokens int
+		var cacheCreationInputTokens int
 		var cachedInputTokens int
 		var streamChunks []string // 用于记录所有流式数据块
 		var rawResponseLines strings.Builder
@@ -339,6 +385,21 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 				if err := json.Unmarshal([]byte(data), &chunk); err != nil {
 					continue // 跳过无法解析的行
 				}
+
+				if chunk.Message != nil && chunk.Message.Usage != nil {
+					if chunk.Message.Usage.InputTokens > 0 {
+						inputTokens = chunk.Message.Usage.InputTokens
+					}
+					if chunk.Message.Usage.CacheCreationInputTokens > 0 {
+						cacheCreationInputTokens = chunk.Message.Usage.CacheCreationInputTokens
+					}
+					if chunk.Message.Usage.CacheReadInputTokens > 0 {
+						cachedInputTokens = chunk.Message.Usage.CacheReadInputTokens
+					}
+					if chunk.Message.Usage.OutputTokens > 0 {
+						outputTokens = chunk.Message.Usage.OutputTokens
+					}
+				}
 				
 				if chunk.Type == "content_block_delta" {
 					// 检查是否有任何形式的内容输出（包括 Text、Thinking 或 PartialJSON）
@@ -363,9 +424,18 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 				
 				// 获取 token 统计信息
 				if chunk.Usage != nil {
-					inputTokens = chunk.Usage.InputTokens
-					cachedInputTokens = chunk.Usage.CacheReadInputTokens
-					outputTokens = chunk.Usage.OutputTokens
+					if chunk.Usage.InputTokens > 0 {
+						inputTokens = chunk.Usage.InputTokens
+					}
+					if chunk.Usage.CacheCreationInputTokens > 0 {
+						cacheCreationInputTokens = chunk.Usage.CacheCreationInputTokens
+					}
+					if chunk.Usage.CacheReadInputTokens > 0 {
+						cachedInputTokens = chunk.Usage.CacheReadInputTokens
+					}
+					if chunk.Usage.OutputTokens > 0 {
+						outputTokens = chunk.Usage.OutputTokens
+					}
 				}
 			}
 		}
@@ -391,11 +461,13 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 				"total_time":         totalTime.String(),
 				"time_to_first_token": firstTokenTime.String(),
 				"input_tokens":       inputTokens,
+				"cache_creation_input_tokens": cacheCreationInputTokens,
 				"cached_input_tokens": cachedInputTokens,
 				"output_tokens":      outputTokens,
 				"full_content":       fullContent.String(),
 			})
 		}
+		promptTokens := anthropicTotalInputTokens(inputTokens, cacheCreationInputTokens, cachedInputTokens)
 		
 		return &ResponseMetrics{
 			TimeToFirstToken:  firstTokenTime,
@@ -404,7 +476,7 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 			ConnectTime:       connectTime,
 			TLSHandshakeTime:  tlsTime,
 			TargetIP:          targetIP,
-			PromptTokens:      inputTokens,
+			PromptTokens:      promptTokens,
 			CachedInputTokens: cachedInputTokens,
 			CompletionTokens:  outputTokens,
 			RequestBody:       string(reqBodyBytes),
@@ -494,11 +566,17 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 				"total_time":     totalTime.String(),
 				"output_tokens":  anthropicResp.Usage.OutputTokens,
 				"input_tokens":   anthropicResp.Usage.InputTokens,
+				"cache_creation_input_tokens": anthropicResp.Usage.CacheCreationInputTokens,
 				"cached_input_tokens": anthropicResp.Usage.CacheReadInputTokens,
 				"response_id":    anthropicResp.ID,
 				"content_length": len(contentText),
 			})
 		}
+		promptTokens := anthropicTotalInputTokens(
+			anthropicResp.Usage.InputTokens,
+			anthropicResp.Usage.CacheCreationInputTokens,
+			anthropicResp.Usage.CacheReadInputTokens,
+		)
 
 		return &ResponseMetrics{
 			TimeToFirstToken:  totalTime, // 非流式模式下，所有token一次性返回，TTFT等于总时间
@@ -507,7 +585,7 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 			ConnectTime:       connectTime,
 			TLSHandshakeTime:  tlsTime,
 			TargetIP:          targetIP,
-			PromptTokens:      anthropicResp.Usage.InputTokens,
+			PromptTokens:      promptTokens,
 			CachedInputTokens: anthropicResp.Usage.CacheReadInputTokens,
 			CompletionTokens:  anthropicResp.Usage.OutputTokens,
 			RequestBody:       string(reqBodyBytes),
