@@ -16,7 +16,7 @@ type PromptSource struct {
 	IsFile         bool     // 是否来自文件
 	FilePaths      []string // 文件路径列表
 	Contents       []string // prompt内容列表（仅用于非文件内容）
-	SystemContent  string   // 固定的系统消息内容（仅 generated 模式使用，用于触发前缀缓存）
+	SystemContent  string   // 可选的系统消息内容；为空时表示不额外发送 system 消息
 	DisplayText    string   // 用于显示的文本
 	ShouldTruncate bool     // 是否需要截断显示（对于已经包含长度信息的内容，不需要再次处理）
 }
@@ -99,8 +99,7 @@ func loadMultipleFiles(pattern string) (*PromptSource, error) {
 	}, nil
 }
 
-// GetSystemContent 返回系统消息内容（固定的大段上下文，用于前缀缓存）。
-// 非 generated 模式返回空字符串，不影响原有请求结构。
+// GetSystemContent 返回系统消息内容；为空时不发送额外的 system 消息。
 func (ps *PromptSource) GetSystemContent() string {
 	return ps.SystemContent
 }
@@ -274,44 +273,22 @@ func GeneratePromptByLength(length int) string {
 
 // LoadPromptByLength 创建指定长度的 PromptSource。
 //
-// 为了让测试中部分请求满足前缀缓存条件（Prefix Cache），内容被拆分为两部分：
-//   - SystemContent（约 90% 长度）：固定不变的大段上下文，作为 system 消息发送；
-//     同一批次所有请求共享相同的 system 消息，API 侧命中前缀缓存后可大幅降低延迟。
-//   - Contents（user 消息候选列表）：多条短问题，每个请求按 index 取模轮流使用，
-//     既保证请求内容有差异，又确保 system 前缀不变以触发缓存。
+// generated 模式的语义是“生成一条指定长度的固定内容”，因此这里返回单内容源。
+// 运行时每个请求都会拿到同一份生成文本；若后续需要 system prompt，应由上层显式建模，
+// 而不是在这里隐式拆分 generated prompt 的含义。
 func LoadPromptByLength(length int) (*PromptSource, error) {
 	if length <= 0 {
 		return nil, fmt.Errorf("prompt 长度必须大于 0")
 	}
-
-	// 90% 作为 system 消息（固定，供缓存命中）
-	systemLen := length * 9 / 10
-	if systemLen < 1 {
-		systemLen = 1
-	}
-	systemContent := GeneratePromptByLength(systemLen)
-	actualSystemLen := utf8.RuneCountInString(systemContent)
-
-	// 短而多样的 user 消息，各请求轮流使用（保证差异 + 共享 system 前缀）
-	userQuestions := []string{
-		"请帮我总结一下上述内容的核心要点。",
-		"根据以上信息，有什么值得特别关注的地方？",
-		"上述内容中最重要的信息是什么？",
-		"请对以上内容进行简短分析。",
-		"上述内容的主要主题是什么，请概括。",
-		"从以上内容中能得出哪些结论？",
-		"以上内容有哪些值得深入探讨的点？",
-		"请提炼上述内容的关键信息。",
-		"对以上内容你有什么看法？",
-		"上述内容对实际应用有什么启示？",
-	}
+	content := GeneratePromptByLength(length)
+	actualLen := utf8.RuneCountInString(content)
 
 	return &PromptSource{
 		IsFile:         false,
 		FilePaths:      nil,
-		Contents:       userQuestions,
-		SystemContent:  systemContent,
-		DisplayText:    fmt.Sprintf("生成内容 (系统消息: %d 字符，轮换用户问题 x%d)", actualSystemLen, len(userQuestions)),
+		Contents:       []string{content},
+		SystemContent:  "",
+		DisplayText:    fmt.Sprintf("生成内容 (%d 字符)", actualLen),
 		ShouldTruncate: false,
 	}, nil
 }
