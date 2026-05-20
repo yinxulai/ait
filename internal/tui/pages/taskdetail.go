@@ -66,8 +66,13 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 	case "enter":
 		if s.HistorySel >= 0 && s.HistorySel < effectiveLen {
 			if hasActive && s.HistorySel == 0 {
-				// 进入正在运行的仪表盘
-				nav = NavAction{To: NavRunDetail, RunID: s.ActiveRun.RunID}
+				// 进入正在运行的仪表盘，直接导航，避免走 FromHistory 路径
+				// （FromHistory 路径会覆盖 dash.BackNav，导致循环：dashboard ↔ taskdetail）
+				if s.ActiveRun.Mode == "turbo" {
+					nav = NavAction{To: NavTurboDash}
+				} else {
+					nav = NavAction{To: NavDashboard}
+				}
 			} else {
 				histIdx := s.HistorySel
 				if hasActive {

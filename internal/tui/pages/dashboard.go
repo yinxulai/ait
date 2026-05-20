@@ -364,7 +364,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		marker := selectionMarker(isSel)
 
 		rowContent := padRight(marker, markW) +
-			padRight(fmt.Sprintf("#%d", r.Index+1), idW) +
+			padRight(fmt.Sprintf("#%d", len(reqs)-pos), idW) +
 			padRight(statusStr, statW) +
 			padRight(totalStr, timeW) +
 			padRight(fmtDuration(r.TTFT), ttftW) +
