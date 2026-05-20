@@ -58,10 +58,12 @@ type ChatCompletionRequest struct {
 }
 
 type ResponsesAPIRequest struct {
-	Model     string                     `json:"model"`
-	Input     string                     `json:"input"`
-	Stream    bool                       `json:"stream,omitempty"`
-	Reasoning *ResponsesReasoningOptions `json:"reasoning,omitempty"`
+	Model        string                     `json:"model"`
+	Input        string                     `json:"input"`
+	Instructions string                     `json:"instructions,omitempty"`
+	Store        bool                       `json:"store,omitempty"`
+	Stream       bool                       `json:"stream,omitempty"`
+	Reasoning    *ResponsesReasoningOptions `json:"reasoning,omitempty"`
 }
 
 // ChatCompletionResponse represents the response from chat completion
@@ -174,14 +176,12 @@ func extractCachedInputTokens(details *PromptTokensDetails) int {
 
 func (c *OpenAIClient) buildRequestBody(systemPrompt, userPrompt string, stream bool) ([]byte, error) {
 	if c.Provider == types.ProtocolOpenAIResponses {
-		input := userPrompt
-		if systemPrompt != "" {
-			input = systemPrompt + "\n\n" + userPrompt
-		}
 		reqBody := ResponsesAPIRequest{
-			Model:  c.Model,
-			Input:  input,
-			Stream: stream,
+			Model:        c.Model,
+			Input:        userPrompt,
+			Instructions: systemPrompt,
+			Store:        true,
+			Stream:       stream,
 		}
 		if c.Thinking {
 			reqBody.Reasoning = &ResponsesReasoningOptions{Effort: "medium"}
