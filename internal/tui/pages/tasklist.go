@@ -117,21 +117,7 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 }
 
 // RenderTaskList 渲染任务列表页。
-//
-// 设计稿布局：
-//
-//	╔══ AIT  任务中心 ══════════════╗
-//	║  ◆ AIT   已保存任务: N   最近运行: xxx ║
-//	╠══════════════════════════════╣
-//	║  任务名称   模式   协议   上次结果      ║
-//	║  ─────────────────────────── ║
-//	║ ▶ ◉ name   标准  responses  ✓ 98.5%  ║
-//	║     model  并发10  请求200  ◉ 47/100  ║
-//	║                              ║
-//	╠══════════════════════════════╣
-//	║  [Enter] 详情  [a] 新建  ...  ║ ← context bar
-//	╠══════════════════════════════╣
-//	║  [↑↓] 选择  [q] 退出  ◆ AIT  ║
+
 //	╚══════════════════════════════╝
 func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 	if TooSmall(width, height) {
@@ -183,10 +169,10 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	// 列宽（gap=2 作为列间距内置到每个非末尾列的宽度中）
 	const (
 		modeW    = 9  // 7 + 2 gap
-		protoW   = 12 // 10 + 2 gap
-		lastRunW = 13 // 11 + 2 gap
-		ttftW    = 12 // 10 + 2 gap
-		tpsW     = 9  // 末尾列，无需额外 gap
+		protoW   = 20 // 10 + 2 gap
+		lastRunW = 16 // 11 + 2 gap
+		ttftW    = 16 // 10 + 2 gap
+		tpsW     = 16  // 末尾列，无需额外 gap
 	)
 	fixedW := 2 + modeW + protoW + lastRunW + ttftW + tpsW
 	nameW := maxInt(10, width-fixedW)
