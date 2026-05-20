@@ -21,6 +21,7 @@ const (
 	NavTurboDash            // 进入 Turbo 仪表盘（需 RunID + TaskID）
 	NavRunDetail            // 从历史记录进入某次运行的仪表盘（需 RunID）
 	NavReqDetail            // 进入请求详情（需 ReqIndex）
+	NavProxy                // 进入代理配置页
 	NavQuit                 // 退出程序
 )
 
@@ -53,4 +54,8 @@ type Client interface {
 	GetRunStateCmd(runID server.RunID) tea.Cmd
 	GetRunStateForHistoryCmd(runID server.RunID, summary *types.TaskRunSummary) tea.Cmd
 	GenerateReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd
+
+	// 全局配置
+	SaveProxyConfigCmd(proxyURL string) tea.Cmd
+	LoadProxyConfigCmd() tea.Cmd
 }

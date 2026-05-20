@@ -22,6 +22,7 @@ const (
 	viewDashboard  viewState = "dashboard"
 	viewTurboDash  viewState = "turbo-dash"
 	viewReqDetail  viewState = "req-detail"
+	viewProxy      viewState = "proxy"
 )
 
 // ─── 根 Model ─────────────────────────────────────────────────────────────────
@@ -38,12 +39,13 @@ type Model struct {
 	err    error
 
 	// 页面局部状态（由 pages 包管理）
-	taskList  *pages.TaskListState
+	taskList   *pages.TaskListState
 	detail    *pages.TaskDetailState
 	wizard    *pages.WizardState
 	dash      *pages.DashboardState
 	turboDash *pages.TurboDashState
 	reqDetail *pages.ReqDetailState
+	proxyConf *pages.ProxyConfigState
 }
 
 // NewModel 创建 Model。srv 不能为 nil。
@@ -193,6 +195,17 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ErrorMsg:
 		m.err = msg.Err
 		return m, nil
+
+	// ── 代理配置 ──
+	case ProxyConfigLoadedMsg:
+		if m.proxyConf != nil {
+			m.proxyConf.URL = msg.ProxyURL
+		}
+		return m, nil
+
+	case ProxyConfigSavedMsg:
+		m.status = "代理配置已保存"
+		return m, nil
 	}
 
 	return m, nil
@@ -219,6 +232,8 @@ func (m *Model) View() string {
 		content = pages.RenderTurboDash(m.turboDash, m.turboDashTaskName(), m.styles, innerW, innerH)
 	case viewReqDetail:
 		content = pages.RenderReqDetail(m.reqDetail, m.reqDetailTaskName(), m.styles, innerW, innerH)
+	case viewProxy:
+		content = pages.RenderProxyConfig(m.proxyConf, m.styles, innerW, innerH)
 	default:
 		content = "未知视图"
 	}
@@ -264,6 +279,12 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		newState, nav := pages.HandleReqDetailKey(m.reqDetail, msg)
 		m.reqDetail = newState
 		return m, m.handleNav(nav)
+
+	case viewProxy:
+		newState, cmd, nav := pages.HandleProxyConfigKey(m.proxyConf, msg, m.client)
+		m.proxyConf = newState
+		navCmd := m.handleNav(nav)
+		return m, tea.Batch(cmd, navCmd)
 	}
 
 	return m, nil
@@ -344,6 +365,11 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 		m.reqDetail = s
 		m.view = viewReqDetail
 		return nil
+
+	case pages.NavProxy:
+		m.proxyConf = pages.NewProxyConfigState("")
+		m.view = viewProxy
+		return m.client.LoadProxyConfigCmd()
 
 	case pages.NavQuit:
 		return tea.Quit

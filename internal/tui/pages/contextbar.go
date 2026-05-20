@@ -35,6 +35,7 @@ func Hotkeys_TaskList_Normal() []HotkeyItem {
 		HotkeyAction("e", "编辑"),
 		HotkeyAction("d", "删除"),
 		HotkeyAction("y", "复制"),
+		HotkeyAction("p", "代理配置"),
 	}
 }
 
@@ -44,6 +45,7 @@ func Hotkeys_TaskList_Running() []HotkeyItem {
 		HotkeyAction("Enter", "查看详情"),
 		HotkeyAction("s", "停止"),
 		HotkeyAction("y", "复制"),
+		HotkeyAction("p", "代理配置"),
 	}
 }
 
@@ -185,5 +187,13 @@ func Hotkeys_ReqDetail() []HotkeyItem {
 		HotkeyAction("b/Esc", "返回仪表盘"),
 		HotkeyAction("↑↓", "滚动"),
 		HotkeyAction("←→", "上/下一条请求"),
+	}
+}
+
+// Hotkeys_ProxyConfig 代理配置页。
+func Hotkeys_ProxyConfig() []HotkeyItem {
+	return []HotkeyItem{
+		HotkeyAction("Enter", "保存"),
+		HotkeyAction("Ctrl+U", "清空"),
 	}
 }

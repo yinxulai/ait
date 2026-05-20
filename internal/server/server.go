@@ -40,6 +40,14 @@ type Server interface {
 
 	// GenerateReport 为已完成的运行生成报告文件，返回文件路径。
 	GenerateReport(runID RunID, format ReportFormat) (string, error)
+
+	// --- 全局配置 ---
+
+	// GetConfig 返回当前全局配置。
+	GetConfig() (*config.Config, error)
+
+	// SetProxyURL 更新并持久化全局代理 URL。
+	SetProxyURL(proxyURL string) error
 }
 
 // serverImpl 是 Server 的具体实现。

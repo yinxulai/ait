@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/client"
+	"github.com/yinxulai/ait/internal/config"
 	"github.com/yinxulai/ait/internal/report"
 	"github.com/yinxulai/ait/internal/runner"
 	"github.com/yinxulai/ait/internal/store"
@@ -225,6 +226,13 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	hydratedInput, err := task.HydrateInput(taskDef.Input)
 	if err != nil {
 		return "", fmt.Errorf("hydrate input: %w", err)
+	}
+
+	// 若任务未单独配置代理，使用全局配置中的代理地址
+	if hydratedInput.ProxyURL == "" {
+		if cfg, err := config.Load(); err == nil {
+			hydratedInput.ProxyURL = cfg.ProxyURL
+		}
 	}
 
 	runID := RunID(fmt.Sprintf("run_%d", time.Now().UnixNano()))

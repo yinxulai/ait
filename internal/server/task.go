@@ -4,6 +4,7 @@ import (
 	"errors"
 	"fmt"
 
+	"github.com/yinxulai/ait/internal/config"
 	storepkg "github.com/yinxulai/ait/internal/store"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -152,4 +153,25 @@ func (s *serverImpl) hasRunningTaskLocked(taskID string) bool {
 		}
 	}
 	return false
+}
+
+// ─── 全局配置 ─────────────────────────────────────────────────────────────────
+
+// GetConfig 返回当前全局配置。
+func (s *serverImpl) GetConfig() (*config.Config, error) {
+	cfg, err := config.Load()
+	if err != nil {
+		return &config.Config{}, nil // 文件不存在时返回空配置
+	}
+	return cfg, nil
+}
+
+// SetProxyURL 更新并持久化全局代理 URL。
+func (s *serverImpl) SetProxyURL(proxyURL string) error {
+	cfg, err := config.Load()
+	if err != nil {
+		cfg = &config.Config{}
+	}
+	cfg.ProxyURL = proxyURL
+	return cfg.Save()
 }

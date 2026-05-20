@@ -21,6 +21,7 @@ type Config struct {
 	SaveAPIKey         bool   `json:"save_api_key"`
 	LastSelectedTaskID string `json:"last_selected_task_id,omitempty"`
 	DefaultProtocol    string `json:"default_protocol,omitempty"`
+	ProxyURL           string `json:"proxy_url,omitempty"`
 }
 
 func Load() (*Config, error) {

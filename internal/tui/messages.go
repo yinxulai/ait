@@ -54,3 +54,13 @@ type ReportGeneratedMsg struct {
 type ErrorMsg struct {
 	Err error
 }
+
+// ProxyConfigLoadedMsg 全局代理配置加载完成。
+type ProxyConfigLoadedMsg struct {
+	ProxyURL string
+}
+
+// ProxyConfigSavedMsg 全局代理配置保存完成。
+type ProxyConfigSavedMsg struct {
+	ProxyURL string
+}

@@ -198,3 +198,26 @@ func (c *Client) GenerateReportCmd(runID server.RunID, format server.ReportForma
 		return ReportGeneratedMsg{RunID: runID, Path: path}
 	}
 }
+
+// ─── 全局配置 ─────────────────────────────────────────────────────────────────
+
+// LoadProxyConfigCmd 异步加载全局代理配置。
+func (c *Client) LoadProxyConfigCmd() tea.Cmd {
+	return func() tea.Msg {
+		cfg, err := c.srv.GetConfig()
+		if err != nil {
+			return ErrorMsg{Err: fmt.Errorf("加载配置失败: %w", err)}
+		}
+		return ProxyConfigLoadedMsg{ProxyURL: cfg.ProxyURL}
+	}
+}
+
+// SaveProxyConfigCmd 异步保存全局代理配置。
+func (c *Client) SaveProxyConfigCmd(proxyURL string) tea.Cmd {
+	return func() tea.Msg {
+		if err := c.srv.SetProxyURL(proxyURL); err != nil {
+			return ErrorMsg{Err: fmt.Errorf("保存代理配置失败: %w", err)}
+		}
+		return ProxyConfigSavedMsg{ProxyURL: proxyURL}
+	}
+}

@@ -3,6 +3,7 @@ package tui
 import (
 	"testing"
 
+	"github.com/yinxulai/ait/internal/config"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/tui/pages"
 	"github.com/yinxulai/ait/internal/types"
@@ -31,6 +32,8 @@ func (s *stubServer) GetHistory(taskID string, limit int) ([]types.TaskRunSummar
 func (s *stubServer) GenerateReport(runID server.RunID, fmt server.ReportFormat) (string, error) {
 	return "", nil
 }
+func (s *stubServer) GetConfig() (*config.Config, error)  { return &config.Config{}, nil }
+func (s *stubServer) SetProxyURL(proxyURL string) error   { return nil }
 
 // ─── NewModel ─────────────────────────────────────────────────────────────────
 

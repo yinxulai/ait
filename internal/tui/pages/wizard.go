@@ -267,11 +267,6 @@ func step1Fields() []fieldDef {
 			set: func(wz *WizardState, v string) { wz.EndpointURL = v },
 		},
 		{
-			kind: fieldText, label: "代理地址",
-			get: func(wz *WizardState) string { return wz.ProxyURL },
-			set: func(wz *WizardState, v string) { wz.ProxyURL = v },
-		},
-		{
 			kind: fieldText, label: "API 密钥",
 			get: func(wz *WizardState) string { return wz.APIKey },
 			set: func(wz *WizardState, v string) { wz.APIKey = v },
@@ -760,7 +755,6 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 		endpointDisplay = types.DefaultEndpointURL(wz.Protocol)
 	}
 	addRow("接口地址", endpointDisplay, st.Value)
-	addRow("代理地址", wizardFallback(wz.ProxyURL, "直连"), st.Value)
 	addRow("API 密钥", wizardFallback(maskAPIKey(wz.APIKey), "未填写"), st.Value)
 	addRow("测试模型", wizardFallback(wz.Model, "未填写"), st.Value)
 

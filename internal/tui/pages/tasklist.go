@@ -75,6 +75,9 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 	case "a":
 		nav = NavAction{To: NavWizard, EditTask: nil}
 
+	case "p":
+		nav = NavAction{To: NavProxy}
+
 	case "e":
 		if t, ok := s.CurrentTask(); ok {
 			nav = NavAction{To: NavWizard, EditTask: &t}
