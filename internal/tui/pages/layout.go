@@ -7,11 +7,11 @@ import "strings"
 const (
 	// MinWidth / MinHeight：低于此值时显示"窗口过小"提示而非正常页面。
 	MinWidth  = 40
-	MinHeight = 10
+	MinHeight = 12
 
-	// chrome 各组成部分的行数（仅保留单条合并底栏）
-	chromeHeaderH = 0 // 顶部 header 已移除
-	chromeFooterH = 1 // 单行底部状态栏（含上下文操作 + 全局导航，已合并）
+	// chrome 各组成部分的行数（三行 AppHeader + 双行 Hotkeys）
+	chromeHeaderH  = 3
+	chromeHotkeysH = 2
 
 	// panelBorderV 是单个面板的上下边框行数之和。
 	panelBorderV = 2
@@ -19,16 +19,114 @@ const (
 
 // ── PageLayout ────────────────────────────────────────────────────────────────
 
-// PageLayout 描述一个完整页面的 chrome（底部 ContextBar + Footer）。
-// 各页面 Render 函数先构造 PageLayout，再调用 Assemble 拼装最终输出。
+// PageLayout 描述一个完整页面的共享 chrome（AppHeader + Hotkeys）。
+// 各页面 Render 函数只提供标题、状态信息和底部 Hotkeys，Assemble 负责统一拼装。
 type PageLayout struct {
-	CtxItems    []ContextBarItem
-	FooterParts []string
+	HeaderTitle     string
+	HeaderSubtitle  string
+	HeaderMeta      string
+	HeaderInfoLeft  []string
+	HeaderInfoRight []string
+	Hotkeys         PageHotkeys
 }
 
-// ChromeHeight 返回 chrome 占用的总行数（当前仅包含合并底栏）。
+// PageHotkeys 描述页面底部统一的 Hotkeys 区域。
+// Hotkeys 用于当前页快捷操作，Hints 用于返回、退出等全局提示。
+type PageHotkeys struct {
+	Hotkeys []HotkeyItem
+	Hints   []HotkeyItem
+}
+
+// NewPageHotkeys 用于构建统一的页面 Hotkeys。
+func NewPageHotkeys(hotkeys []HotkeyItem, hints ...string) PageHotkeys {
+	return PageHotkeys{
+		Hotkeys: hotkeys,
+		Hints:   HotkeyTexts(hints...),
+	}
+}
+
+// PageFrame 描述页面主内容区的统一尺寸。
+// OuterWidth 是最外层内容面板总宽度，InnerWidth/InnerHeight 是面板内部可用区域。
+type PageFrame struct {
+	OuterWidth  int
+	InnerWidth  int
+	InnerHeight int
+}
+
+// PanelFrame 描述嵌套子面板的统一尺寸。
+// OuterWidth 是含边框总宽度，InnerWidth 是面板内可用宽度。
+type PanelFrame struct {
+	OuterWidth int
+	InnerWidth int
+}
+
+// ChromeHeight 返回 chrome 占用的总行数。
 func (l PageLayout) ChromeHeight() int {
-	return chromeHeaderH + chromeFooterH
+	return chromeHeaderH + chromeHotkeysH
+}
+
+// Frame 统一计算页面主内容区的外层与内层尺寸。
+func (l PageLayout) Frame(totalW, totalH int) PageFrame {
+	if totalW < 1 {
+		totalW = 1
+	}
+	return PageFrame{
+		OuterWidth:  totalW,
+		InnerWidth:  ContentWidth(totalW),
+		InnerHeight: l.ContentHeight(totalH),
+	}
+}
+
+// Wrap 用统一外层面板包裹页面内容。
+func (f PageFrame) Wrap(st Styles, content string) string {
+	return wrapPanel(st, content, f.OuterWidth)
+}
+
+// InnerPanel 返回可用于嵌套子面板的统一 frame。
+func (f PageFrame) InnerPanel() PanelFrame {
+	return NewPanelFrame(f.InnerWidth)
+}
+
+// NewPanelFrame 创建一个统一的子面板尺寸描述。
+func NewPanelFrame(outerW int) PanelFrame {
+	if outerW < 1 {
+		outerW = 1
+	}
+	return PanelFrame{OuterWidth: outerW, InnerWidth: ContentWidth(outerW)}
+}
+
+// Wrap 用统一子面板包裹内容。
+func (f PanelFrame) Wrap(st Styles, content string) string {
+	return wrapPanel(st, content, f.OuterWidth)
+}
+
+// Split 按比例拆分左右子面板宽度，避免各页重复手写宽度和最小值逻辑。
+func (f PanelFrame) Split(leftPercent, minLeftOuter int) (PanelFrame, PanelFrame) {
+	total := f.OuterWidth
+	if total <= 1 {
+		return NewPanelFrame(total), NewPanelFrame(1)
+	}
+	if leftPercent <= 0 || leftPercent >= 100 {
+		leftPercent = 50
+	}
+	if minLeftOuter < 1 {
+		minLeftOuter = 1
+	}
+
+	leftOuter := total * leftPercent / 100
+	if leftOuter < minLeftOuter {
+		leftOuter = minLeftOuter
+	}
+	if leftOuter >= total {
+		leftOuter = total - 1
+	}
+	rightOuter := total - leftOuter
+	if rightOuter < 1 {
+		rightOuter = 1
+		leftOuter = total - rightOuter
+	}
+
+	return NewPanelFrame(leftOuter), NewPanelFrame(rightOuter)
 }
 
 // ContentHeight 返回单面板页面主内容区的可用行数
@@ -51,23 +149,46 @@ func ContentWidth(totalW int) int {
 	return w
 }
 
-// Assemble 拼装完整页面输出：
-//
-//	content
-//	底栏（上下文操作 · 全局导航，合并为单行）
-func (l PageLayout) Assemble(content string, st Styles, width int) string {
-	// 将上下文操作与全局导航合并为单条底栏，用 · 分隔
-	var barParts []string
-	for _, item := range l.CtxItems {
-		barParts = append(barParts, "["+item.Key+"] "+item.Desc)
+// PanelContentHeight 将含边框高度转换为子面板可用内容高度。
+func PanelContentHeight(outerH int) int {
+	h := outerH - panelBorderV
+	if h < 1 {
+		h = 1
 	}
-	if len(l.CtxItems) > 0 && len(l.FooterParts) > 0 {
-		barParts = append(barParts, "·")
-	}
-	barParts = append(barParts, l.FooterParts...)
-	footer := renderFooter(st, width, barParts...)
+	return h
+}
 
-	return strings.Join([]string{content, footer}, "\n")
+// RemainingStackOuterHeight 计算纵向堆叠场景下，最后一个区块可用的外层高度。
+// 会统一扣除前置区块自身高度，以及区块之间的换行间隔，避免各页重复手写偏移逻辑。
+func RemainingStackOuterHeight(totalH int, fixedOuterHeights ...int) int {
+	remaining := totalH - len(fixedOuterHeights)
+	for _, h := range fixedOuterHeights {
+		remaining -= h
+	}
+	minOuterHeight := panelBorderV + 1
+	if remaining < minOuterHeight {
+		remaining = minOuterHeight
+	}
+	return remaining
+}
+
+// joinVerticalBlocks 统一拼接纵向区块，避免各页自行处理空块和换行。
+func joinVerticalBlocks(blocks ...string) string {
+	var visible []string
+	for _, block := range blocks {
+		if block != "" {
+			visible = append(visible, block)
+		}
+	}
+	return strings.Join(visible, "\n")
+}
+
+// Assemble 拼装完整页面输出：header + content + hotkeys。
+func (l PageLayout) Assemble(content string, st Styles, width int) string {
+	header := renderHeader(st, width, l.HeaderTitle, l.HeaderSubtitle, l.HeaderMeta, l.HeaderInfoLeft, l.HeaderInfoRight)
+	hotkeys := renderHotkeys(st, width, l.Hotkeys)
+
+	return strings.Join([]string{header, content, hotkeys}, "\n")
 }
 
 // ── 最小尺寸保护 ──────────────────────────────────────────────────────────────

@@ -161,7 +161,7 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	t := s.Task
 	inp := t.Input
 
-	var cbItems []ContextBarItem
+	var cbItems []HotkeyItem
 	hasActive := s.ActiveRun != nil
 	effectiveLen := len(taskDetailHistoryEntries(s))
 	if hasActive {
@@ -169,35 +169,48 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	}
 	switch {
 	case hasActive:
-		cbItems = CtxBar_TaskDetail_Running()
+		cbItems = Hotkeys_TaskDetail_Running()
 	case effectiveLen > 0:
-		cbItems = CtxBar_TaskDetail_HasHistory()
+		cbItems = Hotkeys_TaskDetail_HasHistory()
 	default:
-		cbItems = CtxBar_TaskDetail_NoHistory()
+		cbItems = Hotkeys_TaskDetail_NoHistory()
+	}
+	modeStr := "标准模式"
+	if inp.Turbo {
+		modeStr = "Turbo 模式"
+	}
+	headerRight := []string{"暂无运行记录"}
+	historyCount := len(taskDetailHistoryEntries(s))
+	if historyCount > 0 {
+		headerRight = []string{fmt.Sprintf("历史 %d 条", historyCount)}
+	}
+	if hasActive {
+		headerRight = append([]string{"运行中"}, headerRight...)
 	}
 	l := PageLayout{
-		CtxItems:    cbItems,
-		FooterParts: []string{"[b/Esc] 返回上一页", "◆ AIT  v0.1"},
+		HeaderTitle:     truncate(t.Name, 28),
+		HeaderSubtitle:  "查看任务配置、当前运行状态与历史记录",
+		HeaderMeta:      "任务详情",
+		HeaderInfoLeft:  []string{modeStr, inp.NormalizedProtocol()},
+		HeaderInfoRight: headerRight,
+		Hotkeys:         NewPageHotkeys(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
 	}
+	frame := l.Frame(width, height)
 
-	content := buildTaskDetailContent(s, st, t, inp, ContentWidth(width), l.ContentHeight(height))
-	return l.Assemble(wrapPanel(st, content, width), st, width)
+	content := buildTaskDetailContent(s, st, t, inp, frame.InnerWidth, frame.InnerHeight)
+	return l.Assemble(frame.Wrap(st, content), st, width)
 }
 
 // buildTaskDetailContent 构建任务详情内容区（左右双栏布局）。
 // 左栏（40%）：配置摘要  右栏（60%）：历史运行记录
 func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinition, inp types.Input, width, maxH int) string {
-	leftW := width * 4 / 10
-	if leftW < 26 {
-		leftW = 26
-	}
-	rightW := width - leftW - 1 // 1 列用于 │ 分隔符
+	bodyPanel := NewPanelFrame(width)
+	leftPanelFrame, rightPanelFrame := bodyPanel.Split(40, 28)
+	panelContentH := PanelContentHeight(maxH)
 
 	// ─── 左栏：配置摘要 ─────────────────────────────────────────
-	var leftLines []string
-	leftLines = append(leftLines, padRight(" "+st.SectionHead.Render("配置摘要"), leftW))
-	leftLines = append(leftLines, padRight(st.Divider.Render(strings.Repeat("─", leftW)), leftW))
-	leftLines = append(leftLines, padRight("", leftW))
+	leftW := leftPanelFrame.InnerWidth
+	leftLines := panelTitleLines(st, "配置摘要", leftW, false)
 
 	proto := inp.NormalizedProtocol()
 	leftLines = append(leftLines, padRight(" "+st.Label.Render("协议")+"  "+st.Value.Render(proto), leftW))
@@ -233,12 +246,12 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	leftLines = append(leftLines, padRight(" "+st.Label.Render("流式")+"  "+st.Value.Render(boolLabel(inp.Stream)), leftW))
 	prompt := promptSummary(inp.PromptMode, inp.PromptText, inp.PromptFile, inp.PromptLength)
 	leftLines = append(leftLines, padRight(" "+st.Label.Render("Prompt")+"  "+st.Value.Render(truncate(prompt, leftW-12)), leftW))
+	leftContent := finishPanelLines(leftLines, panelContentH)
 
 	// ─── 右栏：历史运行记录 ─────────────────────────────────────
-	var rightLines []string
+	rightW := rightPanelFrame.InnerWidth
+	rightLines := panelTitleLines(st, "历史运行记录", rightW, false)
 	historyEntries := taskDetailHistoryEntries(s)
-	rightLines = append(rightLines, padRight(" "+st.SectionHead.Render("历史运行记录"), rightW))
-	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
 
 	hasActive := s.ActiveRun != nil
 	effectiveLen := len(historyEntries)
@@ -256,7 +269,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	)
 	hdr := padRight("", markW) + padRight("", statW) + padRight("时间", timeW) + padRight("模式", modeW) +
 		padRight("成功率", rateW) + padRight("TTFT", ttftW) + "TPS"
-	rightLines = append(rightLines, padRight(renderTableHeader(st, rightW, hdr), rightW))
+	rightLines = append(rightLines, renderTableHeader(st, rightW, hdr))
 	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
 
 	if effectiveLen == 0 {
@@ -277,13 +290,13 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 				detailLines = buildTaskHistoryDetailLines(historyEntries, histIdx, st, rightW)
 			}
 		}
-		tableMaxH := maxH - len(detailLines)
+		tableMaxH := panelContentH - len(detailLines)
 		if tableMaxH < 5 {
-			allowedDetail := maxInt(0, maxH-5)
+			allowedDetail := maxInt(0, panelContentH-5)
 			if len(detailLines) > allowedDetail {
 				detailLines = detailLines[:allowedDetail]
 			}
-			tableMaxH = maxH - len(detailLines)
+			tableMaxH = panelContentH - len(detailLines)
 		}
 		s.HistoryVis = listVisibleItems(tableMaxH, 4)
 		s.HistoryOff = ensureVisibleOffset(s.HistorySel, effectiveLen, s.HistoryOff, s.HistoryVis)
@@ -354,20 +367,8 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 		}
 		rightLines = append(rightLines, detailLines...)
 	}
-
-	// ─── 合并双栏 ──────────────────────────────────────────────
-	for len(leftLines) < maxH {
-		leftLines = append(leftLines, padRight("", leftW))
-	}
-	for len(rightLines) < maxH {
-		rightLines = append(rightLines, padRight("", rightW))
-	}
-	sep := st.Divider.Render("│")
-	var combined []string
-	for i := 0; i < maxH; i++ {
-		combined = append(combined, leftLines[i]+sep+rightLines[i])
-	}
-	return strings.Join(combined, "\n")
+	rightContent := finishPanelLines(rightLines, panelContentH)
+	return renderSplitPanels(st, leftPanelFrame, rightPanelFrame, leftContent, rightContent)
 }
 
 // buildMetricRow 构建指标表格一行。

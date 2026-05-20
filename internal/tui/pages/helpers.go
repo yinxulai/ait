@@ -130,88 +130,344 @@ func fmtRelativeTime(t time.Time) string {
 
 // ─── 布局工具 ─────────────────────────────────────────────────────────────────
 
-// renderHeader 渲染顶部双行标题栏。
-// 第一行：◆ brand（粉色）│ 页面标题（青色），深色背景
-// 第二行：infoLeft（左）/ infoRight（右），较暗色背景
-func renderHeader(st Styles, width int, titleLeft, titleRight, infoLeft, infoRight string) string {
+// AppVersion 是展示在 AppHeader 中的版本字符串，由 SetAppVersion 在启动时设置。
+var AppVersion = "dev"
+
+// SetAppVersion 更新 AppHeader 中展示的版本字符串。
+func SetAppVersion(v string) { AppVersion = v }
+
+// renderHeader 渲染统一 AppHeader（三行）。
+// 第一行：AIT ASCII 字符画 + 页面标题 | meta 徽章
+// 第二行：AIT 字符画第二行 + 子标题 | 版本徽章
+// 第三行：AIT 字符画第三行 + 左信息 chips | 右信息 chips
+func renderHeader(st Styles, width int, title, subtitle, meta string, infoLeft, infoRight []string) string {
 	w := width
 	if w < 1 {
 		w = 80
 	}
 
-	// Line 1: avoid nested Render() fragments to prevent ANSI reset from breaking background.
-	brand := titleLeft
-	pageTitle := ""
-	if idx := strings.Index(titleLeft, "  "); idx >= 0 {
-		brand = titleLeft[:idx]
-		pageTitle = strings.TrimSpace(titleLeft[idx:])
+	title = truncate(strings.TrimSpace(title), maxInt(12, w/2))
+	subtitle = truncate(strings.TrimSpace(subtitle), maxInt(16, w/2))
+	meta = truncate(strings.TrimSpace(meta), maxInt(10, w/4))
+	if title == "" {
+		title = "AIT"
 	}
 
-	brandSeg := lipgloss.NewStyle().
-		Background(colorHeaderBg).
-		Foreground(colorPink).
-		Bold(true).
-		Render(" ◆ " + brand)
-	sepSeg := lipgloss.NewStyle().
-		Background(colorHeaderBg).
-		Foreground(colorDivider).
-		Render("  │  ")
-	titleSeg := lipgloss.NewStyle().
-		Background(colorHeaderBg).
-		Foreground(colorCyan).
-		Bold(true).
-		Render(pageTitle)
+	// AIT ASCII 字符画（三行，实心彩色渐变）
+	artA := [3]string{"  ██  ", " █  █ ", "██████"} // 可视宽 6
+	artI := [3]string{" █ ", " █ ", " █ "}          // 可视宽 3
+	artT := [3]string{"█████", "  █  ", "  █  "} // 可视宽 5
 
-	left1 := brandSeg
-	if pageTitle != "" {
-		left1 += sepSeg + titleSeg
+	styleA := lipgloss.NewStyle().Foreground(colorPink).Bold(true)
+	styleI := lipgloss.NewStyle().Foreground(colorGold).Bold(true)
+	styleT := lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
+	styleSep := lipgloss.NewStyle().Foreground(colorDivider)
+
+	// artVisW = 6+1+3+1+5 = 16; plus " │ " (3) + leading space (1) = total art prefix 20
+	artVisW := 6 + 1 + 3 + 1 + 5
+	artSepW := artVisW + 1 + 3 // art + " " + "│" + " "
+
+	artRow := func(i int) string {
+		return styleA.Render(artA[i]) + " " + styleI.Render(artI[i]) + " " + styleT.Render(artT[i])
 	}
+	vsep := styleSep.Render("│")
+
+	wideEnough := w >= 48 // 宽屏才展示 ASCII art
+
+	// ── Line 1: [art row 0] │ title                          [meta badge] ────────
 	right1 := ""
-	if titleRight != "" {
+	if meta != "" {
 		right1 = lipgloss.NewStyle().
-			Background(colorHeaderBg).
-			Foreground(colorMuted).
-			Render(titleRight + " ")
+			Background(colorCyan).Foreground(colorHeaderBg).Bold(true).Padding(0, 1).
+			Render(meta) + " "
 	}
-	left1W := lipgloss.Width(left1)
-	right1W := lipgloss.Width(right1)
-	pad1 := w - left1W - right1W
-	if pad1 < 0 {
-		pad1 = 0
+	var left1 string
+	if wideEnough {
+		titleSeg := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Render(title)
+		left1 = " " + artRow(0) + " " + vsep + " " + titleSeg
+	} else {
+		brandPill := lipgloss.NewStyle().Background(colorPink).Foreground(colorHeaderBg).Bold(true).Padding(0, 1).Render("AIT")
+		titlePill := lipgloss.NewStyle().Foreground(colorWhite).Bold(true).Padding(0, 1).Render(title)
+		left1 = " " + lipgloss.JoinHorizontal(lipgloss.Center, brandPill, titlePill)
 	}
-	padSeg := lipgloss.NewStyle().
-		Background(colorHeaderBg).
-		Render(strings.Repeat(" ", pad1))
-	line1 := left1 + padSeg + right1
+	line1 := renderChromeLine(st.Header, w, left1, right1)
 
-	// ─ Line 2: info bar ─
-	il := "  " + infoLeft
-	ir := infoRight + " "
-	ilW := lipgloss.Width(il)
-	irW := lipgloss.Width(ir)
-	pad2 := w - ilW - irW
-	if pad2 < 0 {
-		pad2 = 0
+	// ── Line 2: [art row 1] │ subtitle                    [version badge] ──────
+	verBadge := lipgloss.NewStyle().
+		Background(colorPurple).Foreground(colorWhite).Padding(0, 1).
+		Render("v" + AppVersion) + " "
+	var left2 string
+	if wideEnough {
+		subSeg := ""
+		if subtitle != "" {
+			subSeg = lipgloss.NewStyle().
+				Background(colorHotkeysPrimaryBg).Foreground(colorWhite).Padding(0, 1).
+				Render(subtitle)
+		}
+		left2 = " " + artRow(1) + " " + vsep + " " + subSeg
+	} else {
+		if subtitle != "" {
+			left2 = " " + lipgloss.NewStyle().
+				Background(colorHotkeysPrimaryBg).Foreground(colorWhite).Padding(0, 1).
+				Render(subtitle)
+		}
 	}
-	line2 := st.HeaderInfo.Width(w).Render(il + strings.Repeat(" ", pad2) + ir)
+	line2 := renderChromeLine(st.Header, w, left2, verBadge)
+
+	// ── Line 3: [art row 2] │ infoLeft chips              infoRight chips ───
+	var left3 string
+	if wideEnough {
+		artPart := " " + artRow(2) + " " + vsep
+		availW := maxInt(8, w-artSepW-2-maxInt(10, w/3))
+		if leftPills := renderInfoPills(infoLeft, availW); leftPills != "" {
+			left3 = artPart + " " + leftPills
+		} else {
+			left3 = artPart
+		}
+	} else {
+		if leftPills := renderInfoPills(infoLeft, maxInt(8, w/3)); leftPills != "" {
+			left3 = " " + leftPills
+		}
+	}
+	right3 := ""
+	if pills := renderInfoPills(infoRight, maxInt(10, w/3)); pills != "" {
+		right3 = pills + " "
+	}
+	line3 := renderChromeLine(st.HeaderInfo, w, left3, right3)
+
+	return line1 + "\n" + line2 + "\n" + line3
+}
+
+// renderHotkeys 渲染统一页面 Hotkeys。
+// 第一行展示当前页快捷操作，第二行展示返回/退出等全局上下文与应用标识。
+func renderHotkeys(st Styles, width int, hk PageHotkeys) string {
+	w := width
+	if w < 1 {
+		w = 80
+	}
+
+	hkLine := renderPrimaryHotkeyItems(hk.Hotkeys, maxInt(8, w-4))
+	line1 := renderChromeLine(st.HotkeysPrimary, w, " "+hkLine, "")
+
+	appStamp := lipgloss.NewStyle().Foreground(colorPink).Bold(true).Render("AIT") +
+		lipgloss.NewStyle().Foreground(colorMuted).Render("  终端 · "+time.Now().Format("15:04"))
+	left2 := renderSecondaryHotkeyItems(hk.Hints, maxInt(8, w-lipgloss.Width(appStamp)-4))
+	line2 := renderChromeLine(st.HotkeysSecondary, w, " "+left2, appStamp+" ")
 
 	return line1 + "\n" + line2
 }
 
-// renderFooter 渲染底部状态栏（单行，深色背景）。
-func renderFooter(st Styles, width int, parts ...string) string {
-	w := width
-	if w < 1 {
-		w = 80
+func renderChromeLine(base lipgloss.Style, width int, left, right string) string {
+	leftW := lipgloss.Width(left)
+	rightW := lipgloss.Width(right)
+	pad := width - leftW - rightW
+	if pad < 0 {
+		pad = 0
 	}
-	var visible []string
-	for _, p := range parts {
-		if p != "" {
-			visible = append(visible, p)
+	return base.Width(width).Render(left + strings.Repeat(" ", pad) + right)
+}
+
+func renderInfoPills(parts []string, maxW int) string {
+	parts = nonEmptyParts(parts)
+	if len(parts) == 0 {
+		return ""
+	}
+
+	var rendered []string
+	for _, part := range parts {
+		rendered = append(rendered, lipgloss.NewStyle().
+			Background(lipgloss.Color("239")).
+			Foreground(colorHeaderFg).
+			Padding(0, 1).
+			Render(truncate(part, 28)))
+	}
+	return fitRenderedParts(rendered, " ", maxW)
+}
+
+func renderPrimaryHotkeyItems(items []HotkeyItem, maxW int) string {
+	if len(items) == 0 {
+		return lipgloss.NewStyle().
+			Background(lipgloss.Color("239")).
+			Foreground(colorMuted).
+			Padding(0, 1).
+			Render("当前页暂无快捷操作")
+	}
+
+	var rendered []string
+	for _, item := range items {
+		if item.Key == "" && item.Desc == "" {
+			if item.Text == "" {
+				continue
+			}
+			rendered = append(rendered, lipgloss.NewStyle().
+				Background(lipgloss.Color("239")).
+				Foreground(colorWhite).
+				Padding(0, 1).
+				Render(item.Text))
+			continue
+		}
+		keySeg := lipgloss.NewStyle().
+			Background(colorGold).
+			Foreground(colorHeaderBg).
+			Bold(true).
+			Padding(0, 1).
+			Render(item.Key)
+		descSeg := lipgloss.NewStyle().
+			Background(lipgloss.Color("239")).
+			Foreground(colorWhite).
+			Padding(0, 1).
+			Render(item.Desc)
+		rendered = append(rendered, lipgloss.JoinHorizontal(lipgloss.Center, keySeg, descSeg))
+	}
+	return fitRenderedParts(rendered, "  ", maxW)
+}
+
+func renderSecondaryHotkeyItems(items []HotkeyItem, maxW int) string {
+	var parts []string
+	for _, item := range items {
+		text := strings.TrimSpace(item.Text)
+		if text == "" && (item.Key != "" || item.Desc != "") {
+			switch {
+			case item.Key != "" && item.Desc != "":
+				text = "[" + item.Key + "] " + item.Desc
+			case item.Key != "":
+				text = item.Key
+			default:
+				text = item.Desc
+			}
+		}
+		if text != "" {
+			parts = append(parts, text)
 		}
 	}
-	line := "  " + strings.Join(visible, "   ")
-	return st.Footer.Width(w).Render(line)
+	return fitPlainParts(parts, "   •   ", maxW)
+}
+
+func fitRenderedParts(parts []string, sep string, maxW int) string {
+	visible := nonEmptyParts(parts)
+	if len(visible) == 0 {
+		return ""
+	}
+	if maxW <= 0 {
+		return strings.Join(visible, sep)
+	}
+
+	var chosen []string
+	used := 0
+	sepW := lipgloss.Width(sep)
+	for _, part := range visible {
+		partW := lipgloss.Width(part)
+		extra := partW
+		if len(chosen) > 0 {
+			extra += sepW
+		}
+		if len(chosen) > 0 && used+extra > maxW {
+			break
+		}
+		chosen = append(chosen, part)
+		used += extra
+	}
+	if len(chosen) == 0 {
+		return visible[0]
+	}
+	return strings.Join(chosen, sep)
+}
+
+func fitPlainParts(parts []string, sep string, maxW int) string {
+	visible := nonEmptyParts(parts)
+	if len(visible) == 0 {
+		return ""
+	}
+	if maxW <= 0 {
+		return strings.Join(visible, sep)
+	}
+
+	var chosen []string
+	used := 0
+	sepW := lipgloss.Width(sep)
+	for _, part := range visible {
+		part = truncate(part, maxW)
+		partW := lipgloss.Width(part)
+		extra := partW
+		if len(chosen) > 0 {
+			extra += sepW
+		}
+		if len(chosen) > 0 && used+extra > maxW {
+			break
+		}
+		chosen = append(chosen, part)
+		used += extra
+	}
+	if len(chosen) == 0 {
+		return truncate(visible[0], maxW)
+	}
+	return strings.Join(chosen, sep)
+}
+
+func nonEmptyParts(parts []string) []string {
+	var visible []string
+	for _, part := range parts {
+		part = strings.TrimSpace(part)
+		if part != "" {
+			visible = append(visible, part)
+		}
+	}
+	return visible
+}
+
+func runStatusText(status string) string {
+	switch strings.ToLower(strings.TrimSpace(status)) {
+	case "running":
+		return "运行中"
+	case "completed":
+		return "已完成"
+	case "failed":
+		return "运行失败"
+	case "stopped":
+		return "已停止"
+	case "":
+		return "等待数据"
+	default:
+		return status
+	}
+}
+
+func panelTitleLines(st Styles, title string, width int, compact bool) []string {
+	var rendered string
+	if width > 0 {
+		rendered = st.PanelHead.Width(width).Render(" " + title)
+	} else {
+		rendered = st.PanelHead.Render(" " + title)
+	}
+	lines := []string{rendered}
+	if !compact {
+		lines = append(lines, "")
+	}
+	return lines
+}
+
+func finishPanelLines(lines []string, maxH int) string {
+	if maxH < 1 {
+		maxH = 1
+	}
+	if len(lines) > maxH {
+		lines = lines[:maxH]
+	}
+	for len(lines) < maxH {
+		lines = append(lines, "")
+	}
+	return strings.Join(lines[:maxH], "\n")
+}
+
+func renderSplitPanels(st Styles, leftFrame, rightFrame PanelFrame, leftContent, rightContent string) string {
+	leftPanel := leftFrame.Wrap(st, leftContent)
+	rightPanel := rightFrame.Wrap(st, rightContent)
+	return lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+}
+
+func normalizeInlineText(s string) string {
+	replacer := strings.NewReplacer("\r", " ", "\n", " ", "\t", " ")
+	return strings.Join(strings.Fields(replacer.Replace(s)), " ")
 }
 
 // renderTableHeader 统一渲染列表表头。
@@ -298,89 +554,6 @@ func styleWhenNotSelected(isSel bool, style lipgloss.Style, text string) string 
 		return text
 	}
 	return style.Render(text)
-}
-
-// renderWelcomeHero 渲染任务中心顶部的品牌欢迎区。
-func renderWelcomeHero(st Styles, width int) []string {
-	if width < 42 {
-		return nil
-	}
-
-	art := []string{
-		"    _    ___ _____",
-		"   / \\  |_ _|_   _|",
-		"  / _ \\  | |  | |  ",
-		" / ___ \\ | |  | |  ",
-		"/_/   \\_\\___| |_|  ",
-	}
-	artStyles := []lipgloss.Style{
-		lipgloss.NewStyle().Foreground(colorPink).Bold(true),
-		lipgloss.NewStyle().Foreground(colorCyan).Bold(true),
-		lipgloss.NewStyle().Foreground(colorGold).Bold(true),
-		lipgloss.NewStyle().Foreground(colorTeal).Bold(true),
-		lipgloss.NewStyle().Foreground(colorPurple).Bold(true),
-	}
-
-	type heroTextLine struct {
-		style lipgloss.Style
-		text  string
-	}
-	intro := []heroTextLine{
-		{style: st.SectionHead, text: "AI 模型性能测试工作台"},
-		{style: st.Value, text: "批量压测 OpenAI / Anthropic 协议模型，聚焦 TTFT、TPS、缓存与网络指标。"},
-		{style: st.Muted, text: "从任务中心出发：创建任务、直接运行、查看执行记录、导出报告。"},
-		{style: st.Muted, text: "[a] 新建任务   [Enter] 查看详情/进入仪表盘   [r] 立即运行"},
-	}
-
-	artW := 0
-	for _, line := range art {
-		artW = maxInt(artW, lipgloss.Width(line))
-	}
-
-	if width >= 76 {
-		gap := 3
-		rightW := maxInt(18, width-artW-gap)
-		wrapped := make([]string, 0, 8)
-		for i, line := range intro {
-			segments := wrapText(line.text, rightW)
-			if len(segments) == 0 {
-				segments = []string{""}
-			}
-			for _, segment := range segments {
-				wrapped = append(wrapped, line.style.Render(segment))
-			}
-			if i == 0 {
-				wrapped = append(wrapped, "")
-			}
-		}
-
-		total := maxInt(len(art), len(wrapped))
-		lines := make([]string, 0, total)
-		for i := 0; i < total; i++ {
-			left := strings.Repeat(" ", artW)
-			if i < len(art) {
-				left = artStyles[i].Render(art[i])
-			}
-			right := ""
-			if i < len(wrapped) {
-				right = wrapped[i]
-			}
-			lines = append(lines, padRight(left, artW)+strings.Repeat(" ", gap)+right)
-		}
-		return lines
-	}
-
-	lines := make([]string, 0, len(art)+len(intro)+1)
-	for i, line := range art {
-		lines = append(lines, artStyles[i].Render(line))
-	}
-	lines = append(lines, "")
-	for _, line := range intro {
-		for _, segment := range wrapText(line.text, width) {
-			lines = append(lines, line.style.Render(segment))
-		}
-	}
-	return lines
 }
 
 // wrapIndex 循环索引（保证 0 ≤ result < count）。

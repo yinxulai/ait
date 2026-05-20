@@ -64,6 +64,9 @@ func Run(srv server.Server) error {
 	return err
 }
 
+// SetVersion 设置 AppHeader 中显示的版本字符串，应在 Run 之前调用。
+func SetVersion(v string) { pages.SetAppVersion(v) }
+
 // ─── BubbleTea 接口 ───────────────────────────────────────────────────────────
 
 func (m *Model) Init() tea.Cmd {

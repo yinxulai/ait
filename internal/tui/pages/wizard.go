@@ -558,44 +558,50 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 	if wz == nil {
 		return renderTooSmall(st, width, height)
 	}
-
-	l := PageLayout{
-		CtxItems:    wizardContextItems(wz.Step),
-		FooterParts: []string{"[q] 退出", "◆ AIT  v0.1"},
-	}
-
-	content := buildWizardPageContent(wz, st, ContentWidth(width), l.ContentHeight(height))
-	return l.Assemble(wrapPanel(st, content, width), st, width)
-}
-
-func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string {
 	stepTitles := []string{"基本信息", "测试参数", "确认保存"}
 	stepDescs := []string{
 		"配置任务名称、模型协议和连接信息。",
 		"选择压测模式，并补全并发与 Prompt 参数。",
 		"保存前快速检查关键配置。",
 	}
+	stepTitle := stepTitles[int(wz.Step)]
+	headerLeft := []string{stepTitle}
+	if wz.Protocol != "" {
+		headerLeft = append(headerLeft, strings.ToUpper(wz.Protocol))
+	}
+	headerRight := []string{}
+	if wz.Step >= wizardStep2 {
+		if wz.Turbo {
+			headerRight = append(headerRight, "Turbo 模式")
+		} else {
+			headerRight = append(headerRight, "标准模式")
+		}
+	}
+	if wz.Model != "" {
+		headerRight = append(headerRight, "模型 "+truncate(wz.Model, 18))
+	}
 	action := "创建任务"
 	if wz.EditingID != "" {
 		action = "编辑任务"
 	}
-	stepTitle := stepTitles[int(wz.Step)]
-	stepDesc := stepDescs[int(wz.Step)]
 
-	titleLeft := st.SectionHead.Render(action)
-	titleRight := st.Muted.Render(fmt.Sprintf("步骤 %d/3 · %s", int(wz.Step)+1, stepTitle))
+	l := PageLayout{
+		HeaderTitle:     action,
+		HeaderSubtitle:  stepDescs[int(wz.Step)],
+		HeaderMeta:      fmt.Sprintf("步骤 %d/3", int(wz.Step)+1),
+		HeaderInfoLeft:  headerLeft,
+		HeaderInfoRight: headerRight,
+		Hotkeys:         NewPageHotkeys(wizardHotkeyItems(wz.Step), "[q] 退出"),
+	}
+	frame := l.Frame(width, height)
+
+	content := buildWizardPageContent(wz, st, frame.InnerWidth, frame.InnerHeight)
+	return l.Assemble(frame.Wrap(st, content), st, width)
+}
+
+func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string {
 	var topLines []string
-	if lipgloss.Width(titleLeft)+lipgloss.Width(titleRight)+2 <= width {
-		topLines = append(topLines, titleLeft+strings.Repeat(" ", width-lipgloss.Width(titleLeft)-lipgloss.Width(titleRight))+titleRight)
-	} else {
-		topLines = append(topLines, titleLeft, titleRight)
-	}
-	if maxH >= 8 {
-		for _, line := range wrapText(stepDesc, width) {
-			topLines = append(topLines, st.Muted.Render(line))
-		}
-	}
-	if maxH >= 10 && width >= 46 {
+	if maxH >= 8 && width >= 46 {
 		topLines = append(topLines, renderWizardStepStrip(wz.Step))
 	}
 
@@ -614,7 +620,7 @@ func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string 
 	if len(topLines) > maxTopH {
 		topLines = topLines[:maxTopH]
 	}
-	if maxH >= 6 {
+	if len(topLines) > 0 && maxH >= 6 {
 		topLines = append(topLines, dividerLine(st, width))
 	}
 
@@ -871,14 +877,14 @@ func appendWizardSummaryRow(lines *[]string, st Styles, label, value string, wid
 	}
 }
 
-func wizardContextItems(step wizardStep) []ContextBarItem {
+func wizardHotkeyItems(step wizardStep) []HotkeyItem {
 	switch step {
 	case wizardStep1:
-		return CtxBar_Wizard_Step1()
+		return Hotkeys_Wizard_Step1()
 	case wizardStep2:
-		return CtxBar_Wizard_Step2()
+		return Hotkeys_Wizard_Step2()
 	default:
-		return CtxBar_Wizard_Step3()
+		return Hotkeys_Wizard_Step3()
 	}
 }
 

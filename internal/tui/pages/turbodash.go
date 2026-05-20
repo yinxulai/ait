@@ -151,58 +151,71 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 
 	isRunning := d.IsRunning()
 	hasSel := d.LevelSel >= 0 && rs != nil && d.LevelSel < len(rs.Levels)
-	var cbItems []ContextBarItem
+	var cbItems []HotkeyItem
 	switch {
 	case hasSel && isRunning:
-		cbItems = CtxBar_TurboDash_Running_Sel()
+		cbItems = Hotkeys_TurboDash_Running_Sel()
 	case hasSel && !isRunning:
-		cbItems = CtxBar_TurboDash_Done_Sel()
+		cbItems = Hotkeys_TurboDash_Done_Sel()
 	case !hasSel && isRunning:
-		cbItems = CtxBar_TurboDash_Running_NoSel()
+		cbItems = Hotkeys_TurboDash_Running_NoSel()
 	default:
-		cbItems = CtxBar_TurboDash_Done_NoSel()
+		cbItems = Hotkeys_TurboDash_Done_NoSel()
+	}
+	headerLeft := []string{"等待数据"}
+	headerRight := []string{}
+	if rs != nil {
+		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("完成 %d/%d", rs.DoneReqs, rs.TotalReqs)}
+		currentLevel := rs.CurrentLevel + 1
+		if currentLevel < 1 {
+			currentLevel = 1
+		}
+		headerRight = []string{fmt.Sprintf("级别 %d", currentLevel)}
+		if len(rs.Levels) > 0 {
+			headerRight = append(headerRight, fmt.Sprintf("已探测 %d 档", len(rs.Levels)))
+		}
+	}
+	if d.TaskID != "" {
+		headerRight = append(headerRight, "任务 "+truncate(d.TaskID, 14))
 	}
 	l := PageLayout{
-		CtxItems:    cbItems,
-		FooterParts: []string{"[b/Esc] 返回上一页", "[q] 退出"},
+		HeaderTitle:     "Turbo 探测监控",
+		HeaderSubtitle:  "观察并发爬坡过程、级别指标与稳定区间",
+		HeaderMeta:      "Turbo 模式",
+		HeaderInfoLeft:  headerLeft,
+		HeaderInfoRight: headerRight,
+		Hotkeys:         NewPageHotkeys(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
 	}
-	innerW := ContentWidth(width)
-	innerH := l.ContentHeight(height)
+	frame := l.Frame(width, height)
+	bodyPanel := frame.InnerPanel()
 
 	// ── 计算高度 ──
-	splitH := 9
-	progressPanel := 3
-	levelListH := innerH - splitH - progressPanel - 2
-	if levelListH < 3 {
-		levelListH = 3
-	}
+	splitOuterH := 9
+	progressOuterH := 3
+	levelOuterH := RemainingStackOuterHeight(frame.InnerHeight, splitOuterH, progressOuterH)
+	levelListH := PanelContentHeight(levelOuterH)
 
 	// ── 双栏面板（任务参数 | 当前级别指标）──
-	leftW := innerW * 45 / 100
-	rightW := innerW - leftW
-	leftContent := buildTurboDashParams(rs, st, splitH-2, leftW-2)
-	rightContent := buildTurboDashMetrics(rs, st, splitH-2, rightW-2)
-	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
-	rightPanel := st.Panel.Width(rightW - 2).Render(rightContent)
-	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+	leftPanelFrame, rightPanelFrame := bodyPanel.Split(45, 24)
+	leftContent := buildTurboDashParams(rs, st, PanelContentHeight(splitOuterH), leftPanelFrame.InnerWidth)
+	rightContent := buildTurboDashMetrics(rs, st, PanelContentHeight(splitOuterH), rightPanelFrame.InnerWidth)
+	split := renderSplitPanels(st, leftPanelFrame, rightPanelFrame, leftContent, rightContent)
 
 	// ── 进度条面板 ──
-	progressLine := buildTurboProgressLine(rs, st, ContentWidth(innerW))
-	progressPanelStr := wrapPanel(st, progressLine, innerW)
+	progressLine := buildTurboProgressLine(rs, st, bodyPanel.InnerWidth)
+	progressPanelStr := bodyPanel.Wrap(st, progressLine)
 
 	// ── 级别列表面板 ──
-	levelList := buildLevelList(d, rs, st, ContentWidth(innerW), levelListH)
-	levelPanelStr := wrapPanel(st, levelList, innerW)
+	levelList := buildLevelList(d, rs, st, bodyPanel.InnerWidth, levelListH)
+	levelPanelStr := bodyPanel.Wrap(st, levelList)
 
-	content := strings.Join([]string{split, progressPanelStr, levelPanelStr}, "\n")
-	return l.Assemble(wrapPanel(st, content, width), st, width)
+	content := joinVerticalBlocks(split, progressPanelStr, levelPanelStr)
+	return l.Assemble(frame.Wrap(st, content), st, width)
 }
 
 // buildTurboDashParams 构建 Turbo 仪表盘左侧任务参数面板。
 func buildTurboDashParams(rs *server.RunState, st Styles, maxH, width int) string {
-	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("任务参数"))
-	lines = append(lines, "")
+	lines := panelTitleLines(st, "任务参数", width, false)
 
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
@@ -215,10 +228,7 @@ func buildTurboDashParams(rs *server.RunState, st Styles, maxH, width int) strin
 		}
 	}
 
-	for len(lines) < maxH {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines[:maxH], "\n")
+	return finishPanelLines(lines, maxH)
 }
 
 // buildTurboDashMetrics 构建 Turbo 仪表盘右侧当前级别实时指标面板。
@@ -229,8 +239,7 @@ func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) stri
 	if rs != nil {
 		curLevel = rs.CurrentLevel
 	}
-	lines = append(lines, " "+st.SectionHead.Render(fmt.Sprintf("当前级别实时指标 [并发 = %d]", curLevel)))
-	lines = append(lines, "")
+	lines = panelTitleLines(st, fmt.Sprintf("当前级别实时指标 [并发 = %d]", curLevel), width, false)
 
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
@@ -241,10 +250,7 @@ func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) stri
 		lines = append(lines, " "+labelValue(st, "Cache   ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
 	}
 
-	for len(lines) < maxH {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines[:maxH], "\n")
+	return finishPanelLines(lines, maxH)
 }
 
 // buildTurboProgressLine 构建 Turbo 模式进度条行。
@@ -276,15 +282,11 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 
 // buildLevelList 构建 Turbo 级别列表区域。
 func buildLevelList(d *TurboDashState, rs *server.RunState, st Styles, width, maxH int) string {
-	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("级别列表"))
+	lines := panelTitleLines(st, "级别列表", width, true)
 
 	if rs == nil || len(rs.Levels) == 0 {
 		lines = append(lines, " "+st.Muted.Render("等待第一个级别完成..."))
-		for len(lines) < maxH {
-			lines = append(lines, "")
-		}
-		return strings.Join(lines, "\n")
+		return finishPanelLines(lines, maxH)
 	}
 
 	// 列宽（header 与 content 行保持一致，前缀均为 2 字符）
@@ -349,8 +351,5 @@ func buildLevelList(d *TurboDashState, rs *server.RunState, st Styles, width, ma
 		}
 	}
 
-	for len(lines) < maxH {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines[:maxH], "\n")
+	return finishPanelLines(lines, maxH)
 }

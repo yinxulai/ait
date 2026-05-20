@@ -138,32 +138,46 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 		return renderTooSmall(st, width, height)
 	}
 
-	var cbItems []ContextBarItem
+	var cbItems []HotkeyItem
 	if t, ok := s.CurrentTask(); ok {
 		if s.IsTaskRunning(t.ID) {
-			cbItems = CtxBar_TaskList_Running()
+			cbItems = Hotkeys_TaskList_Running()
 		} else {
-			cbItems = CtxBar_TaskList_Normal()
+			cbItems = Hotkeys_TaskList_Normal()
+		}
+	} else {
+		cbItems = []HotkeyItem{HotkeyAction("a", "新建任务")}
+	}
+	runningCount := 0
+	for _, rs := range s.ActiveRuns {
+		if rs != nil && rs.Status == server.RunStatusRunning {
+			runningCount++
 		}
 	}
-	l := PageLayout{
-		CtxItems:    cbItems,
-		FooterParts: []string{"[↑↓] 选择", "[a] 新建", "[q] 退出", "◆ AIT  v0.1"},
+	headerRight := []string{"暂无运行历史"}
+	if latest := s.latestRunAt(); latest != nil {
+		headerRight = []string{"最近运行 " + fmtRelativeTime(*latest)}
 	}
+	if t, ok := s.CurrentTask(); ok {
+		headerRight = append([]string{"当前 " + truncate(t.Name, 22)}, headerRight...)
+	}
+	l := PageLayout{
+		HeaderTitle:     "任务中心",
+		HeaderSubtitle:  "创建任务、运行压测、查看执行记录与导出报告",
+		HeaderMeta:      fmt.Sprintf("%d 个任务", len(s.Tasks)),
+		HeaderInfoLeft:  []string{fmt.Sprintf("运行中 %d", runningCount)},
+		HeaderInfoRight: headerRight,
+		Hotkeys:         NewPageHotkeys(cbItems, "[↑↓] 选择", "[a] 新建", "[q] 退出"),
+	}
+	frame := l.Frame(width, height)
 
-	content := buildTaskListContent(s, st, ContentWidth(width), l.ContentHeight(height))
-	return l.Assemble(wrapPanel(st, content, width), st, width)
+	content := buildTaskListContent(s, st, frame.InnerWidth, frame.InnerHeight)
+	return l.Assemble(frame.Wrap(st, content), st, width)
 }
 
 // buildTaskListContent 构建任务列表内容区（含表头 + 任务条目）。
 func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	var lines []string
-	showHero := width >= 60 && maxH >= 14
-	if showHero {
-		heroLines := renderWelcomeHero(st, width)
-		lines = append(lines, heroLines...)
-		lines = append(lines, dividerLine(st, width))
-	}
 	listTopLines := len(lines)
 
 	// 列宽（gap=2 作为列间距内置到每个非末尾列的宽度中）

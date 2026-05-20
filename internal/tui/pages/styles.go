@@ -4,22 +4,22 @@ import "github.com/charmbracelet/lipgloss"
 
 // Color palette
 const (
-	colorHeaderBg  = lipgloss.Color("17")  // dark navy — refined header background
-	colorFooterBg  = lipgloss.Color("235") // near-black footer background
-	colorCtxBarBg  = lipgloss.Color("237") // slightly lighter than footer — context bar
-	colorPink      = lipgloss.Color("205") // vivid hot pink/magenta — brand primary
-	colorCyan      = lipgloss.Color("86")  // bright aquamarine — table headers
-	colorPurple    = lipgloss.Color("99")  // medium violet
-	colorPurpleDim = lipgloss.Color("60")  // slate purple — selected row bg
-	colorGreen     = lipgloss.Color("78")  // vivid spring green — ok/success
-	colorRed       = lipgloss.Color("204") // vivid rose-red — error/fail
-	colorYellow    = lipgloss.Color("221") // warm yellow — metric values
-	colorTeal      = lipgloss.Color("111") // periwinkle-teal — labels
-	colorWhite     = lipgloss.Color("255") // bright white
-	colorMuted     = lipgloss.Color("245") // muted gray
-	colorGold      = lipgloss.Color("214") // amber
-	colorHeaderFg  = lipgloss.Color("248") // light gray — header info text
-	colorDivider   = lipgloss.Color("241") // dim border gray — slightly more visible
+	colorHeaderBg           = lipgloss.Color("17")  // dark navy — refined header background
+	colorHotkeysSecondaryBg = lipgloss.Color("235") // near-black secondary hotkeys background
+	colorHotkeysPrimaryBg   = lipgloss.Color("237") // slightly lighter primary hotkeys background
+	colorPink               = lipgloss.Color("205") // vivid hot pink/magenta — brand primary
+	colorCyan               = lipgloss.Color("86")  // bright aquamarine — table headers
+	colorPurple             = lipgloss.Color("99")  // medium violet
+	colorPurpleDim          = lipgloss.Color("60")  // slate purple — selected row bg
+	colorGreen              = lipgloss.Color("78")  // vivid spring green — ok/success
+	colorRed                = lipgloss.Color("204") // vivid rose-red — error/fail
+	colorYellow             = lipgloss.Color("221") // warm yellow — metric values
+	colorTeal               = lipgloss.Color("111") // periwinkle-teal — labels
+	colorWhite              = lipgloss.Color("255") // bright white
+	colorMuted              = lipgloss.Color("245") // muted gray
+	colorGold               = lipgloss.Color("214") // amber
+	colorHeaderFg           = lipgloss.Color("248") // light gray — header info text
+	colorDivider            = lipgloss.Color("241") // dim border gray — slightly more visible
 )
 
 // Styles 汇聚所有 TUI 样式，由 NewStyles() 初始化。
@@ -27,8 +27,9 @@ type Styles struct {
 	Panel       lipgloss.Style
 	Header      lipgloss.Style
 	HeaderInfo  lipgloss.Style
-	Footer      lipgloss.Style
-	CtxBar      lipgloss.Style
+	HotkeysSecondary lipgloss.Style
+	HotkeysPrimary   lipgloss.Style
+	PanelHead        lipgloss.Style
 	SectionHead lipgloss.Style
 	TableHead   lipgloss.Style
 	TableRow    lipgloss.Style
@@ -57,14 +58,18 @@ func NewStyles() Styles {
 			Foreground(colorWhite).
 			Bold(true),
 		HeaderInfo: lipgloss.NewStyle().
-			Background(colorHeaderBg).
+			Background(colorHotkeysPrimaryBg).
 			Foreground(colorHeaderFg),
-		Footer: lipgloss.NewStyle().
-			Background(colorFooterBg).
+		HotkeysSecondary: lipgloss.NewStyle().
+			Background(colorHotkeysSecondaryBg).
 			Foreground(colorMuted),
-		CtxBar: lipgloss.NewStyle().
-			Background(colorCtxBarBg).
+		HotkeysPrimary: lipgloss.NewStyle().
+			Background(colorHotkeysPrimaryBg).
 			Foreground(colorWhite),
+		PanelHead: lipgloss.NewStyle().
+			Background(lipgloss.Color("234")).
+			Foreground(colorPink).
+			Bold(true),
 		SectionHead: lipgloss.NewStyle().
 			Foreground(colorPink).
 			Bold(true),

@@ -173,58 +173,67 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 
 	isRunning := d.IsRunning()
 	hasSel := d.ReqSel >= 0 && rs != nil && d.ReqSel < len(rs.Requests)
-	var cbItems []ContextBarItem
+	var cbItems []HotkeyItem
 	switch {
 	case hasSel && isRunning:
-		cbItems = CtxBar_Dashboard_Running_Sel()
+		cbItems = Hotkeys_Dashboard_Running_Sel()
 	case hasSel && !isRunning:
-		cbItems = CtxBar_Dashboard_Done_Sel()
+		cbItems = Hotkeys_Dashboard_Done_Sel()
 	case !hasSel && isRunning:
-		cbItems = CtxBar_Dashboard_Running_NoSel()
+		cbItems = Hotkeys_Dashboard_Running_NoSel()
 	default:
-		cbItems = CtxBar_Dashboard_Done_NoSel()
+		cbItems = Hotkeys_Dashboard_Done_NoSel()
+	}
+	headerLeft := []string{"等待数据"}
+	headerRight := []string{}
+	if rs != nil {
+		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("完成 %d/%d", rs.DoneReqs, rs.TotalReqs)}
+		headerRight = []string{fmt.Sprintf("成功率 %.1f%%", rs.SuccessRate)}
+		if !rs.StartedAt.IsZero() {
+			headerRight = append(headerRight, "开始 "+fmtRelativeTime(rs.StartedAt))
+		}
+	}
+	if d.TaskID != "" {
+		headerRight = append(headerRight, "任务 "+truncate(d.TaskID, 14))
 	}
 	l := PageLayout{
-		CtxItems:    cbItems,
-		FooterParts: []string{"[b/Esc] 返回上一页", "[q] 退出"},
+		HeaderTitle:     "标准运行监控",
+		HeaderSubtitle:  "实时查看运行进度、吞吐和单请求明细",
+		HeaderMeta:      "标准模式",
+		HeaderInfoLeft:  headerLeft,
+		HeaderInfoRight: headerRight,
+		Hotkeys:         NewPageHotkeys(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
 	}
-	innerW := ContentWidth(width)
-	innerH := l.ContentHeight(height)
+	frame := l.Frame(width, height)
+	bodyPanel := frame.InnerPanel()
 
 	// ── 计算高度 ──
-	splitH := 9      // 双栏面板外部总高度（含面板边框）
-	progressPanel := 3 // 进度条面板外部高度（1内容+2边框）
-	reqListH := innerH - splitH - progressPanel - 2 // -2 for req panel border
-	if reqListH < 3 {
-		reqListH = 3
-	}
+	splitOuterH := 9    // 双栏面板外部总高度（含面板边框）
+	progressOuterH := 3 // 进度条面板外部高度（1内容+2边框）
+	reqOuterH := RemainingStackOuterHeight(frame.InnerHeight, splitOuterH, progressOuterH)
+	reqListH := PanelContentHeight(reqOuterH)
 
 	// ── 双栏面板（任务参数 | 实时指标）──
-	leftW := innerW * 45 / 100
-	rightW := innerW - leftW
-	leftContent := buildDashParamsPanel(d, rs, st, splitH-2, leftW-2)
-	rightContent := buildDashMetricsPanel(rs, st, splitH-2, rightW-2)
-	leftPanel := st.Panel.Width(leftW - 2).Render(leftContent)
-	rightPanel := st.Panel.Width(rightW - 2).Render(rightContent)
-	split := lipgloss.JoinHorizontal(lipgloss.Top, leftPanel, rightPanel)
+	leftPanelFrame, rightPanelFrame := bodyPanel.Split(45, 24)
+	leftContent := buildDashParamsPanel(d, rs, st, PanelContentHeight(splitOuterH), leftPanelFrame.InnerWidth)
+	rightContent := buildDashMetricsPanel(rs, st, PanelContentHeight(splitOuterH), rightPanelFrame.InnerWidth)
+	split := renderSplitPanels(st, leftPanelFrame, rightPanelFrame, leftContent, rightContent)
 
 	// ── 进度条面板 ──
-	progressLine := buildProgressLine(rs, st, ContentWidth(innerW))
-	progressPanelStr := wrapPanel(st, progressLine, innerW)
+	progressLine := buildProgressLine(rs, st, bodyPanel.InnerWidth)
+	progressPanelStr := bodyPanel.Wrap(st, progressLine)
 
 	// ── 请求列表面板 ──
-	reqList := buildRequestList(d, rs, st, ContentWidth(innerW), reqListH)
-	reqPanelStr := wrapPanel(st, reqList, innerW)
+	reqList := buildRequestList(d, rs, st, bodyPanel.InnerWidth, reqListH)
+	reqPanelStr := bodyPanel.Wrap(st, reqList)
 
-	content := strings.Join([]string{split, progressPanelStr, reqPanelStr}, "\n")
-	return l.Assemble(wrapPanel(st, content, width), st, width)
+	content := joinVerticalBlocks(split, progressPanelStr, reqPanelStr)
+	return l.Assemble(frame.Wrap(st, content), st, width)
 }
 
 // buildDashParamsPanel 构建左侧任务参数面板。
 func buildDashParamsPanel(d *DashboardState, rs *server.RunState, st Styles, maxH, width int) string {
-	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("运行进度"))
-	lines = append(lines, "")
+	lines := panelTitleLines(st, "运行进度", width, false)
 
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
@@ -235,17 +244,12 @@ func buildDashParamsPanel(d *DashboardState, rs *server.RunState, st Styles, max
 		lines = append(lines, " "+labelValue(st, "失败", fmt.Sprintf("%d", rs.FailedReqs)))
 	}
 
-	for len(lines) < maxH {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines[:maxH], "\n")
+	return finishPanelLines(lines, maxH)
 }
 
 // buildDashMetricsPanel 构建右侧实时指标面板。
 func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) string {
-	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("实时指标"))
-	lines = append(lines, "")
+	lines := panelTitleLines(st, "实时指标", width, false)
 
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
@@ -261,10 +265,7 @@ func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) stri
 		lines = append(lines, " "+st.Muted.Render(fmt.Sprintf(" 成功: %d   失败: %d", rs.SuccessReqs, rs.FailedReqs)))
 	}
 
-	for len(lines) < maxH {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines[:maxH], "\n")
+	return finishPanelLines(lines, maxH)
 }
 
 // buildProgressLine 构建进度条行。
@@ -303,8 +304,7 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 
 // buildRequestList 构建请求列表区域。
 func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, maxH int) string {
-	var lines []string
-	lines = append(lines, " "+st.SectionHead.Render("请求列表"))
+	lines := panelTitleLines(st, "请求列表", width, true)
 
 	if rs == nil || len(rs.Requests) == 0 {
 		msg := "等待请求..."
@@ -312,10 +312,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 			msg = "无请求详情数据"
 		}
 		lines = append(lines, " "+st.Muted.Render(msg))
-		for len(lines) < maxH {
-			lines = append(lines, "")
-		}
-		return strings.Join(lines, "\n")
+		return finishPanelLines(lines, maxH)
 	}
 
 	// 列宽（header 与 content 行保持一致，前缀均为 2 字符）
@@ -384,10 +381,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		}
 	}
 
-	for len(lines) < maxH {
-		lines = append(lines, "")
-	}
-	return strings.Join(lines[:maxH], "\n")
+	return finishPanelLines(lines, maxH)
 }
 
 func requestDisplayPos(reqIndex, total int) int {

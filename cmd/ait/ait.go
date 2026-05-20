@@ -98,6 +98,7 @@ func main() {
 	}
 
 	// ── 启动 TUI ──────────────────────────────────────────────────────────────
+	tui.SetVersion(Version)
 	if err := tui.Run(srv); err != nil {
 		fmt.Fprintf(os.Stderr, "TUI 启动失败: %v\n", err)
 		os.Exit(1)
