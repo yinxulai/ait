@@ -93,7 +93,22 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.taskList == nil {
 			m.taskList = pages.NewTaskListState()
 		}
+		// 刷新前记录当前选中任务的 ID，刷新后保持光标指向同一任务。
+		// 任务列表按 UpdatedAt 排序，编辑/复制任务后顺序会变化，若只靠下标
+		// 定位会导致光标悄悄滑到别的任务上，进入错误任务的详情页。
+		var prevID string
+		if t, ok := m.taskList.CurrentTask(); ok {
+			prevID = t.ID
+		}
 		m.taskList.Tasks = msg.Tasks
+		if prevID != "" {
+			for i, t := range msg.Tasks {
+				if t.ID == prevID {
+					m.taskList.Selected = i
+					break
+				}
+			}
+		}
 		if m.taskList.Selected >= len(msg.Tasks) {
 			m.taskList.Selected = max(len(msg.Tasks)-1, 0)
 		}
@@ -310,7 +325,8 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 			} else {
 				m.detail = pages.NewTaskDetailState(*task)
 			}
-		} else if m.detail == nil {
+		} else {
+			// 目标任务不在列表中（已删除或列表尚未加载），中止导航
 			return nil
 		}
 		if m.detail != nil {
