@@ -17,18 +17,40 @@ type TurboDashState struct {
 	EventCh  <-chan server.Event
 	CancelFn server.CancelFunc
 	RunState *server.RunState
-	LevelSel int       // 选中的级别索引（-1 = 无选中）
-	LevelOff int
-	LevelVis int
+	ReqSel   int       // 选中请求索引（-1 = 无选中）
+	ReqOff   int       // 滚动偏移
+	ReqVis   int       // 当前可见请求数
 	BackNav  NavAction // 按 b/esc 时的返回目标；Zero = 返回任务列表
+}
+
+// AdjustReqOffset 根据屏幕显示顺序调整列表可见窗口。
+func (d *TurboDashState) AdjustReqOffset(visH, total int) {
+	if d == nil {
+		return
+	}
+	if visH < 3 {
+		visH = 3
+	}
+	if total <= 0 || d.ReqSel < 0 {
+		d.ReqOff = 0
+		return
+	}
+	sel := requestDisplayPos(d.ReqSel, total)
+	off := d.ReqOff
+	if sel < off {
+		off = sel
+	} else if sel >= off+visH {
+		off = sel - visH + 1
+	}
+	d.ReqOff = clampInt(off, 0, maxInt(0, total-visH))
 }
 
 // NewTurboDashState 创建 Turbo 仪表盘初始状态。
 func NewTurboDashState(runID server.RunID, taskID string) *TurboDashState {
 	return &TurboDashState{
-		RunID:    runID,
-		TaskID:   taskID,
-		LevelSel: -1,
+		RunID:  runID,
+		TaskID: taskID,
+		ReqSel: -1,
 	}
 }
 
@@ -47,46 +69,47 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 		return d, nil, NavAction{To: NavTaskList}
 	}
 
-	var levels []types.TurboLevelResult
+	var reqs []*types.RequestMetrics
 	if d.RunState != nil {
-		levels = d.RunState.Levels
+		reqs = d.RunState.Requests
 	}
 
 	switch msg.String() {
 	case "up", "k":
-		if len(levels) == 0 {
+		if len(reqs) == 0 {
 			break
 		}
-		if d.LevelSel < 0 {
-			// 首次按键：跳到最后一级（最新/最高并发），与 ↓ 保持一致
-			d.LevelSel = len(levels) - 1
-		} else if d.LevelSel <= 0 {
-			d.LevelSel = len(levels) - 1
+		if d.ReqSel < 0 {
+			d.ReqSel = requestIndexFromDisplayPos(0, len(reqs))
 		} else {
-			d.LevelSel--
+			selPos := requestDisplayPos(d.ReqSel, len(reqs))
+			if selPos > 0 {
+				selPos--
+			} else {
+				selPos = len(reqs) - 1
+			}
+			d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
 		}
 
 	case "down", "j":
-		if len(levels) == 0 {
+		if len(reqs) == 0 {
 			break
 		}
-		if d.LevelSel < 0 {
-			// 首次按键：跳到最后一级（最新/最高并发），与 ↑ 保持一致
-			d.LevelSel = len(levels) - 1
-		} else if d.LevelSel < len(levels)-1 {
-			d.LevelSel++
+		if d.ReqSel < 0 {
+			d.ReqSel = requestIndexFromDisplayPos(0, len(reqs))
 		} else {
-			d.LevelSel = 0
+			selPos := requestDisplayPos(d.ReqSel, len(reqs))
+			if selPos < len(reqs)-1 {
+				selPos++
+			} else {
+				selPos = 0
+			}
+			d.ReqSel = requestIndexFromDisplayPos(selPos, len(reqs))
 		}
 
 	case "enter":
-		// 进入该级别的请求列表，定位到该级别第一条请求
-		if d.LevelSel >= 0 && d.LevelSel < len(levels) {
-			startIdx := 0
-			for j := 0; j < d.LevelSel; j++ {
-				startIdx += levels[j].TotalRequests
-			}
-			nav = NavAction{To: NavReqDetail, ReqIndex: startIdx}
+		if d.ReqSel >= 0 && d.ReqSel < len(reqs) {
+			nav = NavAction{To: NavReqDetail, ReqIndex: d.ReqSel}
 		}
 
 	case "s":
@@ -115,7 +138,7 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
-	d.LevelOff = ensureVisibleOffset(d.LevelSel, len(levels), d.LevelOff, d.LevelVis)
+	d.AdjustReqOffset(d.ReqVis, len(reqs))
 
 	return d, nil, nav
 }
@@ -150,7 +173,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	rs := d.RunState
 
 	isRunning := d.IsRunning()
-	hasSel := d.LevelSel >= 0 && rs != nil && d.LevelSel < len(rs.Levels)
+	hasSel := d.ReqSel >= 0 && rs != nil && d.ReqSel < len(rs.Requests)
 	var cbItems []HotkeyItem
 	switch {
 	case hasSel && isRunning:
@@ -205,9 +228,9 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	progressLine := buildTurboProgressLine(rs, st, bodyPanel.InnerWidth)
 	progressPanelStr := bodyPanel.Wrap(st, progressLine)
 
-	// ── 级别列表面板 ──
-	levelList := buildLevelList(d, rs, st, bodyPanel.InnerWidth, levelListH)
-	levelPanelStr := bodyPanel.Wrap(st, levelList)
+	// ── 请求列表面板 ──
+	requestList := buildTurboRequestList(d, rs, st, bodyPanel.InnerWidth, levelListH)
+	levelPanelStr := bodyPanel.Wrap(st, requestList)
 
 	content := joinVerticalBlocks(split, progressPanelStr, levelPanelStr)
 	return l.Assemble(frame.Wrap(st, content), st, width)
@@ -280,73 +303,77 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	return prefix + barRendered + suffix
 }
 
-// buildLevelList 构建 Turbo 级别列表区域。
-func buildLevelList(d *TurboDashState, rs *server.RunState, st Styles, width, maxH int) string {
-	lines := panelTitleLines(st, "级别列表", width, true)
+// buildTurboRequestList 构建 Turbo 模式请求列表区域。
+func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, width, maxH int) string {
+	lines := panelTitleLines(st, "请求列表", width, true)
 
-	if rs == nil || len(rs.Levels) == 0 {
-		lines = append(lines, " "+st.Muted.Render("等待第一个级别完成..."))
+	if rs == nil || len(rs.Requests) == 0 {
+		msg := "等待请求..."
+		if rs != nil && rs.Status != server.RunStatusRunning {
+			msg = "无请求详情数据"
+		}
+		lines = append(lines, " "+st.Muted.Render(msg))
 		return finishPanelLines(lines, maxH)
 	}
 
-	// 列宽（header 与 content 行保持一致，前缀均为 2 字符）
 	const (
-		markW  = 2  // 选择标记列
-		concW  = 6  // 并发数
-		rateW  = 8  // 成功率
-		tpsW   = 10 // TPS
-		ttftW  = 10 // TTFT
-		cacheW = 8  // Cache
-		totW   = 9  // 总耗时
-		// 结论: 余量
+		markW  = 2
+		idW    = 6
+		statW  = 5
+		timeW  = 10
+		ttftW  = 10
+		cacheW = 8
+		tokW   = 10
 	)
-	hdr := padRight("", markW) + padRight("并发", concW) + padRight("成功率", rateW) + padRight("TPS", tpsW) +
-		padRight("TTFT", ttftW) + padRight("Cache", cacheW) + padRight("总耗时", totW) + "结论"
+	hdr := padRight("", markW) + padRight("#", idW) + padRight("状态", statW) + padRight("总耗时", timeW) +
+		padRight("TTFT", ttftW) + padRight("Cache", cacheW) + padRight("Token", tokW) + "TPS"
 	lines = append(lines, renderTableHeader(st, width, hdr))
 	lines = append(lines, dividerLine(st, width))
-	d.LevelVis = listVisibleItems(maxH, 3)
-	d.LevelOff = ensureVisibleOffset(d.LevelSel, len(rs.Levels), d.LevelOff, d.LevelVis)
-	start := d.LevelOff
-	end := minInt(len(rs.Levels), start+d.LevelVis)
+	d.ReqVis = listVisibleItems(maxH, 3)
+	d.AdjustReqOffset(d.ReqVis, len(rs.Requests))
 
-	for i := start; i < end; i++ {
-		lv := rs.Levels[i]
-		isSel := i == d.LevelSel
+	reqs := rs.Requests
+	start := d.ReqOff
+	end := minInt(len(reqs), start+d.ReqVis)
+	for pos := start; pos < end; pos++ {
+		i := requestIndexFromDisplayPos(pos, len(reqs))
+		r := reqs[i]
+		isSel := i == d.ReqSel
 
-		conclusionText := "✓ 稳定"
-		if !lv.Stable {
-			conclusionText = "✗ 降级"
+		statusText := "✓"
+		if !r.Success {
+			statusText = "✗"
 		}
-		isCurrent := (i == len(rs.Levels)-1) && rs.Status == server.RunStatusRunning
-		if isCurrent {
-			conclusionText = "🔄 进行中"
+		totalText := fmtDuration(r.TotalTime)
+		if !r.Success && r.ErrorMessage != "" {
+			totalText = r.ErrorMessage
 		}
 
-		conclusion := conclusionText
-		if isCurrent {
-			conclusion = styleWhenNotSelected(isSel, st.MetricVal, conclusionText)
-		} else if lv.Stable {
-			conclusion = styleWhenNotSelected(isSel, st.Ok, conclusionText)
+		statusStr := statusText
+		if r.Success {
+			statusStr = styleWhenNotSelected(isSel, st.Ok, statusText)
 		} else {
-			conclusion = styleWhenNotSelected(isSel, st.ErrStyle, conclusionText)
+			statusStr = styleWhenNotSelected(isSel, st.ErrStyle, statusText)
+		}
+		totalStr := totalText
+		if !r.Success && r.ErrorMessage != "" {
+			totalStr = styleWhenNotSelected(isSel, st.ErrStyle, totalText)
 		}
 
 		marker := selectionMarker(isSel)
-
 		rowContent := padRight(marker, markW) +
-			padRight(fmt.Sprintf("%d", lv.Concurrency), concW) +
-			padRight(fmt.Sprintf("%.1f%%", lv.SuccessRate*100), rateW) +
-			padRight(fmt.Sprintf("%.1f", lv.AvgTPS), tpsW) +
-			padRight(fmtDuration(lv.AvgTTFT), ttftW) +
-			padRight(fmt.Sprintf("%.1f%%", lv.CacheHitRate*100), cacheW) +
-			padRight(fmtDuration(lv.AvgTotalTime), totW) +
-			conclusion
+			padRight(fmt.Sprintf("#%d", len(reqs)-pos), idW) +
+			padRight(statusStr, statW) +
+			padRight(totalStr, timeW) +
+			padRight(fmtDuration(r.TTFT), ttftW) +
+			padRight(fmt.Sprintf("%.0f%%", r.CacheHitRate*100), cacheW) +
+			padRight(fmt.Sprintf("%dtok", r.CompletionTokens), tokW) +
+			fmt.Sprintf("%.1f/s", r.TPS)
 
 		rendered := renderTableRow(st, width, isSel, rowContent)
 		lines = append(lines, rendered)
 
-		// 行间分隔线
-		if i < end-1 && len(lines) < maxH-1 {
+		if pos < end-1 && len(lines) < maxH-1 {
 			lines = append(lines, dividerLine(st, width))
 		}
 	}

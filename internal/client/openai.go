@@ -57,9 +57,14 @@ type ChatCompletionRequest struct {
 	Thinking      *ThinkingOptions        `json:"thinking,omitempty"`
 }
 
+type ResponsesAPIInputItem struct {
+	Role    string `json:"role"`
+	Content string `json:"content"`
+}
+
 type ResponsesAPIRequest struct {
 	Model        string                     `json:"model"`
-	Input        string                     `json:"input"`
+	Input        []ResponsesAPIInputItem    `json:"input"`
 	Instructions string                     `json:"instructions,omitempty"`
 	Store        bool                       `json:"store,omitempty"`
 	Stream       bool                       `json:"stream,omitempty"`
@@ -177,8 +182,10 @@ func extractCachedInputTokens(details *PromptTokensDetails) int {
 func (c *OpenAIClient) buildRequestBody(systemPrompt, userPrompt string, stream bool) ([]byte, error) {
 	if c.Provider == types.ProtocolOpenAIResponses {
 		reqBody := ResponsesAPIRequest{
-			Model:        c.Model,
-			Input:        userPrompt,
+			Model: c.Model,
+			Input: []ResponsesAPIInputItem{
+				{Role: "user", Content: userPrompt},
+			},
 			Instructions: systemPrompt,
 			Store:        true,
 			Stream:       stream,
@@ -419,6 +426,7 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 			TLSHandshakeTime: 0,
 			TargetIP:         "",
 			CompletionTokens: 0,
+			RequestBody:      string(jsonData),
 			ErrorMessage:     fmt.Sprintf("Request creation error: %s", err.Error()),
 		}, err
 	}
@@ -499,6 +507,7 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 				TLSHandshakeTime: tlsTime,
 				TargetIP:         targetIP,
 				CompletionTokens: 0,
+				RequestBody:      string(jsonData),
 				ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
 			}, err
 		}
@@ -541,6 +550,8 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 				TLSHandshakeTime: tlsTime,
 				TargetIP:         targetIP,
 				CompletionTokens: 0,
+				RequestBody:      string(jsonData),
+				ResponseBody:     responseBody,
 				ErrorMessage:     errorMessage,
 			}, fmt.Errorf(errorMessage)
 		}
@@ -672,8 +683,7 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 				ConnectTime:      connectTime,
 				TLSHandshakeTime: tlsTime,
 				TargetIP:         targetIP,
-				CompletionTokens: 0,
-				ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
+				CompletionTokens: 0,			RequestBody:      string(jsonData),				ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
 			}, err
 		}
 		defer resp.Body.Close()
@@ -699,6 +709,8 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 				TLSHandshakeTime: tlsTime,
 				TargetIP:         targetIP,
 				CompletionTokens: 0,
+				RequestBody:      string(jsonData),
+				ResponseBody:     string(responseData),
 				ErrorMessage:     errorMessage,
 			}, fmt.Errorf(errorMessage)
 		}
@@ -717,6 +729,7 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 				TLSHandshakeTime: tlsTime,
 				TargetIP:         targetIP,
 				CompletionTokens: 0,
+				RequestBody:      string(jsonData),
 				ErrorMessage:     fmt.Sprintf("Response body read error: %s", err.Error()),
 			}, err
 		}

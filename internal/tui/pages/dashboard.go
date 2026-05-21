@@ -347,7 +347,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		}
 		totalText := fmtDuration(r.TotalTime)
 		if !r.Success && r.ErrorMessage != "" {
-			totalText = "timeout"
+			totalText = r.ErrorMessage
 		}
 
 		statusStr := statusText

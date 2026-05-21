@@ -214,7 +214,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	// ── 代理配置 ──
 	case ProxyConfigLoadedMsg:
 		if m.proxyConf != nil {
-			m.proxyConf.URL = msg.ProxyURL
+			m.proxyConf = pages.NewProxyConfigState(msg.ProxyURL)
 		}
 		return m, nil
 

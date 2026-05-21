@@ -215,6 +215,7 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 			TLSHandshakeTime: 0,
 			TargetIP:         "",
 			CompletionTokens: 0,
+			RequestBody:      string(reqBodyBytes),
 			ErrorMessage:     fmt.Sprintf("Request creation error: %s", err.Error()),
 		}, err
 	}
@@ -293,6 +294,7 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
 			CompletionTokens: 0,
+			RequestBody:      string(reqBodyBytes),
 			ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
 		}, err
 	}
@@ -336,6 +338,8 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 			TLSHandshakeTime: tlsTime,
 			TargetIP:         targetIP,
 			CompletionTokens: 0,
+			RequestBody:      string(reqBodyBytes),
+			ResponseBody:     responseBody,
 			ErrorMessage:     errorMessage,
 		}, fmt.Errorf(errorMessage)
 	}

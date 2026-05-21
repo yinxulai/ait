@@ -465,7 +465,7 @@ func TestOpenAIClient_Request_OpenAIResponses_NonStream(t *testing.T) {
 	if strings.Contains(requestBody, "messages") {
 		t.Fatalf("responses request should not use chat-completions payload: %s", requestBody)
 	}
-	if !strings.Contains(requestBody, `"input":"hello from responses"`) {
+	if !strings.Contains(requestBody, `"input":[{"role":"user","content":"hello from responses"}]`) {
 		t.Fatalf("responses request body missing input field: %s", requestBody)
 	}
 	if metrics.PromptTokens != 12 || metrics.CachedInputTokens != 3 || metrics.CompletionTokens != 7 || metrics.ThinkingTokens != 2 {

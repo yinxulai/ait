@@ -3,18 +3,26 @@ package pages
 import (
 	"strings"
 
+	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 )
 
 // ProxyConfigState 代理配置页面状态。
 type ProxyConfigState struct {
-	URL string // 当前编辑中的代理 URL
+	input textinput.Model // 代理 URL 输入框
 }
 
 // NewProxyConfigState 创建代理配置页面状态，传入当前已保存的代理 URL。
 func NewProxyConfigState(currentURL string) *ProxyConfigState {
-	return &ProxyConfigState{URL: currentURL}
+	ti := textinput.New()
+	ti.Prompt = ""
+	ti.Cursor.SetMode(cursor.CursorStatic)
+	ti.SetValue(currentURL)
+	ti.CursorEnd()
+	ti.Focus()
+	return &ProxyConfigState{input: ti}
 }
 
 // HandleProxyConfigKey 处理代理配置页面的按键。
@@ -29,26 +37,17 @@ func HandleProxyConfigKey(s *ProxyConfigState, msg tea.KeyMsg, client Client) (*
 		nav = NavAction{To: NavTaskList}
 
 	case "enter":
-		cmd := client.SaveProxyConfigCmd(s.URL)
+		cmd := client.SaveProxyConfigCmd(s.input.Value())
 		nav = NavAction{To: NavTaskList}
 		return s, cmd, nav
-
-	case "backspace":
-		r := []rune(s.URL)
-		if len(r) > 0 {
-			s.URL = string(r[:len(r)-1])
-		}
-
-	case "ctrl+u":
-		s.URL = ""
 
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 
 	default:
-		if len(msg.Runes) > 0 {
-			s.URL += string(msg.Runes)
-		}
+		var cmd tea.Cmd
+		s.input, cmd = s.input.Update(msg)
+		return s, cmd, nav
 	}
 
 	return s, nil, nav
@@ -84,8 +83,9 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 
 	// 字段宽度（与 wizard renderWizardField 保持一致）
 	fieldW := maxInt(10, contentW-19)
-	displayURL := fitTail(s.URL, maxInt(1, fieldW-1)) + "█"
-	renderedField := st.FieldActive.Width(fieldW).Render(st.Value.Render(displayURL))
+	s.input.Width = fieldW
+	s.input.TextStyle = st.Value
+	renderedField := st.FieldActive.Width(fieldW).Render(s.input.View())
 
 	labelBlock := strings.Join([]string{
 		strings.Repeat(" ", 15),

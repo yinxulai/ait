@@ -6,6 +6,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/cursor"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/lipgloss"
 	"github.com/yinxulai/ait/internal/server"
@@ -66,11 +68,58 @@ type WizardState struct {
 	// 当前活跃字段索引（Tab 切换）
 	FieldIndex int
 	ScrollOff  int
+	input      textinput.Model // 当前活跃文本字段的光标与编辑状态
+}
+
+// newWizardTextInput 创建向导使用的 textinput，禁用光标闪烁。
+func newWizardTextInput() textinput.Model {
+	ti := textinput.New()
+	ti.Prompt = ""
+	ti.Cursor.SetMode(cursor.CursorStatic)
+	ti.Focus()
+	return ti
+}
+
+// loadInputForField 将字段的当前值加载到 wz.input，并将光标移到末尾。
+func loadInputForField(wz *WizardState, f fieldDef) {
+	rawVal := ""
+	if f.getRaw != nil {
+		rawVal = f.getRaw(wz)
+	} else if f.get != nil {
+		rawVal = f.get(wz)
+	}
+	if f.label == "API 密钥" {
+		wz.input.EchoMode = textinput.EchoPassword
+	} else {
+		wz.input.EchoMode = textinput.EchoNormal
+	}
+	wz.input.SetValue(rawVal)
+	wz.input.CursorEnd()
+}
+
+// loadCurrentFieldInput 根据当前 Step/FieldIndex 重新加载 input。
+// 在字段切换或步骤切换后调用。
+func loadCurrentFieldInput(wz *WizardState) {
+	var fields []fieldDef
+	switch wz.Step {
+	case wizardStep1:
+		fields = step1Fields()
+	case wizardStep2:
+		fields = step2Fields(wz.Turbo)
+	default:
+		return
+	}
+	if wz.FieldIndex < len(fields) {
+		f := fields[wz.FieldIndex]
+		if f.kind == fieldText || f.kind == fieldNumber {
+			loadInputForField(wz, f)
+		}
+	}
 }
 
 // NewWizardState 创建新建任务向导状态（使用默认值）。
 func NewWizardState() *WizardState {
-	return &WizardState{
+	wz := &WizardState{
 		Step:            wizardStep1,
 		Protocol:        types.ProtocolOpenAICompletions,
 		Concurrency:     10,
@@ -84,7 +133,10 @@ func NewWizardState() *WizardState {
 		Stream:          true,
 		PromptMode:      PromptModeGenerated,
 		PromptLength:    100,
+		input:           newWizardTextInput(),
 	}
+	loadCurrentFieldInput(wz)
+	return wz
 }
 
 // NewWizardStateEdit 创建编辑任务向导状态（预填任务数据，零值字段沿用默认值）。
@@ -143,6 +195,8 @@ func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 	if tc.MinSuccessRate > 0 {
 		wz.MinSuccessRate = tc.MinSuccessRate * 100
 	}
+	// 数据字段全部填充完毕后，重新加载当前字段（Name）到 input
+	loadCurrentFieldInput(wz)
 	return wz
 }
 
@@ -463,16 +517,19 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			wz.Step--
 			wz.FieldIndex = 0
 			wz.ScrollOff = 0
+			loadCurrentFieldInput(wz)
 		}
 
 	case "tab", "down", "j":
 		if wz.FieldIndex < maxField {
 			wz.FieldIndex++
+			loadCurrentFieldInput(wz)
 		}
 
 	case "shift+tab", "up", "k":
 		if wz.FieldIndex > 0 {
 			wz.FieldIndex--
+			loadCurrentFieldInput(wz)
 		}
 
 	case "left":
@@ -480,11 +537,15 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			f := fields[wz.FieldIndex]
 			if f.toggle != nil {
 				f.toggle(wz, false)
-				// 如果切换了 turbo 模式，重置 fieldIndex
 				if f.label == "测试模式" {
 					wz.FieldIndex = 0
 					wz.ScrollOff = 0
+					loadCurrentFieldInput(wz)
 				}
+			} else if f.kind == fieldText || f.kind == fieldNumber {
+				var cmd tea.Cmd
+				wz.input, cmd = wz.input.Update(msg)
+				return wz, cmd, nav
 			}
 		}
 
@@ -496,7 +557,12 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 				if f.label == "测试模式" {
 					wz.FieldIndex = 0
 					wz.ScrollOff = 0
+					loadCurrentFieldInput(wz)
 				}
+			} else if f.kind == fieldText || f.kind == fieldNumber {
+				var cmd tea.Cmd
+				wz.input, cmd = wz.input.Update(msg)
+				return wz, cmd, nav
 			}
 		}
 
@@ -508,36 +574,22 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		} else if wz.FieldIndex < maxField {
 			wz.FieldIndex++
 		}
-
-	case "backspace":
-		if wz.FieldIndex < len(fields) {
-			f := fields[wz.FieldIndex]
-			if f.set != nil && f.kind == fieldText {
-				getEdit := f.get
-				if f.getRaw != nil {
-					getEdit = f.getRaw
-				}
-				v := getEdit(wz)
-				r := []rune(v)
-				if len(r) > 0 {
-					f.set(wz, string(r[:len(r)-1]))
-				}
-			}
-		}
+		loadCurrentFieldInput(wz)
 
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 
 	default:
-		// 字符输入
-		if len(msg.Runes) > 0 && wz.FieldIndex < len(fields) {
+		// 所有非导航键转发给 textinput 处理（退格、ctrl+u/a/e/w/k、字符输入等）
+		if wz.FieldIndex < len(fields) {
 			f := fields[wz.FieldIndex]
-			if f.set != nil && (f.kind == fieldText || f.kind == fieldNumber) {
-				getEdit := f.get
-				if f.getRaw != nil {
-					getEdit = f.getRaw
+			if f.kind == fieldText || f.kind == fieldNumber {
+				var cmd tea.Cmd
+				wz.input, cmd = wz.input.Update(msg)
+				if f.set != nil {
+					f.set(wz, wz.input.Value())
 				}
-				f.set(wz, getEdit(wz)+string(msg.Runes))
+				return wz, cmd, nav
 			}
 		}
 	}
@@ -711,7 +763,6 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 	}
 
 	// Width(fieldW) 是内容区宽度，padding 在其外侧叠加，文字区即为 fieldW
-	// 激活时保留 1 列给光标 █，非激活可用满 fieldW
 	if f.kind == fieldEnum || f.kind == fieldBool {
 		if active {
 			valueStr = "‹ " + valueStr + " ›"
@@ -719,7 +770,8 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 		valueStr = truncate(valueStr, maxInt(4, fieldW))
 	} else {
 		if active {
-			valueStr = fitTail(valueStr, maxInt(1, fieldW-1)) + "█"
+			wz.input.Width = fieldW
+			valueStr = wz.input.View()
 		} else {
 			valueStr = fitTail(valueStr, maxInt(1, fieldW))
 		}
@@ -730,7 +782,14 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 		fieldStyle = st.FieldActive
 	}
 
-	renderedValue := fieldStyle.Width(fieldW).Render(valueStyle.Render(valueStr))
+	var renderedValue string
+	if active && (f.kind == fieldText || f.kind == fieldNumber) {
+		// textinput 自带光标和滚动，设置文本样式后直接渲染，不再二次包裹 valueStyle
+		wz.input.TextStyle = valueStyle
+		renderedValue = fieldStyle.Width(fieldW).Render(wz.input.View())
+	} else {
+		renderedValue = fieldStyle.Width(fieldW).Render(valueStyle.Render(valueStr))
+	}
 	labelLines := []string{
 		strings.Repeat(" ", 15),
 		lipgloss.NewStyle().Width(15).Render(st.Label.Render(wizardFieldLabel(f, wz))),
