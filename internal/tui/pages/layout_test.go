@@ -50,16 +50,17 @@ func TestPageLayoutFrameCalculatesNestedPanelSizes(t *testing.T) {
 func TestRemainingStackOuterHeightAccountsForJoinGaps(t *testing.T) {
 	totalHeight := 24
 	remaining := RemainingStackOuterHeight(totalHeight, 9, 3)
-	if remaining != 10 {
-		t.Fatalf("expected remaining outer height 10, got %d", remaining)
+	if remaining != 12 {
+		t.Fatalf("expected remaining outer height 12, got %d", remaining)
 	}
 
-	used := 9 + 1 + 3 + 1 + remaining
+	// strings.Join 拼接时总行数 = 各块行数之和，分隔符 \n 不额外增加行数
+	used := 9 + 3 + remaining
 	if used != totalHeight {
 		t.Fatalf("expected stacked blocks to fit exactly, used %d of %d", used, totalHeight)
 	}
 
-	if PanelContentHeight(remaining) != 8 {
-		t.Fatalf("expected remaining content height 8, got %d", PanelContentHeight(remaining))
+	if PanelContentHeight(remaining) != 10 {
+		t.Fatalf("expected remaining content height 10, got %d", PanelContentHeight(remaining))
 	}
 }

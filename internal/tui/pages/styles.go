@@ -1,9 +1,9 @@
 package pages
 
-import "github.com/charmbracelet/lipgloss"
+import "charm.land/lipgloss/v2"
 
 // Color palette
-const (
+var (
 	colorHeaderBg           = lipgloss.Color("17")  // dark navy — refined header background
 	colorHotkeysSecondaryBg = lipgloss.Color("235") // near-black secondary hotkeys background
 	colorHotkeysPrimaryBg   = lipgloss.Color("237") // slightly lighter primary hotkeys background

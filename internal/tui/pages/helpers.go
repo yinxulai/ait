@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // ─── 文本工具 ─────────────────────────────────────────────────────────────────
@@ -41,7 +41,12 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
-// wrapText 将文本按 maxW 宽度折行，返回行切片。
+// tableCol 返回固定宽度的表格单元格（自动填充空格并截断，始终单行）。
+func tableCol(w int, text string) string {
+	return lipgloss.NewStyle().Width(w).Render(truncate(text, w))
+}
+
+// wrapText 将文本按 maxW 列宽折行，返回行切片（CJK 字符按 2 列宽计算）。
 func wrapText(s string, maxW int) []string {
 	if maxW <= 0 {
 		return []string{s}
@@ -54,9 +59,19 @@ func wrapText(s string, maxW int) []string {
 			continue
 		}
 		for len(runes) > 0 {
-			end := maxW
-			if end > len(runes) {
-				end = len(runes)
+			colW := 0
+			end := 0
+			for end < len(runes) {
+				rw := lipgloss.Width(string(runes[end]))
+				if colW+rw > maxW {
+					break
+				}
+				colW += rw
+				end++
+			}
+			if end == 0 {
+				// 单个字符超宽（如极窄终端）——强制取一个避免死循环
+				end = 1
 			}
 			result = append(result, string(runes[:end]))
 			runes = runes[end:]
@@ -451,7 +466,8 @@ func runStatusText(status string) string {
 func panelTitleLines(st Styles, title string, width int, compact bool) []string {
 	var rendered string
 	if width > 0 {
-		rendered = st.PanelHead.Width(width).Render(" " + title)
+		// 截断标题防止超宽后被 lipgloss 折行
+		rendered = st.PanelHead.Width(width).Render(" " + truncate(title, maxInt(1, width-1)))
 	} else {
 		rendered = st.PanelHead.Render(" " + title)
 	}
@@ -638,9 +654,10 @@ func labelValue(st Styles, label, value string) string {
 }
 
 // wrapPanel 用带边框的 Panel 包裹内容，outerW 为包含边框的总宽度。
+// lipgloss v2: Width(n) = 外部总宽度（含 border），Panel 有 1 字符宽边框。
 func wrapPanel(st Styles, content string, outerW int) string {
 	if outerW < 4 {
 		return content
 	}
-	return st.Panel.Width(outerW - 2).Render(content)
+	return st.Panel.Width(outerW).Render(content)
 }

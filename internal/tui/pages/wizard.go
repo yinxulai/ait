@@ -9,7 +9,7 @@ import (
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -752,9 +752,10 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 		valueStr = maskAPIKey(valueStr)
 	}
 
-	// FieldActive/Idle: Width(n) = 内容区宽度（在 padding/border 之内）
-	// 总渲染宽度 = n + padding(2) + border(2) = n + 4
-	// Line1 = label(14) + space(1) + (n+4) = n + 19 ≤ maxW → n = maxW - 19
+	// lipgloss v2: Width(n) = 外部总宽度（含 border+padding）
+	// 内容区 = n - border(2) - padding(2) = n - 4
+	// fieldW 为内容区目标宽度，渲染时传 fieldW+4 作为 Width 参数
+	// 总宽 = label(15) + (fieldW+4) = fieldW + 19 ≤ maxW → fieldW = maxW - 19
 	fieldW := maxInt(10, maxW-19)
 	valueStyle := st.Value
 	if valueStr == "" && !active {
@@ -784,11 +785,10 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 
 	var renderedValue string
 	if active && (f.kind == fieldText || f.kind == fieldNumber) {
-		// textinput 自带光标和滚动，设置文本样式后直接渲染，不再二次包裹 valueStyle
-		wz.input.TextStyle = valueStyle
-		renderedValue = fieldStyle.Width(fieldW).Render(wz.input.View())
+		// textinput 自带光标和滚动；Width(fieldW+4) 使内容区 = fieldW，与 input.Width 对齐
+		renderedValue = fieldStyle.Width(fieldW + 4).Render(wz.input.View())
 	} else {
-		renderedValue = fieldStyle.Width(fieldW).Render(valueStyle.Render(valueStr))
+		renderedValue = fieldStyle.Width(fieldW + 4).Render(valueStyle.Render(valueStr))
 	}
 	labelLines := []string{
 		strings.Repeat(" ", 15),

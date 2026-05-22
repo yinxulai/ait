@@ -160,9 +160,9 @@ func PanelContentHeight(outerH int) int {
 }
 
 // RemainingStackOuterHeight 计算纵向堆叠场景下，最后一个区块可用的外层高度。
-// 会统一扣除前置区块自身高度，以及区块之间的换行间隔，避免各页重复手写偏移逻辑。
+// 会统一扣除前置区块自身高度。各块通过 strings.Join 拼接，总行数 = 各块行数之和，无需额外扣减分隔符。
 func RemainingStackOuterHeight(totalH int, fixedOuterHeights ...int) int {
-	remaining := totalH - len(fixedOuterHeights)
+	remaining := totalH
 	for _, h := range fixedOuterHeights {
 		remaining -= h
 	}

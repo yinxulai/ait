@@ -6,7 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -293,13 +293,16 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 	barW := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
 	if barW < 5 {
 		barW = 5
+		// 压缩 suffix 确保进度行总宽度不超过 width，防止 lipgloss 折行
+		maxSuffixW := maxInt(0, width-lipgloss.Width(prefix)-barW)
+		suffix = truncate(suffix, maxSuffixW)
 	}
 
 	filled := int(ratio * float64(barW))
 	barRendered := st.Ok.Render(strings.Repeat("█", filled)) +
 		st.Muted.Render(strings.Repeat("░", barW-filled))
 
-	return prefix + barRendered + suffix
+	return lipgloss.JoinHorizontal(lipgloss.Top, prefix, barRendered, suffix)
 }
 
 // buildRequestList 构建请求列表区域。
@@ -326,8 +329,16 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		tokW   = 10 // Token
 		// TPS: 余量
 	)
-	hdr := padRight("", markW) + padRight("#", idW) + padRight("状态", statW) + padRight("总耗时", timeW) +
-		padRight("TTFT", ttftW) + padRight("Cache", cacheW) + padRight("Token", tokW) + "TPS"
+	hdr := lipgloss.JoinHorizontal(lipgloss.Top,
+		tableCol(markW, ""),
+		tableCol(idW, "#"),
+		tableCol(statW, "状态"),
+		tableCol(timeW, "总耗时"),
+		tableCol(ttftW, "TTFT"),
+		tableCol(cacheW, "Cache"),
+		tableCol(tokW, "Token"),
+		"TPS",
+	)
 	lines = append(lines, renderTableHeader(st, width, hdr))
 	lines = append(lines, dividerLine(st, width))
 	d.ReqVis = listVisibleItems(maxH, 3)
@@ -363,14 +374,16 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 
 		marker := selectionMarker(isSel)
 
-		rowContent := padRight(marker, markW) +
-			padRight(fmt.Sprintf("#%d", len(reqs)-pos), idW) +
-			padRight(statusStr, statW) +
-			padRight(totalStr, timeW) +
-			padRight(fmtDuration(r.TTFT), ttftW) +
-			padRight(fmt.Sprintf("%.0f%%", r.CacheHitRate*100), cacheW) +
-			padRight(fmt.Sprintf("%dtok", r.CompletionTokens), tokW) +
-			fmt.Sprintf("%.1f/s", r.TPS)
+		rowContent := lipgloss.JoinHorizontal(lipgloss.Top,
+			tableCol(markW, marker),
+			tableCol(idW, fmt.Sprintf("#%d", len(reqs)-pos)),
+			tableCol(statW, statusStr),
+			tableCol(timeW, totalStr),
+			tableCol(ttftW, fmtDuration(r.TTFT)),
+			tableCol(cacheW, fmt.Sprintf("%.0f%%", r.CacheHitRate*100)),
+			tableCol(tokW, fmt.Sprintf("%dtok", r.CompletionTokens)),
+			fmt.Sprintf("%.1f/s", r.TPS),
+		)
 
 		rendered := renderTableRow(st, width, isSel, rowContent)
 		lines = append(lines, rendered)

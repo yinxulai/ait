@@ -24,7 +24,8 @@ func main() {
 	versionFlag := flag.Bool("version", false, "显示版本信息")
 	baseURL     := flag.String("baseUrl", "", "服务基础地址（可选，留空使用协议默认地址）")
 	apiKey      := flag.String("apiKey", "", "API 密钥")
-	model       := flag.String("model", "", "模型名称")
+	model       := flag.String("model", "", "模型名称（单个模型，与 -models 二选一）")
+	models      := flag.String("models", "", "模型名称列表，逗号分隔，可批量创建任务（如 gpt-4,gpt-4o,gpt-3.5-turbo）")
 	protocol    := flag.String("protocol", "", "协议类型: openai / anthropic")
 	promptText  := flag.String("prompt", "", "Prompt 文本（可选）")
 	promptFile  := flag.String("prompt-file", "", "从文件读取 Prompt")
@@ -53,47 +54,59 @@ func main() {
 	}
 
 	// ── 若提供了足够参数则预建任务并自动启动 ────────────────────────────────────
-	if *model != "" {
+	// 合并 --model 和 --models，去重，保持顺序
+	var modelList []string
+	seen := map[string]bool{}
+	for _, m := range append(strings.Split(*models, ","), *model) {
+		m = strings.TrimSpace(m)
+		if m != "" && !seen[m] {
+			seen[m] = true
+			modelList = append(modelList, m)
+		}
+	}
+
+	if len(modelList) > 0 {
 		finalProtocol, finalBaseURL, finalAPIKey := resolveConfig(*protocol, *baseURL, *apiKey)
 		if finalAPIKey == "" {
 			fmt.Fprintln(os.Stderr, "错误: 缺少 API Key（-apiKey 或环境变量）")
 			os.Exit(1)
 		}
 
-		inp := types.Input{
-			Protocol:     finalProtocol,
-			BaseUrl:      finalBaseURL,
-			ApiKey:       finalAPIKey,
-			Model:        *model,
-			Stream:       *stream,
-			Thinking:     *thinking,
-			Concurrency:  *concurrency,
-			Count:        *count,
-			Turbo:        *turboFlag,
-			Timeout:      time.Duration(*timeout) * time.Second,
-		}
+		for _, m := range modelList {
+			inp := types.Input{
+				Protocol:    finalProtocol,
+				BaseUrl:     finalBaseURL,
+				ApiKey:      finalAPIKey,
+				Model:       m,
+				Stream:      *stream,
+				Thinking:    *thinking,
+				Concurrency: *concurrency,
+				Count:       *count,
+				Turbo:       *turboFlag,
+				Timeout:     time.Duration(*timeout) * time.Second,
+			}
 
-		// Prompt 配置
-		switch {
-		case *promptLen > 0:
-			inp.PromptMode = "generated"
-			inp.PromptLength = *promptLen
-		case *promptFile != "":
-			inp.PromptMode = "file"
-			inp.PromptFile = *promptFile
-		case *promptText != "":
-			inp.PromptMode = "text"
-			inp.PromptText = *promptText
-		default:
-			inp.PromptMode = "text"
-			inp.PromptText = "你好，介绍一下你自己。"
-		}
+			// Prompt 配置
+			switch {
+			case *promptLen > 0:
+				inp.PromptMode = "generated"
+				inp.PromptLength = *promptLen
+			case *promptFile != "":
+				inp.PromptMode = "file"
+				inp.PromptFile = *promptFile
+			case *promptText != "":
+				inp.PromptMode = "text"
+				inp.PromptText = *promptText
+			default:
+				inp.PromptMode = "text"
+				inp.PromptText = "你好，介绍一下你自己。"
+			}
 
-		taskName := fmt.Sprintf("%s@%s", *model, strings.TrimRight(finalBaseURL, "/"))
-		_, err := srv.CreateTask(server.TaskConfig{Name: taskName, Input: inp})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "创建任务失败: %v\n", err)
-			os.Exit(1)
+			taskName := fmt.Sprintf("%s@%s", m, strings.TrimRight(finalBaseURL, "/"))
+			if _, err := srv.CreateTask(server.TaskConfig{Name: taskName, Input: inp}); err != nil {
+				fmt.Fprintf(os.Stderr, "创建任务失败 [%s]: %v\n", m, err)
+				os.Exit(1)
+			}
 		}
 	}
 

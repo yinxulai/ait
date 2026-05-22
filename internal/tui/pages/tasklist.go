@@ -6,7 +6,7 @@ import (
 	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -182,12 +182,15 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 
 	// 表头：2 空格前缀与正文行对齐（cursor=2）
 	header := renderTableHeader(st, width,
-		"  "+padRight("任务名称", nameW)+
-			padRight("模式", modeW)+
-			padRight("协议", protoW)+
-			padRight("上次运行", lastRunW)+
-			padRight("TTFT", ttftW)+
-			"TPS")
+		lipgloss.JoinHorizontal(lipgloss.Top,
+			tableCol(2, ""),
+			tableCol(nameW, "任务名称"),
+			tableCol(modeW, "模式"),
+			tableCol(protoW, "协议"),
+			tableCol(lastRunW, "上次运行"),
+			tableCol(ttftW, "TTFT"),
+			"TPS",
+		))
 	lines = append(lines, header)
 	lines = append(lines, dividerLine(st, width))
 	listMaxH := maxInt(3, maxH-listTopLines)
@@ -197,6 +200,10 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	if len(s.Tasks) == 0 {
 		lines = append(lines, "")
 		lines = append(lines, "  "+st.Muted.Render("暂无任务  按 [a] 新建第一个任务"))
+		// 补齐剩余行
+		for len(lines) < maxH {
+			lines = append(lines, "")
+		}
 		return strings.Join(lines, "\n")
 	}
 
@@ -210,28 +217,23 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		_, hasActiveRun := s.ActiveRuns[t.ID]
 
 		// ── 指示符 ──
-		prefix := padRight(selectionMarker(isSel), 2)
+		prefix := tableCol(2, selectionMarker(isSel))
 
 		// ── 模式（选中行禁用嵌套样式，避免重置整行背景）──
 		modeText := "标准"
-		modeCol := padRight(modeText, modeW)
+		var modeCol string
 		if t.Input.Turbo {
 			modeText = "Turbo"
-			modeCol = padRight(styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorGold).Bold(true), modeText), modeW)
+			modeCol = tableCol(modeW, styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorGold).Bold(true), modeText))
 		} else {
-			modeCol = padRight(styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorPurple), modeText), modeW)
+			modeCol = tableCol(modeW, styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorPurple), modeText))
 		}
 
 		// ── 协议 ──
-		proto := padRight(shortProtocol(t.Input.NormalizedProtocol()), protoW)
+		proto := tableCol(protoW, shortProtocol(t.Input.NormalizedProtocol()))
 
-		// ── 任务名称（裁剪）──
-		name := truncate(t.Name, nameW)
-		namePad := nameW - lipgloss.Width(name)
-		if namePad < 0 {
-			namePad = 0
-		}
-		nameCol := name + strings.Repeat(" ", namePad)
+		// ── 任务名称 ──
+		nameCol := tableCol(nameW, t.Name)
 
 		// ── 上次运行时间 ──
 		lastRunText := "─"
@@ -244,7 +246,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		if hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning)) {
 			lastRunStyle = st.Ok
 		}
-		lastRunCol := padRight(styleWhenNotSelected(isSel, lastRunStyle, lastRunText), lastRunW)
+		lastRunCol := tableCol(lastRunW, styleWhenNotSelected(isSel, lastRunStyle, lastRunText))
 
 		// ── TTFT ──
 		ttftText := "─"
@@ -253,7 +255,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		} else if !hasActiveRun && t.LatestRun != nil {
 			ttftText = fmtDuration(t.LatestRun.AvgTTFT)
 		}
-		ttftCol := padRight(styleWhenNotSelected(isSel, st.Value, ttftText), ttftW)
+		ttftCol := tableCol(ttftW, styleWhenNotSelected(isSel, st.Value, ttftText))
 
 		// ── TPS ──
 		tpsText := "─"
@@ -269,8 +271,8 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		tpsCol := styleWhenNotSelected(isSel, st.Value, tpsText)
 
 		// ── 单行：名称 | 模式 | 协议 | 上次运行 | TTFT | TPS ──
-		rowContent := nameCol + modeCol + proto + lastRunCol + ttftCol + tpsCol
-		lines = append(lines, renderTableRow(st, width, isSel, prefix+rowContent))
+		lines = append(lines, renderTableRow(st, width, isSel, lipgloss.JoinHorizontal(lipgloss.Top,
+			prefix, nameCol, modeCol, proto, lastRunCol, ttftCol, tpsCol)))
 
 		// ── 分隔线 ──
 		if i < end-1 && len(lines) < maxH-1 {

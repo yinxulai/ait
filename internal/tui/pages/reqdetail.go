@@ -219,7 +219,7 @@ func buildReqNetworkPanel(r *types.RequestMetrics, st Styles, maxH, width int) s
 	lines = append(lines, " "+labelValue(st, "TCP 连接 ", fmtDuration(r.ConnectTime)))
 	lines = append(lines, " "+labelValue(st, "TLS 握手 ", fmtDuration(r.TLSTime)))
 	if r.TargetIP != "" {
-		lines = append(lines, " "+labelValue(st, "目标 IP  ", r.TargetIP))
+		lines = append(lines, " "+labelValue(st, "目标 IP  ", truncate(r.TargetIP, maxInt(4, width-12))))
 	}
 
 	return finishPanelLines(lines, maxH)

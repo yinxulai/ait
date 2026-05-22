@@ -6,7 +6,7 @@ import (
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/charmbracelet/lipgloss"
+	"charm.land/lipgloss/v2"
 )
 
 // ProxyConfigState 代理配置页面状态。
@@ -82,10 +82,10 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 	lines = append(lines, "")
 
 	// 字段宽度（与 wizard renderWizardField 保持一致）
+	// lipgloss v2: Width(fieldW+4) 使内容区 = fieldW，与 input.Width 对齐
 	fieldW := maxInt(10, contentW-19)
 	s.input.Width = fieldW
-	s.input.TextStyle = st.Value
-	renderedField := st.FieldActive.Width(fieldW).Render(s.input.View())
+	renderedField := st.FieldActive.Width(fieldW + 4).Render(s.input.View())
 
 	labelBlock := strings.Join([]string{
 		strings.Repeat(" ", 15),
