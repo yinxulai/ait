@@ -9,20 +9,97 @@ import (
 	"charm.land/lipgloss/v2"
 )
 
+// 代理类型常量
+const (
+	ProxyTypeHTTP   = "http"
+	ProxyTypeSOCKS5 = "socks5"
+	ProxyTypeSSH    = "ssh"
+)
+
+var proxyTypes = []string{ProxyTypeHTTP, ProxyTypeSOCKS5, ProxyTypeSSH}
+
 // ProxyConfigState 代理配置页面状态。
 type ProxyConfigState struct {
-	input textinput.Model // 代理 URL 输入框
+	ProxyType  string // "http" | "socks5" | "ssh"
+	FieldIndex int    // 0=代理类型, 1=代理地址
+	input      textinput.Model
 }
 
 // NewProxyConfigState 创建代理配置页面状态，传入当前已保存的代理 URL。
 func NewProxyConfigState(currentURL string) *ProxyConfigState {
+	proxyType := ProxyTypeHTTP
+	switch {
+	case strings.HasPrefix(currentURL, "socks5://"):
+		proxyType = ProxyTypeSOCKS5
+	case strings.HasPrefix(currentURL, "ssh://"):
+		proxyType = ProxyTypeSSH
+	}
+
 	ti := textinput.New()
 	ti.Prompt = ""
 	ti.Cursor.SetMode(cursor.CursorStatic)
 	ti.SetValue(currentURL)
 	ti.CursorEnd()
 	ti.Focus()
-	return &ProxyConfigState{input: ti}
+	return &ProxyConfigState{ProxyType: proxyType, FieldIndex: 1, input: ti}
+}
+
+// proxyTypeLabel 返回代理类型的显示名。
+func proxyTypeLabel(t string) string {
+	switch t {
+	case ProxyTypeSOCKS5:
+		return "SOCKS5"
+	case ProxyTypeSSH:
+		return "SSH"
+	default:
+		return "HTTP"
+	}
+}
+
+// proxyTypeHint 返回类型对应的示例 URL 提示。
+func proxyTypeHint(t string) string {
+	switch t {
+	case ProxyTypeSOCKS5:
+		return "示例: socks5://127.0.0.1:1080"
+	case ProxyTypeSSH:
+		return "示例: ssh://user@host:22"
+	default:
+		return "示例: http://127.0.0.1:7890"
+	}
+}
+
+// cycleProxyType 循环切换代理类型，同时更新 URL 的 scheme 前缀。
+func cycleProxyType(s *ProxyConfigState, forward bool) {
+	idx := 0
+	for i, t := range proxyTypes {
+		if t == s.ProxyType {
+			idx = i
+			break
+		}
+	}
+	if forward {
+		idx = (idx + 1) % len(proxyTypes)
+	} else {
+		idx = (idx - 1 + len(proxyTypes)) % len(proxyTypes)
+	}
+	newType := proxyTypes[idx]
+
+	// 更新 URL scheme 前缀
+	url := s.input.Value()
+	for _, t := range proxyTypes {
+		scheme := t + "://"
+		if strings.HasPrefix(url, scheme) {
+			url = strings.TrimPrefix(url, scheme)
+			break
+		}
+	}
+	if url != "" {
+		url = newType + "://" + url
+	}
+	s.input.SetValue(url)
+	s.input.CursorEnd()
+
+	s.ProxyType = newType
 }
 
 // HandleProxyConfigKey 处理代理配置页面的按键。
@@ -37,17 +114,61 @@ func HandleProxyConfigKey(s *ProxyConfigState, msg tea.KeyMsg, client Client) (*
 		nav = NavAction{To: NavTaskList}
 
 	case "enter":
+		if s.FieldIndex == 0 {
+			// 在类型字段上按 Enter，切换到 URL 字段
+			s.FieldIndex = 1
+			return s, nil, nav
+		}
 		cmd := client.SaveProxyConfigCmd(s.input.Value())
 		nav = NavAction{To: NavTaskList}
 		return s, cmd, nav
+
+	case "tab", "down", "j":
+		if s.FieldIndex < 1 {
+			s.FieldIndex++
+		}
+
+	case "shift+tab", "up", "k":
+		if s.FieldIndex > 0 {
+			s.FieldIndex--
+		}
+
+	case "left":
+		if s.FieldIndex == 0 {
+			cycleProxyType(s, false)
+		} else {
+			var cmd tea.Cmd
+			s.input, cmd = s.input.Update(msg)
+			return s, cmd, nav
+		}
+
+	case "right":
+		if s.FieldIndex == 0 {
+			cycleProxyType(s, true)
+		} else {
+			var cmd tea.Cmd
+			s.input, cmd = s.input.Update(msg)
+			return s, cmd, nav
+		}
+
+	case " ":
+		if s.FieldIndex == 0 {
+			cycleProxyType(s, true)
+		} else {
+			var cmd tea.Cmd
+			s.input, cmd = s.input.Update(msg)
+			return s, cmd, nav
+		}
 
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 
 	default:
-		var cmd tea.Cmd
-		s.input, cmd = s.input.Update(msg)
-		return s, cmd, nav
+		if s.FieldIndex == 1 {
+			var cmd tea.Cmd
+			s.input, cmd = s.input.Update(msg)
+			return s, cmd, nav
+		}
 	}
 
 	return s, nil, nav
@@ -78,25 +199,58 @@ func RenderProxyConfig(s *ProxyConfigState, st Styles, width, height int) string
 func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int) string {
 	var lines []string
 
-	lines = append(lines, st.SectionHead.Render("代理地址"))
-	lines = append(lines, "")
+	appendBlock := func(block string) {
+		for _, l := range strings.Split(block, "\n") {
+			lines = append(lines, l)
+		}
+	}
 
-	// 字段宽度（与 wizard renderWizardField 保持一致）
-	// lipgloss v2: Width(fieldW+4) 使内容区 = fieldW，与 input.Width 对齐
 	fieldW := maxInt(10, contentW-19)
-	s.input.Width = fieldW
-	renderedField := st.FieldActive.Width(fieldW + 4).Render(s.input.View())
 
-	labelBlock := strings.Join([]string{
+	// 代理类型字段
+	typeLabel := proxyTypeLabel(s.ProxyType)
+	if s.FieldIndex == 0 {
+		typeLabel = "‹ " + typeLabel + " ›"
+	}
+	typeLabel = truncate(typeLabel, maxInt(4, fieldW))
+	typeFieldStyle := st.FieldIdle
+	if s.FieldIndex == 0 {
+		typeFieldStyle = st.FieldActive
+	}
+	typeLabelBlock := strings.Join([]string{
+		strings.Repeat(" ", 15),
+		lipgloss.NewStyle().Width(15).Render(st.Label.Render("代理类型")),
+		strings.Repeat(" ", 15),
+	}, "\n")
+	typeRendered := typeFieldStyle.Width(fieldW + 4).Render(st.Value.Render(typeLabel))
+	appendBlock(lipgloss.JoinHorizontal(lipgloss.Top, typeLabelBlock, typeRendered))
+
+	// 代理地址字段
+	s.input.Width = fieldW
+	urlFieldStyle := st.FieldIdle
+	if s.FieldIndex == 1 {
+		urlFieldStyle = st.FieldActive
+	}
+	var urlRendered string
+	if s.FieldIndex == 1 {
+		urlRendered = urlFieldStyle.Width(fieldW + 4).Render(s.input.View())
+	} else {
+		v := s.input.Value()
+		if v == "" {
+			urlRendered = urlFieldStyle.Width(fieldW + 4).Render(st.Muted.Render("未填写"))
+		} else {
+			urlRendered = urlFieldStyle.Width(fieldW + 4).Render(st.Value.Render(fitTail(v, fieldW)))
+		}
+	}
+	urlLabelBlock := strings.Join([]string{
 		strings.Repeat(" ", 15),
 		lipgloss.NewStyle().Width(15).Render(st.Label.Render("代理地址")),
 		strings.Repeat(" ", 15),
 	}, "\n")
-	lines = append(lines, lipgloss.JoinHorizontal(lipgloss.Top, labelBlock, renderedField))
-	lines = append(lines, "")
+	appendBlock(lipgloss.JoinHorizontal(lipgloss.Top, urlLabelBlock, urlRendered))
 
-	hint := "示例: http://127.0.0.1:7890  或留空以直连"
-	lines = append(lines, st.Muted.Render(truncate(hint, contentW)))
+	lines = append(lines, "")
+	lines = append(lines, st.Muted.Render(truncate(proxyTypeHint(s.ProxyType), contentW)))
 	lines = append(lines, "")
 	lines = append(lines, st.Muted.Render(truncate("配置保存至 ~/.ait/config.json，重启无需重新输入。", contentW)))
 

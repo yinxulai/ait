@@ -95,14 +95,11 @@ func TestOpenWizard_EditTask_Populate(t *testing.T) {
 	if m.wizard.EditingID != "task-123" {
 		t.Errorf("EditingID = %q, want %q", m.wizard.EditingID, "task-123")
 	}
-	if m.wizard.Model != "gpt-4" {
-		t.Errorf("Model = %q, want %q", m.wizard.Model, "gpt-4")
+	if m.wizard.ModelsText != "gpt-4" {
+		t.Errorf("ModelsText = %q, want %q", m.wizard.ModelsText, "gpt-4")
 	}
 	if m.wizard.Concurrency != 5 {
 		t.Errorf("Concurrency = %d, want 5", m.wizard.Concurrency)
-	}
-	if m.wizard.ProxyURL != "http://proxy.internal:8080" {
-		t.Errorf("ProxyURL = %q, want %q", m.wizard.ProxyURL, "http://proxy.internal:8080")
 	}
 }
 
@@ -110,9 +107,8 @@ func TestBuildTaskInput_Standard(t *testing.T) {
 	m := NewModel(&stubServer{})
 	m.wizard = pages.NewWizardState()
 	wz := m.wizard
-	wz.Model = "gpt-4.1"
+	wz.ModelsText = "gpt-4.1"
 	wz.APIKey = "sk-test"
-	wz.ProxyURL = "http://proxy.internal:8080"
 	wz.Concurrency = 8
 	wz.Count = 120
 	wz.PromptMode = pages.PromptModeText
@@ -129,9 +125,6 @@ func TestBuildTaskInput_Standard(t *testing.T) {
 	if inp.Count != 120 {
 		t.Errorf("count = %d, want 120", inp.Count)
 	}
-	if inp.ProxyURL != "http://proxy.internal:8080" {
-		t.Errorf("proxy_url = %q, want %q", inp.ProxyURL, "http://proxy.internal:8080")
-	}
 	if inp.PromptMode != pages.PromptModeText || inp.PromptText != "hello" {
 		t.Errorf("unexpected prompt config: mode=%q text=%q", inp.PromptMode, inp.PromptText)
 	}
@@ -144,9 +137,10 @@ func TestBuildTaskInput_Turbo(t *testing.T) {
 	m := NewModel(&stubServer{})
 	m.wizard = pages.NewWizardState()
 	wz := m.wizard
-	wz.Model = "claude-3-7-sonnet"
+	wz.ModelsText = "claude-3-7-sonnet"
 	wz.APIKey = "sk-ant"
-	wz.Protocol = types.ProtocolAnthropicMessages
+	wz.SelOpenAICompletions = false
+	wz.SelAnthropic = true
 	wz.Turbo = true
 	wz.InitConcurrency = 1
 	wz.MaxConcurrency = 12

@@ -19,6 +19,8 @@ type TaskListState struct {
 	Visible  int
 	// 运行中任务的进度（runID -> RunState 快照，由 Model 注入）
 	ActiveRuns map[string]*server.RunState // taskID -> RunState
+	// 删除二次确认
+	ConfirmDelete bool
 }
 
 // NewTaskListState 创建初始任务列表状态。
@@ -62,6 +64,22 @@ func (s *TaskListState) latestRunAt() *time.Time {
 func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskListState, tea.Cmd, NavAction) {
 	nav := NavAction{}
 
+	// 删除确认模式：拦截所有按键，只处理确认/取消
+	if s.ConfirmDelete {
+		switch msg.String() {
+		case "y", "enter":
+			s.ConfirmDelete = false
+			if t, ok := s.CurrentTask(); ok {
+				return s, client.DeleteTaskCmd(t.ID), nav
+			}
+		case "n", "esc", "q":
+			s.ConfirmDelete = false
+		case "ctrl+c":
+			nav = NavAction{To: NavQuit}
+		}
+		return s, nil, nav
+	}
+
 	switch msg.String() {
 	case "up", "k":
 		if s.Selected > 0 {
@@ -89,8 +107,8 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 		}
 
 	case "d":
-		if t, ok := s.CurrentTask(); ok {
-			return s, client.DeleteTaskCmd(t.ID), nav
+		if t, ok := s.CurrentTask(); ok && !s.IsTaskRunning(t.ID) {
+			s.ConfirmDelete = true
 		}
 
 	case "enter":
@@ -128,7 +146,9 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 	}
 
 	var cbItems []HotkeyItem
-	if t, ok := s.CurrentTask(); ok {
+	if s.ConfirmDelete {
+		cbItems = []HotkeyItem{HotkeyAction("y/Enter", "确认删除"), HotkeyAction("n/Esc", "取消")}
+	} else if t, ok := s.CurrentTask(); ok {
 		if s.IsTaskRunning(t.ID) {
 			cbItems = Hotkeys_TaskList_Running()
 		} else {
@@ -160,7 +180,15 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
-	content := buildTaskListContent(s, st, panel.InnerWidth, PanelContentHeight(frame.InnerHeight))
+	innerW := panel.InnerWidth
+	innerH := PanelContentHeight(frame.InnerHeight)
+
+	var content string
+	if s.ConfirmDelete {
+		content = buildTaskListConfirmContent(s, st, innerW, innerH)
+	} else {
+		content = buildTaskListContent(s, st, innerW, innerH)
+	}
 	return l.Assemble(panel.Wrap(st, content), st, width)
 }
 
@@ -285,6 +313,31 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		lines = append(lines, "")
 	}
 
+	return strings.Join(lines, "\n")
+}
+
+// buildTaskListConfirmContent 渲染删除确认对话框内容。
+func buildTaskListConfirmContent(s *TaskListState, st Styles, width, maxH int) string {
+	var lines []string
+	task, ok := s.CurrentTask()
+	if !ok {
+		return strings.Repeat("\n", maxH-1)
+	}
+	lines = append(lines, "")
+	lines = append(lines, st.ErrStyle.Render("  确认删除任务？"))
+	lines = append(lines, "")
+	lines = append(lines, "  "+st.Label.Render("任务名称")+"  "+st.Value.Render(truncate(task.Name, maxInt(8, width-14))))
+	lines = append(lines, "  "+st.Label.Render("任务 ID ")+"  "+st.Muted.Render(task.ID))
+	lines = append(lines, "")
+	lines = append(lines, "  "+st.Muted.Render("此操作不可恢复，任务的历史运行记录将一并删除。"))
+	lines = append(lines, "")
+	lines = append(lines, "  "+st.Value.Render("[y / Enter]")+"  确认删除       "+st.Value.Render("[n / Esc]")+"  取消")
+	for len(lines) < maxH {
+		lines = append(lines, "")
+	}
+	if len(lines) > maxH {
+		lines = lines[:maxH]
+	}
 	return strings.Join(lines, "\n")
 }
 

@@ -21,6 +21,11 @@ type TaskDeletedMsg struct {
 	TaskID string
 }
 
+// BatchTasksSavedMsg 批量创建任务完成。
+type BatchTasksSavedMsg struct {
+	Count int
+}
+
 // HistoryLoadedMsg 任务历史记录加载完成。
 type HistoryLoadedMsg struct {
 	TaskID  string

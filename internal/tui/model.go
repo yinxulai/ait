@@ -39,13 +39,13 @@ type Model struct {
 	err    error
 
 	// 页面局部状态（由 pages 包管理）
-	taskList   *pages.TaskListState
-	detail    *pages.TaskDetailState
-	wizard    *pages.WizardState
-	dash      *pages.DashboardState
-	turboDash *pages.TurboDashState
-	reqDetail *pages.ReqDetailState
-	proxyConf *pages.ProxyConfigState
+	taskList    *pages.TaskListState
+	detail     *pages.TaskDetailState
+	wizard     *pages.WizardState
+	dash       *pages.DashboardState
+	turboDash  *pages.TurboDashState
+	reqDetail  *pages.ReqDetailState
+	proxyConf  *pages.ProxyConfigState
 }
 
 // NewModel 创建 Model。srv 不能为 nil。
@@ -221,6 +221,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case ProxyConfigSavedMsg:
 		m.status = "代理配置已保存"
 		return m, nil
+
+	case BatchTasksSavedMsg:
+		m.status = fmt.Sprintf("已批量创建 %d 个任务", msg.Count)
+		m.view = viewTaskList
+		return m, m.client.LoadTasksCmd()
 	}
 
 	return m, nil
