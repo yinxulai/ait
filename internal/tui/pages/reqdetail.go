@@ -196,7 +196,7 @@ func buildReqPerfPanel(r *types.RequestMetrics, st Styles, maxH, width int) stri
 	lines = append(lines, " "+labelValue(st, "总耗时  ", st.MetricVal.Render(totalTime)))
 	lines = append(lines, " "+labelValue(st, "TTFT    ", st.MetricVal.Render(ttft)))
 	lines = append(lines, " "+labelValue(st, "输出TPS ", st.MetricVal.Render(tps)))
-	lines = append(lines, " "+labelValue(st, "令牌    ", tokenSummary))
+	lines = append(lines, " "+labelValue(st, "Token    ", tokenSummary))
 	if r.Success {
 		lines = append(lines, " "+labelValue(st, "缓存    ", cacheSummary))
 	} else {
