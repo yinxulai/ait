@@ -204,6 +204,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		lastRun     string
 		isRunning   bool
 		rate        string
+		cache       string
 		ttft        string
 		tps         string
 	}
@@ -254,6 +255,13 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 			}
 		}
 
+		cacheText := "─"
+		if hasActiveRun && rs != nil && rs.CacheHitRate > 0 {
+			cacheText = fmt.Sprintf("%.1f%%", rs.CacheHitRate*100)
+		} else if !hasActiveRun && t.LatestRun != nil && t.LatestRun.CacheHitRate > 0 {
+			cacheText = fmt.Sprintf("%.1f%%", t.LatestRun.CacheHitRate*100)
+		}
+
 		rowData[i] = taskRowData{
 			name:      t.Name,
 			mode:      modeText,
@@ -262,6 +270,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 			lastRun:   lastRunText,
 			isRunning: isRunning,
 			rate:      rateText,
+			cache:     cacheText,
 			ttft:      ttftText,
 			tps:       tpsText,
 		}
@@ -269,9 +278,9 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 
 	// ── 构建 lipgloss/table ──
 	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽（包括两端各 1 字符 padding）
-	colWidths := []int{0, 8, 22, 12, 8, 10, 10} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, TTFT, TPS
+	colWidths := []int{0, 8, 22, 12, 8, 8, 10, 10} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, 缓存, TTFT, TPS
 	t := lgtable.New().
-		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "TTFT", "TPS").
+		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "缓存", "TTFT", "TPS").
 		Width(width).
 		Height(maxH).
 		YOffset(s.Offset).
@@ -280,12 +289,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		BorderHeader(true).BorderColumn(true).BorderRow(true).
 		BorderStyle(lipgloss.NewStyle().Foreground(colorDivider)).
 		StyleFunc(func(row, col int) lipgloss.Style {
-			aw := func(s lipgloss.Style) lipgloss.Style {
-				if col < len(colWidths) && colWidths[col] > 0 {
-					return s.Width(colWidths[col]).Padding(0, 1)
-				}
-				return s.Padding(0, 1)
-			}
+			aw := func(s lipgloss.Style) lipgloss.Style { return applyColWidth(s, col, colWidths) }
 			if row == lgtable.HeaderRow {
 				return aw(st.TableHead)
 			}
@@ -307,7 +311,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 					return aw(st.Ok)
 				}
 				return aw(st.Muted)
-			case 4, 5, 6: // rate, ttft, tps
+			case 4, 5, 6, 7: // rate, cache, ttft, tps
 				return aw(st.Value)
 			default:
 				return aw(st.TableRow)
@@ -315,7 +319,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		})
 
 	for _, r := range rowData {
-		t.Row(r.name, r.mode, r.proto, r.lastRun, r.rate, r.ttft, r.tps)
+		t.Row(r.name, r.mode, r.proto, r.lastRun, r.rate, r.cache, r.ttft, r.tps)
 	}
 
 	tableStr := t.String()
@@ -375,11 +379,4 @@ func buildTaskListConfirmContent(s *TaskListState, st Styles, width, maxH int) s
 		lines = lines[:maxH]
 	}
 	return strings.Join(lines, "\n")
-}
-
-func max(a, b int) int {
-	if a > b {
-		return a
-	}
-	return b
 }

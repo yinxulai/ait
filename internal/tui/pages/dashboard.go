@@ -36,10 +36,10 @@ func NewDashboardState(runID server.RunID, taskID string) *DashboardState {
 
 // IsRunning 判断运行是否仍在进行。
 func (d *DashboardState) IsRunning() bool {
-	if d == nil || d.RunState == nil {
+	if d == nil {
 		return false
 	}
-	return d.RunState.Status == server.RunStatusRunning
+	return isRunStateRunning(d.RunState)
 }
 
 // AdjustReqOffset 根据屏幕显示顺序调整列表可见窗口。
@@ -255,14 +255,7 @@ func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) stri
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
 	} else {
-		lines = append(lines, " "+labelValue(st, "成功率  ",
-			st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate))))
-		lines = append(lines, " "+labelValue(st, "avg TPS ",
-			st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
-		lines = append(lines, " "+labelValue(st, "avg TTFT",
-			st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
-		lines = append(lines, " "+labelValue(st, "缓存命中",
-			st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
+		lines = appendRunMetricLines(lines, st, rs)
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -360,12 +353,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		BorderHeader(true).BorderColumn(true).BorderRow(true).
 		BorderStyle(lipgloss.NewStyle().Foreground(colorDivider)).
 		StyleFunc(func(row, col int) lipgloss.Style {
-			aw := func(s lipgloss.Style) lipgloss.Style {
-				if col < len(colWidths) && colWidths[col] > 0 {
-					return s.Width(colWidths[col]).Padding(0, 1)
-				}
-				return s.Padding(0, 1)
-			}
+			aw := func(s lipgloss.Style) lipgloss.Style { return applyColWidth(s, col, colWidths) }
 			if row == lgtable.HeaderRow {
 				return aw(st.TableHead)
 			}

@@ -57,10 +57,10 @@ func NewTurboDashState(runID server.RunID, taskID string) *TurboDashState {
 
 // IsRunning 判断是否仍在运行。
 func (d *TurboDashState) IsRunning() bool {
-	if d == nil || d.RunState == nil {
+	if d == nil {
 		return false
 	}
-	return d.RunState.Status == server.RunStatusRunning
+	return isRunStateRunning(d.RunState)
 }
 
 // HandleTurboDashKey 处理 Turbo 仪表盘按键。
@@ -265,10 +265,7 @@ func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) stri
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
 	} else {
-		lines = append(lines, " "+labelValue(st, "成功率  ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate))))
-		lines = append(lines, " "+labelValue(st, "TPS     ", st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
-		lines = append(lines, " "+labelValue(st, "TTFT    ", st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
-		lines = append(lines, " "+labelValue(st, "Cache   ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
+		lines = appendRunMetricLines(lines, st, rs)
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -368,12 +365,7 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 		BorderHeader(true).BorderColumn(true).BorderRow(true).
 		BorderStyle(lipgloss.NewStyle().Foreground(colorDivider)).
 		StyleFunc(func(row, col int) lipgloss.Style {
-			aw := func(s lipgloss.Style) lipgloss.Style {
-				if col < len(colWidths) && colWidths[col] > 0 {
-					return s.Width(colWidths[col]).Padding(0, 1)
-				}
-				return s.Padding(0, 1)
-			}
+			aw := func(s lipgloss.Style) lipgloss.Style { return applyColWidth(s, col, colWidths) }
 			if row == lgtable.HeaderRow {
 				return aw(st.TableHead)
 			}

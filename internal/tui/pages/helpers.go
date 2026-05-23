@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/yinxulai/ait/internal/server"
 )
 
 // ─── 文本工具 ─────────────────────────────────────────────────────────────────
@@ -443,6 +444,37 @@ func runStatusText(status string) string {
 	default:
 		return status
 	}
+}
+
+// modeShortLabel 将运行模式字符串转换为短标签。
+func modeShortLabel(mode string) string {
+	if mode == "turbo" {
+		return "Turbo"
+	}
+	return "标准"
+}
+
+// isRunStateRunning 判断 RunState 是否处于运行状态。
+func isRunStateRunning(rs *server.RunState) bool {
+	return rs != nil && rs.Status == server.RunStatusRunning
+}
+
+// applyColWidth 按列宽定义应用固定宽度或仅 padding，用于 lgtable StyleFunc 中的 aw 闭包。
+// colWidths[col] > 0 时设固定总宽（含 padding），否则仅添加 padding。
+func applyColWidth(s lipgloss.Style, col int, colWidths []int) lipgloss.Style {
+	if col < len(colWidths) && colWidths[col] > 0 {
+		return s.Width(colWidths[col]).Padding(0, 1)
+	}
+	return s.Padding(0, 1)
+}
+
+// appendRunMetricLines 向 lines 追加 4 行运行指标（成功率/TPS/TTFT/缓存命中）。
+func appendRunMetricLines(lines []string, st Styles, rs *server.RunState) []string {
+	lines = append(lines, " "+labelValue(st, "成功率  ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate))))
+	lines = append(lines, " "+labelValue(st, "TPS     ", st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
+	lines = append(lines, " "+labelValue(st, "TTFT    ", st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
+	lines = append(lines, " "+labelValue(st, "缓存命中", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
+	return lines
 }
 
 func panelTitleLines(st Styles, title string, width int, compact bool) []string {

@@ -310,13 +310,10 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	rowData := make([]histRow, effectiveLen)
 	if hasActive {
 		rs := s.ActiveRun
-		modeShort := "标准"
-		if rs.Mode == "turbo" {
-			modeShort = "Turbo"
-		}
+		modeShort := modeShortLabel(rs.Mode)
 		rateStr := "─"
 		if rs.TotalReqs > 0 {
-			rateStr = fmt.Sprintf("%.0f%%", rs.SuccessRate)
+			rateStr = fmt.Sprintf("%.1f%%", rs.SuccessRate)
 		}
 		rowData[0] = histRow{
 			statusText: "●",
@@ -349,10 +346,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			statusText = "■"
 			statusMut = true
 		}
-		modeShort := "标准"
-		if run.Mode == "turbo" {
-			modeShort = "Turbo"
-		}
+		modeShort := modeShortLabel(run.Mode)
 		durText := "─"
 		if !run.FinishedAt.IsZero() {
 			durText = fmtDuration(run.FinishedAt.Sub(run.StartedAt))
@@ -384,12 +378,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 		BorderHeader(true).BorderColumn(true).BorderRow(true).
 		BorderStyle(lipgloss.NewStyle().Foreground(colorDivider)).
 		StyleFunc(func(row, col int) lipgloss.Style {
-			aw := func(s lipgloss.Style) lipgloss.Style {
-				if col < len(colWidths) && colWidths[col] > 0 {
-					return s.Width(colWidths[col]).Padding(0, 1)
-				}
-				return s.Padding(0, 1)
-			}
+			aw := func(s lipgloss.Style) lipgloss.Style { return applyColWidth(s, col, colWidths) }
 			if row == lgtable.HeaderRow {
 				return aw(st.TableHead)
 			}
@@ -490,27 +479,20 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 	contentW := maxInt(12, width-lipgloss.Width(indent))
 	useTwoCols := contentW >= 48
 
-	statusText := sel.Status
+	statusText := runStatusText(sel.Status)
 	statusStyle := st.Value
 	switch sel.Status {
 	case "running":
-		statusText = "运行中"
 		statusStyle = st.Ok
 	case "completed":
-		statusText = "完成"
 		statusStyle = st.Ok
 	case "failed":
-		statusText = "失败"
 		statusStyle = st.ErrStyle
 	case "stopped":
-		statusText = "已停止"
 		statusStyle = st.Muted
 	}
 
-	modeText := "标准"
-	if sel.Mode == "turbo" {
-		modeText = "Turbo"
-	}
+	modeText := modeShortLabel(sel.Mode)
 
 	renderCell := func(label, value string, valueStyle lipgloss.Style, cellW int) string {
 		prefix := st.Label.Render(padRight(label, labelW))
