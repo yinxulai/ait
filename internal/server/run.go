@@ -182,6 +182,7 @@ func buildRunStateFromStoredRun(run *store.StoredRun, requests []types.RequestMe
 	state.StandardResult = run.Result.StandardResult
 	state.TurboResult = run.Result.TurboResult
 	if run.Result.TurboResult != nil {
+		state.TurboConfig = run.Result.TurboResult.Config
 		state.Levels = run.Result.TurboResult.Levels
 		state.CurrentLevel = run.Result.TurboResult.MaxStableConcurrency
 	}
@@ -253,6 +254,8 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	if hydratedInput.Turbo {
 		// turbo 模式：跨多个并发级别探测，请求总数不固定，动态追加
 		state.TotalReqs = 0
+		// 规范化并存储 TurboConfig，供 TUI 在运行开始时即可显示任务参数
+		state.TurboConfig = turbo.NormalizeConfig(hydratedInput.TurboConfig, hydratedInput.Count)
 	} else {
 		// standard 模式：请求数固定，动态追加（按完成顺序）
 		state.TotalReqs = hydratedInput.Count
@@ -351,6 +354,11 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 	var globalIdx int64
 
 	factory := func(levelInput types.Input) (turbo.LevelRunner, error) {
+		// 每级别开始时更新 CurrentLevel，TUI 实时反映当前探测的并发度
+		ar.mu.Lock()
+		ar.state.CurrentLevel = levelInput.Concurrency
+		ar.mu.Unlock()
+
 		r, err := runner.NewRunner(taskDef.ID, levelInput)
 		if err != nil {
 			return nil, err
@@ -360,6 +368,7 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 			cb: func(metrics *client.ResponseMetrics, _ int, cbErr error) {
 				gIdx := int(atomic.AddInt64(&globalIdx, 1)) - 1
 				rm := mapRequestMetrics(metrics, gIdx, cbErr)
+				rm.Level = levelInput.Concurrency
 				_ = runStore.AppendRequest(taskDef.ID, string(runID), *rm)
 
 				ar.mu.Lock()
@@ -391,6 +400,13 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 	}
 
 	engine := turbo.New(factory)
+	engine.SetOnLevelDone(func(level types.TurboLevelResult) {
+		ar.mu.Lock()
+		ar.state.Levels = append(ar.state.Levels, level)
+		snap := ar.snapshotState()
+		ar.mu.Unlock()
+		s.bus.Publish(Event{RunID: runID, Kind: EventLevelDone, Payload: snap})
+	})
 
 	ar.mu.Lock()
 	ar.turboEngine = engine

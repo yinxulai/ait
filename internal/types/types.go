@@ -277,6 +277,7 @@ type RequestMetrics struct {
 	ErrorMessage     string        `json:"error_message,omitempty"`
 	RequestBody      string        `json:"request_body,omitempty"`
 	ResponseBody     string        `json:"response_body,omitempty"`
+	Level            int           `json:"level,omitempty"`
 }
 
 type TurboConfig struct {

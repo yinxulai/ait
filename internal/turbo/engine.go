@@ -30,6 +30,12 @@ type Engine struct {
 	currentRunner LevelRunner
 	stopCh        chan struct{}
 	stopOnce      sync.Once
+	onLevelDone   func(types.TurboLevelResult)
+}
+
+// SetOnLevelDone 设置每个并发级别探测完成后的回调（含稳定与不稳定级别）。
+func (e *Engine) SetOnLevelDone(fn func(types.TurboLevelResult)) {
+	e.onLevelDone = fn
 }
 
 func New(factory RunnerFactory) *Engine {
@@ -108,26 +114,39 @@ func (e *Engine) Run(input types.Input) (*types.TurboResult, error) {
 		}
 
 		level := buildLevelResult(report, concurrency)
-		result.Levels = append(result.Levels, level)
 
+		// 先判断停止条件，确保 Stable/StopReason 在回调前已填充。
+		unstable := false
 		select {
 		case <-e.stopCh:
 			result.StopReason = StopReasonManual
+			result.Levels = append(result.Levels, level)
+			if e.onLevelDone != nil {
+				e.onLevelDone(level)
+			}
 			result.ProbeDuration = time.Since(startedAt)
 			return result, nil
 		default:
 		}
 
 		if level.SuccessRate < cfg.MinSuccessRate {
-			result.Levels[len(result.Levels)-1].Stable = false
-			result.Levels[len(result.Levels)-1].StopReason = StopReasonLowSuccessRate
+			level.Stable = false
+			level.StopReason = StopReasonLowSuccessRate
 			result.StopReason = StopReasonLowSuccessRate
-			break
-		}
-		if level.AvgTotalTime > cfg.MaxLatency {
-			result.Levels[len(result.Levels)-1].Stable = false
-			result.Levels[len(result.Levels)-1].StopReason = StopReasonHighLatency
+			unstable = true
+		} else if level.AvgTotalTime > cfg.MaxLatency {
+			level.Stable = false
+			level.StopReason = StopReasonHighLatency
 			result.StopReason = StopReasonHighLatency
+			unstable = true
+		}
+
+		result.Levels = append(result.Levels, level)
+		if e.onLevelDone != nil {
+			e.onLevelDone(level)
+		}
+
+		if unstable {
 			break
 		}
 
@@ -163,6 +182,11 @@ func buildLevelResult(report *types.ReportData, concurrency int) types.TurboLeve
 		StdDevTPS:     report.StdDevTPS,
 		Stable:        true,
 	}
+}
+
+// NormalizeConfig 对 TurboConfig 应用默认值，供外部包在构建 RunState 时复用。
+func NormalizeConfig(cfg types.TurboConfig, fallbackLevelRequests int) types.TurboConfig {
+	return normalizeConfig(cfg, fallbackLevelRequests)
 }
 
 func normalizeConfig(cfg types.TurboConfig, fallbackLevelRequests int) types.TurboConfig {

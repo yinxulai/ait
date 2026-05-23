@@ -189,11 +189,16 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	headerRight := []string{}
 	if rs != nil {
 		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("完成 %d/%d", rs.DoneReqs, rs.TotalReqs)}
-		currentLevel := rs.CurrentLevel + 1
-		if currentLevel < 1 {
-			currentLevel = 1
+		var levelNum int
+		if d.IsRunning() {
+			levelNum = len(rs.Levels) + 1
+		} else {
+			levelNum = len(rs.Levels)
 		}
-		headerRight = []string{fmt.Sprintf("级别 %d", currentLevel)}
+		if levelNum < 1 {
+			levelNum = 1
+		}
+		headerRight = []string{fmt.Sprintf("级别 %d", levelNum)}
 		if len(rs.Levels) > 0 {
 			headerRight = append(headerRight, fmt.Sprintf("已探测 %d 档", len(rs.Levels)))
 		}
@@ -243,12 +248,10 @@ func buildTurboDashParams(rs *server.RunState, st Styles, maxH, width int) strin
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render("等待数据..."))
 	} else {
-		if rs.TurboResult != nil {
-			tc := rs.TurboResult.Config
-			lines = append(lines, " "+labelValue(st, "爬坡  ", fmt.Sprintf("%d→%d  步进+%d", tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize)))
-			lines = append(lines, " "+labelValue(st, "每级  ", fmt.Sprintf("%d 请求", tc.LevelRequests)))
-			lines = append(lines, " "+labelValue(st, "停止  ", fmt.Sprintf("成功率 < %.0f%%", tc.MinSuccessRate*100)))
-		}
+		tc := rs.TurboConfig
+		lines = append(lines, " "+labelValue(st, "爬坡  ", fmt.Sprintf("%d→%d  步进+%d", tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize)))
+		lines = append(lines, " "+labelValue(st, "每级  ", fmt.Sprintf("%d 请求", tc.LevelRequests)))
+		lines = append(lines, " "+labelValue(st, "停止  ", fmt.Sprintf("成功率 < %.0f%%", tc.MinSuccessRate*100)))
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -287,9 +290,17 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	if total > 0 {
 		ratio = float64(done) / float64(total)
 	}
-	levelTotal := len(rs.Levels)
+	levelDone := len(rs.Levels)
+	var levelTotalStr string
+	cfg := rs.TurboConfig
+	if cfg.StepSize > 0 {
+		expected := (cfg.MaxConcurrency-cfg.InitConcurrency)/cfg.StepSize + 1
+		levelTotalStr = fmt.Sprintf("%d/%d", levelDone, expected)
+	} else {
+		levelTotalStr = fmt.Sprintf("%d", levelDone)
+	}
 	prefix := " 进度  "
-	suffix := fmt.Sprintf("  %d/%d  当前并发 %d   总进度: 已完成 %d/~? 级", done, total, rs.CurrentLevel, levelTotal)
+	suffix := fmt.Sprintf("  %d/%d  当前并发 %d   总进度: %s 级", done, total, rs.CurrentLevel, levelTotalStr)
 
 	barW := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
 	if barW < 5 {
@@ -323,6 +334,7 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 		markW  = 2
 		idW    = 6
 		statW  = 5
+		levelW = 6
 		timeW  = 10
 		ttftW  = 10
 		cacheW = 8
@@ -332,6 +344,7 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 		tableCol(markW, ""),
 		tableCol(idW, "#"),
 		tableCol(statW, "状态"),
+		tableCol(levelW, "级别"),
 		tableCol(timeW, "总耗时"),
 		tableCol(ttftW, "TTFT"),
 		tableCol(cacheW, "Cache"),
@@ -376,6 +389,7 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 			tableCol(markW, marker),
 			tableCol(idW, fmt.Sprintf("#%d", len(reqs)-pos)),
 			tableCol(statW, statusStr),
+			tableCol(levelW, fmt.Sprintf("%d", r.Level)),
 			tableCol(timeW, totalStr),
 			tableCol(ttftW, fmtDuration(r.TTFT)),
 			tableCol(cacheW, fmt.Sprintf("%.0f%%", r.CacheHitRate*100)),

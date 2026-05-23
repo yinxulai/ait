@@ -63,6 +63,7 @@ type RunState struct {
 	Requests []*types.RequestMetrics
 
 	// Turbo 专用
+	TurboConfig  types.TurboConfig        // 规范化后的 Turbo 配置（运行开始时填充）
 	Levels       []types.TurboLevelResult
 	CurrentLevel int
 
