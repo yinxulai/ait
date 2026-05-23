@@ -332,7 +332,8 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 		timeW  = 10
 		ttftW  = 10
 		cacheW = 8
-		tokW   = 10
+		ptokW  = 9  // 提示 tok
+		ctokW  = 9  // 完成 tok
 	)
 	hdr := lipgloss.JoinHorizontal(lipgloss.Top,
 		tableCol(markW, ""),
@@ -342,7 +343,8 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 		tableCol(timeW, "总耗时"),
 		tableCol(ttftW, "TTFT"),
 		tableCol(cacheW, "Cache"),
-		tableCol(tokW, "Token"),
+		tableCol(ptokW, "提示tok"),
+		tableCol(ctokW, "完成tok"),
 		"TPS",
 	)
 	lines = append(lines, renderTableHeader(st, width, hdr))
@@ -387,7 +389,8 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 			tableCol(timeW, totalStr),
 			tableCol(ttftW, fmtDuration(r.TTFT)),
 			tableCol(cacheW, fmt.Sprintf("%.0f%%", r.CacheHitRate*100)),
-			tableCol(tokW, fmt.Sprintf("%dtok", r.CompletionTokens)),
+			tableCol(ptokW, fmt.Sprintf("%dtok", r.PromptTokens)),
+			tableCol(ctokW, fmt.Sprintf("%dtok", r.CompletionTokens)),
 			fmt.Sprintf("%.1f/s", r.TPS),
 		)
 

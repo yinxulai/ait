@@ -326,7 +326,8 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		timeW  = 10 // 总耗时
 		ttftW  = 10 // TTFT
 		cacheW = 8  // Cache
-		tokW   = 10 // Token
+		ptokW  = 9  // 提示 tok
+		ctokW  = 9  // 完成 tok
 		// TPS: 余量
 	)
 	hdr := lipgloss.JoinHorizontal(lipgloss.Top,
@@ -336,7 +337,8 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		tableCol(timeW, "总耗时"),
 		tableCol(ttftW, "TTFT"),
 		tableCol(cacheW, "Cache"),
-		tableCol(tokW, "Token"),
+		tableCol(ptokW, "提示tok"),
+		tableCol(ctokW, "完成tok"),
 		"TPS",
 	)
 	lines = append(lines, renderTableHeader(st, width, hdr))
@@ -381,7 +383,8 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 			tableCol(timeW, totalStr),
 			tableCol(ttftW, fmtDuration(r.TTFT)),
 			tableCol(cacheW, fmt.Sprintf("%.0f%%", r.CacheHitRate*100)),
-			tableCol(tokW, fmt.Sprintf("%dtok", r.CompletionTokens)),
+			tableCol(ptokW, fmt.Sprintf("%dtok", r.PromptTokens)),
+			tableCol(ctokW, fmt.Sprintf("%dtok", r.CompletionTokens)),
 			fmt.Sprintf("%.1f/s", r.TPS),
 		)
 

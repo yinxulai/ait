@@ -267,13 +267,14 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	const (
 		markW = 2
 		statW = 2
-		timeW = 17
+		timeW = 15
 		modeW = 7
 		rateW = 8
+		durW  = 9  // 耗时
 		ttftW = 10
 	)
 	hdr := padRight("", markW) + padRight("", statW) + padRight("时间", timeW) + padRight("模式", modeW) +
-		padRight("成功率", rateW) + padRight("TTFT", ttftW) + "TPS"
+		padRight("成功率", rateW) + padRight("耗时", durW) + padRight("TTFT", ttftW) + "TPS"
 	rightLines = append(rightLines, renderTableHeader(st, rightW, hdr))
 	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
 
@@ -332,6 +333,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 					padRight(rs.StartedAt.Format("2006-01-02 15:04"), timeW) +
 					padRight(modeShort, modeW) +
 					padRight(rateStr, rateW) +
+					padRight("─", durW) +
 					styleWhenNotSelected(isSel, st.Ok, progStr)
 			} else {
 				histIdx := idx
@@ -357,11 +359,16 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 					modeShort = "Turbo"
 				}
 				statusIcon := styleWhenNotSelected(isSel, statusStyle, statusText)
+				durText := "─"
+				if !run.FinishedAt.IsZero() {
+					durText = fmtDuration(run.FinishedAt.Sub(run.StartedAt))
+				}
 				row = padRight(marker, markW) +
 					padRight(statusIcon, statW) +
 					padRight(run.StartedAt.Format("2006-01-02 15:04"), timeW) +
 					padRight(modeShort, modeW) +
 					padRight(fmt.Sprintf("%.1f%%", run.SuccessRate), rateW) +
+					padRight(durText, durW) +
 					padRight(fmtDuration(run.AvgTTFT), ttftW) +
 					fmt.Sprintf("%.1f", run.AvgTPS)
 			}

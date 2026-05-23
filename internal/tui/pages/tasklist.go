@@ -200,12 +200,13 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	// 列宽（gap=2 作为列间距内置到每个非末尾列的宽度中）
 	const (
 		modeW    = 9  // 7 + 2 gap
-		protoW   = 20 // 10 + 2 gap
+		protoW   = 18 // 8 + 2 gap
 		lastRunW = 16 // 11 + 2 gap
-		ttftW    = 16 // 10 + 2 gap
+		rateW    = 10 // 6 + 2 gap  -- 成功率
+		ttftW    = 10 // 6 + 2 gap
 		tpsW     = 16  // 末尾列，无需额外 gap
 	)
-	fixedW := 2 + modeW + protoW + lastRunW + ttftW + tpsW
+	fixedW := 2 + modeW + protoW + lastRunW + rateW + ttftW + tpsW
 	nameW := maxInt(10, width-fixedW)
 
 	// 表头：2 空格前缀与正文行对齐（cursor=2）
@@ -216,6 +217,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 			tableCol(modeW, "模式"),
 			tableCol(protoW, "协议"),
 			tableCol(lastRunW, "上次运行"),
+			tableCol(rateW, "成功率"),
 			tableCol(ttftW, "TTFT"),
 			"TPS",
 		))
@@ -285,6 +287,15 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		}
 		ttftCol := tableCol(ttftW, styleWhenNotSelected(isSel, st.Value, ttftText))
 
+		// ── 成功率 ──
+		rateText := "─"
+		if hasActiveRun && rs != nil && rs.TotalReqs > 0 {
+			rateText = fmt.Sprintf("%.1f%%", rs.SuccessRate)
+		} else if !hasActiveRun && t.LatestRun != nil {
+			rateText = fmt.Sprintf("%.1f%%", t.LatestRun.SuccessRate)
+		}
+		rateCol := tableCol(rateW, styleWhenNotSelected(isSel, st.Value, rateText))
+
 		// ── TPS ──
 		tpsText := "─"
 		if hasActiveRun && rs != nil && rs.AvgTPS > 0 {
@@ -298,9 +309,9 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		}
 		tpsCol := styleWhenNotSelected(isSel, st.Value, tpsText)
 
-		// ── 单行：名称 | 模式 | 协议 | 上次运行 | TTFT | TPS ──
+		// ── 单行：名称 | 模式 | 协议 | 上次运行 | 成功率 | TTFT | TPS ──
 		lines = append(lines, renderTableRow(st, width, isSel, lipgloss.JoinHorizontal(lipgloss.Top,
-			prefix, nameCol, modeCol, proto, lastRunCol, ttftCol, tpsCol)))
+			prefix, nameCol, modeCol, proto, lastRunCol, rateCol, ttftCol, tpsCol)))
 
 		// ── 分隔线 ──
 		if i < end-1 && len(lines) < maxH-1 {
