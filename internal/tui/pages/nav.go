@@ -22,6 +22,7 @@ const (
 	NavRunDetail            // 从历史记录进入某次运行的仪表盘（需 RunID）
 	NavReqDetail            // 进入请求详情（需 ReqIndex）
 	NavProxy                // 进入代理配置页
+	NavHelp                 // 打开帮助页
 	NavQuit                 // 退出程序
 )
 

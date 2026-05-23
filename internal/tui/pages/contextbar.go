@@ -199,3 +199,12 @@ func Hotkeys_ProxyConfig() []HotkeyItem {
 		HotkeyAction("Ctrl+U", "清空"),
 	}
 }
+
+// Hotkeys_Help 帮助页。
+func Hotkeys_Help() []HotkeyItem {
+	return []HotkeyItem{
+		HotkeyAction("↑↓", "滚动"),
+		HotkeyAction("PgUp/PgDn", "翻页"),
+		HotkeyAction("g/G", "顶部/底部"),
+	}
+}

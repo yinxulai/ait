@@ -38,9 +38,20 @@ type PageHotkeys struct {
 }
 
 // NewPageHotkeys 用于构建统一的页面 Hotkeys。
+// 所有页面（帮助页除外）会自动在 Hotkeys 末尾追加 [?] 帮助提示。
 func NewPageHotkeys(hotkeys []HotkeyItem, hints ...string) PageHotkeys {
 	return PageHotkeys{
 		Hotkeys: hotkeys,
+		Hints:   HotkeyTexts(hints...),
+	}
+}
+
+// NewPageHotkeysWithHelp 在 NewPageHotkeys 基础上自动追加 [?] 帮助。
+// 非帮助页使用此函数以统一显示帮助入口。
+func NewPageHotkeysWithHelp(hotkeys []HotkeyItem, hints ...string) PageHotkeys {
+	withHelp := append(hotkeys, HotkeyAction("?", "帮助"))
+	return PageHotkeys{
+		Hotkeys: withHelp,
 		Hints:   HotkeyTexts(hints...),
 	}
 }

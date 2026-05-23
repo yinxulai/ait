@@ -129,6 +129,9 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 			}
 		}
 
+	case "?":
+		nav = NavAction{To: NavHelp}
+
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
@@ -177,7 +180,7 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 		HeaderMeta:      fmt.Sprintf("%d 个任务", len(s.Tasks)),
 		HeaderInfoLeft:  []string{fmt.Sprintf("运行中 %d", runningCount)},
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeys(cbItems, "[↑↓] 选择", "[a] 新建", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[↑↓] 选择", "[a] 新建", "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)

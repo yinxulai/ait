@@ -160,6 +160,9 @@ func HandleProxyConfigKey(s *ProxyConfigState, msg tea.KeyMsg, client Client) (*
 			return s, cmd, nav
 		}
 
+	case "?":
+		nav = NavAction{To: NavHelp}
+
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 
@@ -187,7 +190,7 @@ func RenderProxyConfig(s *ProxyConfigState, st Styles, width, height int) string
 		HeaderTitle:    "代理配置",
 		HeaderSubtitle: "设置全局 HTTP 代理，适用于所有任务的请求。留空则使用系统环境变量或直连。",
 		HeaderMeta:     "全局配置",
-		Hotkeys:        NewPageHotkeys(Hotkeys_ProxyConfig(), "[Esc] 返回", "[q] 退出"),
+		Hotkeys:        NewPageHotkeysWithHelp(Hotkeys_ProxyConfig(), "[Esc] 返回", "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)

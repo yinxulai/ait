@@ -65,6 +65,9 @@ func HandleReqDetailKey(s *ReqDetailState, msg tea.KeyMsg) (*ReqDetailState, Nav
 			nav = NavAction{To: NavDashboard}
 		}
 
+	case "?":
+		nav = NavAction{To: NavHelp}
+
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
@@ -126,7 +129,7 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 		HeaderMeta:      truncate(string(s.RunID), 18),
 		HeaderInfoLeft:  []string{fmt.Sprintf("请求 %d/%d", idx+1, len(s.Requests)), status},
 		HeaderInfoRight: []string{fmt.Sprintf("缓存 %.0f%%", r.CacheHitRate*100), "耗时 " + fmtDuration(r.TotalTime)},
-		Hotkeys:         NewPageHotkeys(Hotkeys_ReqDetail(), "[b/Esc] 返回上一页", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(Hotkeys_ReqDetail(), "[b/Esc] 返回上一页", "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
 	bodyPanel := frame.InnerPanel()

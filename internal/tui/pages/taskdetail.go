@@ -131,6 +131,9 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 	case "d":
 		return s, client.DeleteTaskCmd(s.Task.ID), nav
 
+	case "?":
+		nav = NavAction{To: NavHelp}
+
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
@@ -199,7 +202,7 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 		HeaderMeta:      "任务详情",
 		HeaderInfoLeft:  []string{modeStr, inp.NormalizedProtocol()},
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeys(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
 

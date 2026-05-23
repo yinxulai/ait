@@ -23,6 +23,7 @@ const (
 	viewTurboDash  viewState = "turbo-dash"
 	viewReqDetail  viewState = "req-detail"
 	viewProxy      viewState = "proxy"
+	viewHelp       viewState = "help"
 )
 
 // ─── 根 Model ─────────────────────────────────────────────────────────────────
@@ -46,6 +47,7 @@ type Model struct {
 	turboDash  *pages.TurboDashState
 	reqDetail  *pages.ReqDetailState
 	proxyConf  *pages.ProxyConfigState
+	help       *pages.HelpState
 }
 
 // NewModel 创建 Model。srv 不能为 nil。
@@ -255,6 +257,8 @@ func (m *Model) View() string {
 		content = pages.RenderReqDetail(m.reqDetail, m.reqDetailTaskName(), m.styles, innerW, innerH)
 	case viewProxy:
 		content = pages.RenderProxyConfig(m.proxyConf, m.styles, innerW, innerH)
+	case viewHelp:
+		content = pages.RenderHelp(m.help, m.styles, innerW, innerH)
 	default:
 		content = "未知视图"
 	}
@@ -313,6 +317,11 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 		m.proxyConf = newState
 		navCmd := m.handleNav(nav)
 		return m, tea.Batch(cmd, navCmd)
+
+	case viewHelp:
+		newState, nav := pages.HandleHelpKey(m.help, msg)
+		m.help = newState
+		return m, m.handleNav(nav)
 	}
 
 	return m, nil
@@ -400,10 +409,37 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 		m.view = viewProxy
 		return m.client.LoadProxyConfigCmd()
 
+	case pages.NavHelp:
+		m.help = pages.NewHelpState(pages.NavAction{To: m.currentNavTarget()})
+		m.view = viewHelp
+		return nil
+
 	case pages.NavQuit:
 		return tea.Quit
 	}
 	return nil
+}
+
+// currentNavTarget 返回当前视图对应的 NavTarget，用于帮助页的返回导航。
+func (m *Model) currentNavTarget() pages.NavTarget {
+	switch m.view {
+	case viewTaskList:
+		return pages.NavTaskList
+	case viewTaskDetail:
+		return pages.NavTaskDetail
+	case viewWizard:
+		return pages.NavWizard
+	case viewDashboard:
+		return pages.NavDashboard
+	case viewTurboDash:
+		return pages.NavTurboDash
+	case viewReqDetail:
+		return pages.NavReqDetail
+	case viewProxy:
+		return pages.NavProxy
+	default:
+		return pages.NavTaskList
+	}
 }
 
 // ─── Server 事件处理 ──────────────────────────────────────────────────────────

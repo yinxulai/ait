@@ -130,6 +130,9 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 			return d, client.GenerateReportCmd(d.RunID, server.ReportFormatJSON), nav
 		}
 
+	case "?":
+		nav = NavAction{To: NavHelp}
+
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
@@ -207,7 +210,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 		HeaderMeta:      "Turbo 模式",
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeys(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
 	bodyPanel := frame.InnerPanel()

@@ -582,6 +582,9 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		}
 		loadCurrentFieldInput(wz)
 
+	case "?":
+		nav = NavAction{To: NavHelp}
+
 	case "ctrl+c":
 		nav = NavAction{To: NavQuit}
 
@@ -644,7 +647,7 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 		HeaderMeta:      fmt.Sprintf("步骤 %d/3", int(wz.Step)+1),
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeys(wizardHotkeyItems(wz.Step), "[Ctrl+C] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(wizardHotkeyItems(wz.Step), "[Ctrl+C] 退出"),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)

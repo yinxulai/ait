@@ -135,6 +135,9 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 			return d, client.GenerateReportCmd(d.RunID, server.ReportFormatJSON), nav
 		}
 
+	case "?":
+		nav = NavAction{To: NavHelp}
+
 	case "q", "ctrl+c":
 		nav = NavAction{To: NavQuit}
 	}
@@ -203,7 +206,7 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 		HeaderMeta:      "标准模式",
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeys(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
 	bodyPanel := frame.InnerPanel()
