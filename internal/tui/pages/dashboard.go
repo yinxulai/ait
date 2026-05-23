@@ -81,8 +81,8 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 			break
 		}
 		if d.ReqSel < 0 {
-			// 无选中项：首次按键选中最新一条（显示列表顶部）
-			d.ReqSel = requestIndexFromDisplayPos(0, len(reqs))
+			// 无选中项：首次向上按键选中最旧一条（显示列表底部）
+			d.ReqSel = requestIndexFromDisplayPos(len(reqs)-1, len(reqs))
 		} else {
 			selPos := requestDisplayPos(d.ReqSel, len(reqs))
 			if selPos <= 0 {

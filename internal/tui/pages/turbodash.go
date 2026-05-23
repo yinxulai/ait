@@ -80,7 +80,7 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 			break
 		}
 		if d.ReqSel < 0 {
-			d.ReqSel = requestIndexFromDisplayPos(0, len(reqs))
+			d.ReqSel = requestIndexFromDisplayPos(len(reqs)-1, len(reqs))
 		} else {
 			selPos := requestDisplayPos(d.ReqSel, len(reqs))
 			if selPos > 0 {
@@ -113,12 +113,6 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 		}
 
 	case "s":
-		if d.IsRunning() {
-			return d, client.StopRunCmd(d.RunID), nav
-		}
-
-	case "m":
-		// 手动标记极限并停止
 		if d.IsRunning() {
 			return d, client.StopRunCmd(d.RunID), nav
 		}

@@ -88,23 +88,6 @@ func dividerLine(st Styles, width int) string {
 	return st.Divider.Render(strings.Repeat("─", width))
 }
 
-// ─── 时间格式化 ───────────────────────────────────────────────────────────────
-
-// timeAgo 将时间转换为"N分钟前"/"刚刚"等人性化描述。
-func timeAgo(t time.Time) string {
-	d := time.Since(t)
-	switch {
-	case d < time.Minute:
-		return "刚刚"
-	case d < time.Hour:
-		return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
-	case d < 24*time.Hour:
-		return fmt.Sprintf("%d 小时前", int(d.Hours()))
-	default:
-		return t.Format("2006-01-02 15:04")
-	}
-}
-
 // fmtDuration 格式化 Duration 为简短字符串（ms/s/min）。
 func fmtDuration(d time.Duration) string {
 	ms := d.Milliseconds()

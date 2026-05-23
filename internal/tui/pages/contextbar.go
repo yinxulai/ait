@@ -77,7 +77,7 @@ func Hotkeys_TaskDetail_HasHistory() []HotkeyItem {
 func Hotkeys_TaskDetail_Running() []HotkeyItem {
 	return []HotkeyItem{
 		HotkeyAction("↑↓", "选择记录"),
-		HotkeyAction("Enter", "进入运行中仓表盘"),
+		HotkeyAction("Enter", "进入运行中仪表盘"),
 		HotkeyAction("g", "导出历史 JSON"),
 		HotkeyAction("e", "编辑"),
 		HotkeyAction("y", "复制任务"),
@@ -152,7 +152,6 @@ func Hotkeys_Dashboard_Done_Sel() []HotkeyItem {
 func Hotkeys_TurboDash_Running_NoSel() []HotkeyItem {
 	return []HotkeyItem{
 		HotkeyAction("s", "停止"),
-		HotkeyAction("m", "标记极限并停止"),
 		HotkeyAction("b/Esc", "返回列表"),
 	}
 }

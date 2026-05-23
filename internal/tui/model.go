@@ -112,8 +112,6 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		if m.taskList.Selected >= len(msg.Tasks) {
 			m.taskList.Selected = max(len(msg.Tasks)-1, 0)
 		}
-		m.status = ""
-		m.err = nil
 		return m, nil
 
 	// ── 任务保存完成（新建或更新） ──
@@ -213,9 +211,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── 代理配置 ──
 	case ProxyConfigLoadedMsg:
-		if m.proxyConf != nil {
-			m.proxyConf = pages.NewProxyConfigState(msg.ProxyURL)
-		}
+		m.proxyConf = pages.NewProxyConfigState(msg.ProxyURL)
 		return m, nil
 
 	case ProxyConfigSavedMsg:
@@ -232,6 +228,16 @@ func (m *Model) View() string {
 	}
 	innerW := m.width
 	innerH := m.height
+
+	// 状态/错误提示条占用一行
+	var banner string
+	if m.err != nil {
+		banner = m.styles.ErrStyle.Width(innerW).Render(" ✗ " + m.err.Error())
+		innerH--
+	} else if m.status != "" {
+		banner = m.styles.Ok.Width(innerW).Render(" ✓ " + m.status)
+		innerH--
+	}
 
 	var content string
 	switch m.view {
@@ -253,12 +259,19 @@ func (m *Model) View() string {
 		content = "未知视图"
 	}
 
+	if banner != "" {
+		return banner + "\n" + content
+	}
 	return content
 }
 
 // ─── 键盘分发 ─────────────────────────────────────────────────────────────────
 
 func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
+	// 任意按键清除状态提示
+	m.status = ""
+	m.err = nil
+
 	switch m.view {
 	case viewTaskList:
 		newState, cmd, nav := pages.HandleTaskListKey(m.taskList, msg, m.client)

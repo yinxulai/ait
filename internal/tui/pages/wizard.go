@@ -88,7 +88,7 @@ func loadInputForField(wz *WizardState, f fieldDef) {
 	} else if f.get != nil {
 		rawVal = f.get(wz)
 	}
-	if f.label == "API 密钥" {
+	if f.password {
 		wz.input.EchoMode = textinput.EchoPassword
 	} else {
 		wz.input.EchoMode = textinput.EchoNormal
@@ -248,6 +248,10 @@ type fieldDef struct {
 	set func(wz *WizardState, v string)
 	// 枚举/布尔切换
 	toggle func(wz *WizardState, forward bool)
+	// password 为 true 时以密码模式显示输入
+	password bool
+	// triggersFieldReset 为 true 时切换后重置字段列表索引
+	triggersFieldReset bool
 }
 
 type fieldKind int
@@ -320,8 +324,9 @@ func step1Fields() []fieldDef {
 		},
 		{
 			kind: fieldText, label: "API 密钥",
-			get: func(wz *WizardState) string { return wz.APIKey },
-			set: func(wz *WizardState, v string) { wz.APIKey = v },
+			get:      func(wz *WizardState) string { return wz.APIKey },
+			set:      func(wz *WizardState, v string) { wz.APIKey = v },
+			password: true,
 		},
 		{
 			kind: fieldText, label: "测试模型",
@@ -342,7 +347,8 @@ func step2Fields(turbo bool) []fieldDef {
 				}
 				return "标准模式"
 			},
-			toggle: func(wz *WizardState, _ bool) { wz.Turbo = !wz.Turbo },
+			toggle:             func(wz *WizardState, _ bool) { wz.Turbo = !wz.Turbo },
+			triggersFieldReset: true,
 		},
 	}
 
@@ -501,7 +507,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			}
 			nav = NavAction{To: NavTaskList}
 			return wz, cmd, nav
-		case "q", "ctrl+c":
+		case "ctrl+c":
 			nav = NavAction{To: NavQuit}
 		}
 		return wz, nil, nav
@@ -537,7 +543,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			f := fields[wz.FieldIndex]
 			if f.toggle != nil {
 				f.toggle(wz, false)
-				if f.label == "测试模式" {
+				if f.triggersFieldReset {
 					wz.FieldIndex = 0
 					wz.ScrollOff = 0
 					loadCurrentFieldInput(wz)
@@ -554,7 +560,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			f := fields[wz.FieldIndex]
 			if f.toggle != nil {
 				f.toggle(wz, true)
-				if f.label == "测试模式" {
+				if f.triggersFieldReset {
 					wz.FieldIndex = 0
 					wz.ScrollOff = 0
 					loadCurrentFieldInput(wz)
@@ -576,7 +582,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		}
 		loadCurrentFieldInput(wz)
 
-	case "q", "ctrl+c":
+	case "ctrl+c":
 		nav = NavAction{To: NavQuit}
 
 	default:
@@ -638,7 +644,7 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 		HeaderMeta:      fmt.Sprintf("步骤 %d/3", int(wz.Step)+1),
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeys(wizardHotkeyItems(wz.Step), "[q] 退出"),
+		Hotkeys:         NewPageHotkeys(wizardHotkeyItems(wz.Step), "[Ctrl+C] 退出"),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
