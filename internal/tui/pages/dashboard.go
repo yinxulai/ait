@@ -279,7 +279,6 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 	if total > 0 {
 		ratio = float64(done) / float64(total)
 	}
-	prefix := " 进度  "
 	elapsed := "─"
 	if !rs.StartedAt.IsZero() {
 		if rs.FinishedAt != nil {
@@ -289,20 +288,7 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 		}
 	}
 	suffix := fmt.Sprintf("  %d / %d   %s", done, total, elapsed)
-
-	barW := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
-	if barW < 5 {
-		barW = 5
-		// 压缩 suffix 确保进度行总宽度不超过 width，防止 lipgloss 折行
-		maxSuffixW := maxInt(0, width-lipgloss.Width(prefix)-barW)
-		suffix = truncate(suffix, maxSuffixW)
-	}
-
-	filled := int(ratio * float64(barW))
-	barRendered := st.Ok.Render(strings.Repeat("█", filled)) +
-		st.Muted.Render(strings.Repeat("░", barW-filled))
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, prefix, barRendered, suffix)
+	return renderProgressBar(st, " 进度  ", suffix, ratio, width)
 }
 
 // buildRequestList 构建请求列表区域。

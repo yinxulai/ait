@@ -217,11 +217,9 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 	if s.FieldIndex == 0 {
 		typeFieldStyle = st.FieldActive
 	}
-	typeLabelBlock := strings.Join([]string{
-		strings.Repeat(" ", 15),
-		lipgloss.NewStyle().Width(15).Render(st.Label.Render("代理类型")),
-		strings.Repeat(" ", 15),
-	}, "\n")
+	typeLabelBlock := lipgloss.NewStyle().Width(15).Height(3).
+		AlignVertical(lipgloss.Center).
+		Render(st.Label.Render("代理类型"))
 	typeRendered := typeFieldStyle.Width(fieldW + 4).Render(st.Value.Render(typeLabel))
 	appendBlock(lipgloss.JoinHorizontal(lipgloss.Top, typeLabelBlock, typeRendered))
 
@@ -242,11 +240,9 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 			urlRendered = urlFieldStyle.Width(fieldW + 4).Render(st.Value.Render(fitTail(v, fieldW)))
 		}
 	}
-	urlLabelBlock := strings.Join([]string{
-		strings.Repeat(" ", 15),
-		lipgloss.NewStyle().Width(15).Render(st.Label.Render("代理地址")),
-		strings.Repeat(" ", 15),
-	}, "\n")
+	urlLabelBlock := lipgloss.NewStyle().Width(15).Height(3).
+		AlignVertical(lipgloss.Center).
+		Render(st.Label.Render("代理地址"))
 	appendBlock(lipgloss.JoinHorizontal(lipgloss.Top, urlLabelBlock, urlRendered))
 
 	lines = append(lines, "")

@@ -34,11 +34,7 @@ func truncate(s string, maxW int) string {
 
 // padRight 右侧补空格至 width（按可见列宽）。
 func padRight(s string, width int) string {
-	w := lipgloss.Width(s)
-	if w >= width {
-		return s
-	}
-	return s + strings.Repeat(" ", width-w)
+	return lipgloss.NewStyle().Width(width).Render(s)
 }
 
 // wrapText 将文本按 maxW 列宽折行，返回行切片（CJK 字符按 2 列宽计算）。
@@ -73,6 +69,20 @@ func wrapText(s string, maxW int) []string {
 		}
 	}
 	return result
+}
+
+// renderProgressBar 渲染进度条行：prefix 固定在左，suffix 固定在右，中间弹性进度条。
+func renderProgressBar(st Styles, prefix, suffix string, ratio float64, totalW int) string {
+	barW := totalW - lipgloss.Width(prefix) - lipgloss.Width(suffix)
+	if barW < 5 {
+		barW = 5
+		maxSuffixW := maxInt(0, totalW-lipgloss.Width(prefix)-barW)
+		suffix = truncate(suffix, maxSuffixW)
+	}
+	filled := int(ratio * float64(barW))
+	barRendered := st.Ok.Render(strings.Repeat("█", filled)) +
+		st.Muted.Render(strings.Repeat("░", barW-filled))
+	return lipgloss.JoinHorizontal(lipgloss.Top, prefix, barRendered, suffix)
 }
 
 // dividerLine 生成全宽水平分隔线。
@@ -172,10 +182,6 @@ func renderHeader(st Styles, width int, title, subtitle, meta string, infoLeft, 
 	styleT := lipgloss.NewStyle().Foreground(colorCyan).Bold(true)
 	styleSep := lipgloss.NewStyle().Foreground(colorPink)
 
-	// artVisW = 10+2+5+2+10 = 29; artSepW = " "(1) + art(29) + " "(1) + "┃"(1) + " "(1) = 33
-	artVisW := 10 + 2 + 5 + 2 + 10
-	artSepW := artVisW + 4
-
 	artRow := func(i int) string {
 		return styleA.Render(artA[i]) + "  " + styleI.Render(artI[i]) + "  " + styleT.Render(artT[i])
 	}
@@ -227,7 +233,8 @@ func renderHeader(st Styles, width int, title, subtitle, meta string, infoLeft, 
 	var left3 string
 	if wideEnough {
 		artPart := " " + artRow(2) + " " + vsep
-		availW := maxInt(8, w-artSepW-2-maxInt(10, w/3))
+		artPartW := lipgloss.Width(artPart) + 1 // +1 为 art 与 pills 之间的分隔空格
+		availW := maxInt(8, w-artPartW-2-maxInt(10, w/3))
 		if leftPills := renderInfoPills(infoLeft, availW); leftPills != "" {
 			left3 = artPart + " " + leftPills
 		} else {
@@ -267,13 +274,10 @@ func renderHotkeys(st Styles, width int, hk PageHotkeys) string {
 }
 
 func renderChromeLine(base lipgloss.Style, width int, left, right string) string {
-	leftW := lipgloss.Width(left)
 	rightW := lipgloss.Width(right)
-	pad := width - leftW - rightW
-	if pad < 0 {
-		pad = 0
-	}
-	return base.Width(width).Render(left + strings.Repeat(" ", pad) + right)
+	spacerW := maxInt(0, width-lipgloss.Width(left)-rightW)
+	spacer := lipgloss.NewStyle().Width(spacerW).Render("")
+	return base.Width(width).Render(left + spacer + right)
 }
 
 func renderInfoPills(parts []string, maxW int) string {
@@ -445,7 +449,7 @@ func panelTitleLines(st Styles, title string, width int, compact bool) []string 
 	var rendered string
 	if width > 0 {
 		// 截断标题防止超宽后被 lipgloss 折行
-		rendered = st.PanelHead.Width(width).Render(" " + truncate(title, maxInt(1, width-1)))
+		rendered = st.PanelHead.Width(width).Padding(0, 0, 0, 1).Render(truncate(title, maxInt(1, width-1)))
 	} else {
 		rendered = st.PanelHead.Render(" " + title)
 	}

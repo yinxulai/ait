@@ -833,12 +833,9 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 	} else {
 		renderedValue = fieldStyle.Width(fieldW + 4).Render(valueStyle.Render(valueStr))
 	}
-	labelLines := []string{
-		strings.Repeat(" ", 15),
-		lipgloss.NewStyle().Width(15).Render(st.Label.Render(wizardFieldLabel(f, wz))),
-		strings.Repeat(" ", 15),
-	}
-	labelBlock := strings.Join(labelLines, "\n")
+	labelBlock := lipgloss.NewStyle().Width(15).Height(3).
+		AlignVertical(lipgloss.Center).
+		Render(st.Label.Render(wizardFieldLabel(f, wz)))
 	return lipgloss.JoinHorizontal(lipgloss.Top, labelBlock, renderedValue)
 }
 

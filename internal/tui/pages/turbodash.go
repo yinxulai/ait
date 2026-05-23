@@ -294,22 +294,8 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	} else {
 		levelTotalStr = fmt.Sprintf("%d", levelDone)
 	}
-	prefix := " 进度  "
 	suffix := fmt.Sprintf("  %d/%d  当前并发 %d   总进度: %s 级", done, total, rs.CurrentLevel, levelTotalStr)
-
-	barW := width - lipgloss.Width(prefix) - lipgloss.Width(suffix)
-	if barW < 5 {
-		barW = 5
-		// 压缩 suffix 确保进度行总宽度不超过 width，防止 lipgloss 折行
-		maxSuffixW := maxInt(0, width-lipgloss.Width(prefix)-barW)
-		suffix = truncate(suffix, maxSuffixW)
-	}
-
-	filled := int(ratio * float64(barW))
-	barRendered := st.Ok.Render(strings.Repeat("█", filled)) +
-		st.Muted.Render(strings.Repeat("░", barW-filled))
-
-	return lipgloss.JoinHorizontal(lipgloss.Top, prefix, barRendered, suffix)
+	return renderProgressBar(st, " 进度  ", suffix, ratio, width)
 }
 
 // buildTurboRequestList 构建 Turbo 模式请求列表区域。
