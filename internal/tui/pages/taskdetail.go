@@ -6,6 +6,7 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	lgtable "charm.land/lipgloss/v2/table"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
@@ -255,7 +256,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 
 	// ─── 右栏：历史运行记录 ─────────────────────────────────────
 	rightW := rightPanelFrame.InnerWidth
-	rightLines := panelTitleLines(st, "历史运行记录", rightW, false)
+	rightTitle := panelTitleLines(st, "历史运行记录", rightW, false) // 2 行
 	historyEntries := taskDetailHistoryEntries(s)
 
 	hasActive := s.ActiveRun != nil
@@ -264,121 +265,170 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 		effectiveLen++
 	}
 
-	const (
-		markW = 2
-		statW = 2
-		timeW = 15
-		modeW = 7
-		rateW = 8
-		durW  = 9  // 耗时
-		ttftW = 10
-	)
-	hdr := padRight("", markW) + padRight("", statW) + padRight("时间", timeW) + padRight("模式", modeW) +
-		padRight("成功率", rateW) + padRight("耗时", durW) + padRight("TTFT", ttftW) + "TPS"
-	rightLines = append(rightLines, renderTableHeader(st, rightW, hdr))
-	rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
-
 	if effectiveLen == 0 {
-		rightLines = append(rightLines, padRight(" "+st.Muted.Render("暂无运行记录"), rightW))
-	} else {
-		// 始终为当前选中的历史条目显示详情面板
-		var detailLines []string
-		{
-			histIdx := s.HistorySel
-			if hasActive {
-				if s.HistorySel == 0 {
-					histIdx = -1 // 运行中条目无详情
-				} else {
-					histIdx--
-				}
-			}
-			if histIdx >= 0 {
-				detailLines = buildTaskHistoryDetailLines(historyEntries, histIdx, st, rightW)
-			}
-		}
-		tableMaxH := panelContentH - len(detailLines)
-		if tableMaxH < 5 {
-			allowedDetail := maxInt(0, panelContentH-5)
-			if len(detailLines) > allowedDetail {
-				detailLines = detailLines[:allowedDetail]
-			}
-			tableMaxH = panelContentH - len(detailLines)
-		}
-		s.HistoryVis = listVisibleItems(tableMaxH, 4)
-		s.HistoryOff = ensureVisibleOffset(s.HistorySel, effectiveLen, s.HistoryOff, s.HistoryVis)
-		start := s.HistoryOff
-		end := minInt(effectiveLen, start+s.HistoryVis)
-
-		// ── 历史列表 ──
-		for idx := start; idx < end; idx++ {
-			isSel := idx == s.HistorySel
-			marker := selectionMarker(isSel)
-			var row string
-
-			if hasActive && idx == 0 {
-				// 正在运行中的条目
-				rs := s.ActiveRun
-				modeShort := "标准"
-				if rs.Mode == "turbo" {
-					modeShort = "Turbo"
-				}
-				statusIcon := styleWhenNotSelected(isSel, st.Ok, "●")
-				rateStr := "─"
-				if rs.TotalReqs > 0 {
-					rateStr = fmt.Sprintf("%.0f%%", rs.SuccessRate)
-				}
-				progStr := fmt.Sprintf("%d/%d 正在运行...", rs.DoneReqs, rs.TotalReqs)
-				row = padRight(marker, markW) +
-					padRight(statusIcon, statW) +
-					padRight(rs.StartedAt.Format("2006-01-02 15:04"), timeW) +
-					padRight(modeShort, modeW) +
-					padRight(rateStr, rateW) +
-					padRight("─", durW) +
-					styleWhenNotSelected(isSel, st.Ok, progStr)
-			} else {
-				histIdx := idx
-				if hasActive {
-					histIdx--
-				}
-				run := historyEntries[histIdx]
-				statusText := "✗"
-				statusStyle := st.ErrStyle
-				switch run.Status {
-				case string(server.RunStatusRunning):
-					statusText = "●"
-					statusStyle = st.Ok
-				case string(server.RunStatusCompleted):
-					statusText = "✓"
-					statusStyle = st.Ok
-				case string(server.RunStatusStopped):
-					statusText = "■"
-					statusStyle = st.Muted
-				}
-				modeShort := "标准"
-				if run.Mode == "turbo" {
-					modeShort = "Turbo"
-				}
-				statusIcon := styleWhenNotSelected(isSel, statusStyle, statusText)
-				durText := "─"
-				if !run.FinishedAt.IsZero() {
-					durText = fmtDuration(run.FinishedAt.Sub(run.StartedAt))
-				}
-				row = padRight(marker, markW) +
-					padRight(statusIcon, statW) +
-					padRight(run.StartedAt.Format("2006-01-02 15:04"), timeW) +
-					padRight(modeShort, modeW) +
-					padRight(fmt.Sprintf("%.1f%%", run.SuccessRate), rateW) +
-					padRight(durText, durW) +
-					padRight(fmtDuration(run.AvgTTFT), ttftW) +
-					fmt.Sprintf("%.1f", run.AvgTPS)
-			}
-			rightLines = append(rightLines, padRight(renderTableRow(st, rightW, isSel, row), rightW))
-			if idx < end-1 {
-				rightLines = append(rightLines, padRight(st.Divider.Render(strings.Repeat("─", rightW)), rightW))
-			}
-		}
-		rightLines = append(rightLines, detailLines...)
+		rightLines := append(rightTitle, padRight(" "+st.Muted.Render("暂无运行记录"), rightW))
+		rightContent := finishPanelLines(rightLines, panelContentH)
+		return renderSplitPanels(st, leftPanelFrame, rightPanelFrame, leftContent, rightContent)
 	}
+
+	// ── 计算 detailLines （选中条目详情）──
+	var detailLines []string
+	{
+		histIdx := s.HistorySel
+		if hasActive {
+			if s.HistorySel == 0 {
+				histIdx = -1 // 运行中条目无详情
+			} else {
+				histIdx--
+			}
+		}
+		if histIdx >= 0 {
+			detailLines = buildTaskHistoryDetailLines(historyEntries, histIdx, st, rightW)
+		}
+	}
+	tableMaxH := panelContentH - len(detailLines)
+	if tableMaxH < 5 {
+		allowedDetail := maxInt(0, panelContentH-5)
+		if len(detailLines) > allowedDetail {
+			detailLines = detailLines[:allowedDetail]
+		}
+		tableMaxH = panelContentH - len(detailLines)
+	}
+
+	// ── 预计算每行数据──
+	type histRow struct {
+		statusText  string
+		statusIsOk  bool
+		statusIsMut bool
+		time        string
+		mode        string
+		rate        string
+		dur         string
+		ttft        string
+		tps         string
+	}
+	rowData := make([]histRow, effectiveLen)
+	if hasActive {
+		rs := s.ActiveRun
+		modeShort := "标准"
+		if rs.Mode == "turbo" {
+			modeShort = "Turbo"
+		}
+		rateStr := "─"
+		if rs.TotalReqs > 0 {
+			rateStr = fmt.Sprintf("%.0f%%", rs.SuccessRate)
+		}
+		rowData[0] = histRow{
+			statusText: "●",
+			statusIsOk: true,
+			time:       rs.StartedAt.Format("2006-01-02 15:04"),
+			mode:       modeShort,
+			rate:       rateStr,
+			dur:        "─",
+			ttft:       "─",
+			tps:        fmt.Sprintf("%d/%d 正在运行...", rs.DoneReqs, rs.TotalReqs),
+		}
+	}
+	for histIdx := 0; histIdx < len(historyEntries); histIdx++ {
+		rowIdx := histIdx
+		if hasActive {
+			rowIdx++
+		}
+		run := historyEntries[histIdx]
+		statusText := "✗"
+		statusIsOk := false
+		statusMut := false
+		switch run.Status {
+		case string(server.RunStatusRunning):
+			statusText = "●"
+			statusIsOk = true
+		case string(server.RunStatusCompleted):
+			statusText = "✓"
+			statusIsOk = true
+		case string(server.RunStatusStopped):
+			statusText = "■"
+			statusMut = true
+		}
+		modeShort := "标准"
+		if run.Mode == "turbo" {
+			modeShort = "Turbo"
+		}
+		durText := "─"
+		if !run.FinishedAt.IsZero() {
+			durText = fmtDuration(run.FinishedAt.Sub(run.StartedAt))
+		}
+		rowData[rowIdx] = histRow{
+			statusText:  statusText,
+			statusIsOk:  statusIsOk,
+			statusIsMut: statusMut,
+			time:        run.StartedAt.Format("2006-01-02 15:04"),
+			mode:        modeShort,
+			rate:        fmt.Sprintf("%.1f%%", run.SuccessRate),
+			dur:         durText,
+			ttft:        fmtDuration(run.AvgTTFT),
+			tps:         fmt.Sprintf("%.1f", run.AvgTPS),
+		}
+	}
+
+	// colWidths: 0 = 弹性列，>0 = 固定总宽
+	colWidths := []int{4, 0, 7, 8, 7, 7, 7} // 状态图标, 时间=flex, 模式, 成功率, 耗时, TTFT, TPS
+	sel := s.HistorySel
+	tableH := tableMaxH - len(rightTitle)
+	tbl := lgtable.New().
+		Headers("", "时间", "模式", "成功率", "耗时", "TTFT", "TPS").
+		Width(rightW).
+		Height(tableH).
+		YOffset(s.HistoryOff).
+		BorderTop(false).BorderBottom(false).
+		BorderLeft(false).BorderRight(false).
+		BorderHeader(true).BorderColumn(true).BorderRow(true).
+		BorderStyle(lipgloss.NewStyle().Foreground(colorDivider)).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			aw := func(s lipgloss.Style) lipgloss.Style {
+				if col < len(colWidths) && colWidths[col] > 0 {
+					return s.Width(colWidths[col]).Padding(0, 1)
+				}
+				return s.Padding(0, 1)
+			}
+			if row == lgtable.HeaderRow {
+				return aw(st.TableHead)
+			}
+			if row < 0 || row >= len(rowData) {
+				return aw(st.TableRow)
+			}
+			r := rowData[row]
+			if row == sel {
+				return aw(st.TableRowSel)
+			}
+			if col == 0 { // status icon
+				if r.statusIsOk {
+					return aw(st.Ok)
+				}
+				if r.statusIsMut {
+					return aw(st.Muted)
+				}
+				return aw(st.ErrStyle)
+			}
+			if col >= 3 { // rate, dur, ttft, tps
+				return aw(st.Value)
+			}
+			return aw(st.TableRow)
+		})
+
+	for _, r := range rowData {
+		tbl.Row(r.statusText, r.time, r.mode, r.rate, r.dur, r.ttft, r.tps)
+	}
+
+	tableStr := tbl.String()
+	s.HistoryVis = tbl.VisibleRows()
+	if s.HistoryVis < 1 {
+		s.HistoryVis = 1
+	}
+	s.HistoryOff = ensureVisibleOffset(s.HistorySel, effectiveLen, s.HistoryOff, s.HistoryVis)
+
+	tableLines := strings.Split(tableStr, "\n")
+	rightLines := append(rightTitle, tableLines...)
+	rightLines = append(rightLines, detailLines...)
 	rightContent := finishPanelLines(rightLines, panelContentH)
 	return renderSplitPanels(st, leftPanelFrame, rightPanelFrame, leftContent, rightContent)
 }

@@ -41,11 +41,6 @@ func padRight(s string, width int) string {
 	return s + strings.Repeat(" ", width-w)
 }
 
-// tableCol 返回固定宽度的表格单元格（自动填充空格并截断，始终单行）。
-func tableCol(w int, text string) string {
-	return lipgloss.NewStyle().Width(w).Render(truncate(text, w))
-}
-
 // wrapText 将文本按 maxW 列宽折行，返回行切片（CJK 字符按 2 列宽计算）。
 func wrapText(s string, maxW int) []string {
 	if maxW <= 0 {
@@ -485,19 +480,6 @@ func normalizeInlineText(s string) string {
 	return strings.Join(strings.Fields(replacer.Replace(s)), " ")
 }
 
-// renderTableHeader 统一渲染列表表头。
-func renderTableHeader(st Styles, width int, row string) string {
-	return st.TableHead.Width(width).Render(row)
-}
-
-// renderTableRow 统一渲染列表行（选中/未选中）。
-func renderTableRow(st Styles, width int, isSel bool, row string) string {
-	if isSel {
-		return st.TableRowSel.Width(width).Render(row)
-	}
-	return st.TableRow.Width(width).Render(row)
-}
-
 // minInt 返回两个整数中的较小值。
 func minInt(a, b int) int {
 	if a < b {
@@ -525,16 +507,6 @@ func clampInt(v, low, high int) int {
 	return v
 }
 
-// listVisibleItems 计算在给定高度下可自然滚动的列表项数量。
-// staticLines 是列表项区域前的固定行数（如 section/header/divider）。
-func listVisibleItems(maxLines, staticLines int) int {
-	visible := (maxLines - staticLines + 1) / 2
-	if visible < 1 {
-		return 1
-	}
-	return visible
-}
-
 // ensureVisibleOffset 让 selected 始终位于 offset/visible 定义的可视窗口内。
 func ensureVisibleOffset(selected, count, offset, visible int) int {
 	if count <= 0 {
@@ -553,22 +525,6 @@ func ensureVisibleOffset(selected, count, offset, visible int) int {
 		offset = selected - visible + 1
 	}
 	return clampInt(offset, 0, maxOffset)
-}
-
-// selectionMarker 返回统一的选中标记列内容。
-func selectionMarker(isSel bool) string {
-	if isSel {
-		return "▶"
-	}
-	return ""
-}
-
-// styleWhenNotSelected 仅在未选中时应用局部样式，避免重置选中行背景。
-func styleWhenNotSelected(isSel bool, style lipgloss.Style, text string) string {
-	if isSel {
-		return text
-	}
-	return style.Render(text)
 }
 
 // wrapIndex 循环索引（保证 0 ≤ result < count）。

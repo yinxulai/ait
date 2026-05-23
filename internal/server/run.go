@@ -92,8 +92,8 @@ func mapRequestMetrics(m *client.ResponseMetrics, idx int, err error) *types.Req
 	if m.TotalTime > 0 && m.CompletionTokens > 0 {
 		rm.TPS = float64(m.CompletionTokens) / m.TotalTime.Seconds()
 	}
-	if m.PromptTokens > 0 {
-		rm.CacheHitRate = float64(m.CachedInputTokens) / float64(m.PromptTokens)
+	if m.CachedInputTokens > 0 {
+		rm.CacheHitRate = 1
 	}
 	return rm
 }

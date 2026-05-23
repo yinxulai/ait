@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	lgtable "charm.land/lipgloss/v2/table"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -307,53 +308,35 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 
 // buildRequestList 构建请求列表区域。
 func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, maxH int) string {
-	lines := panelTitleLines(st, "请求列表", width, true)
+	titleLines := panelTitleLines(st, "请求列表", width, true)
 
 	if rs == nil || len(rs.Requests) == 0 {
 		msg := "等待请求..."
 		if rs != nil && rs.Status != server.RunStatusRunning {
 			msg = "无请求详情数据"
 		}
-		lines = append(lines, " "+st.Muted.Render(msg))
-		return finishPanelLines(lines, maxH)
+		titleLines = append(titleLines, " "+st.Muted.Render(msg))
+		return finishPanelLines(titleLines, maxH)
 	}
 
-	// 列宽（header 与 content 行保持一致，前缀均为 2 字符）
-	const (
-		markW  = 2  // 选择标记列
-		idW    = 6  // "#1" 等
-		statW  = 5  // "✓" / "✗" 加空白
-		timeW  = 10 // 总耗时
-		ttftW  = 10 // TTFT
-		cacheW = 8  // Cache
-		ptokW  = 9  // 提示 tok
-		ctokW  = 9  // 完成 tok
-		// TPS: 余量
-	)
-	hdr := lipgloss.JoinHorizontal(lipgloss.Top,
-		tableCol(markW, ""),
-		tableCol(idW, "#"),
-		tableCol(statW, "状态"),
-		tableCol(timeW, "总耗时"),
-		tableCol(ttftW, "TTFT"),
-		tableCol(cacheW, "Cache"),
-		tableCol(ptokW, "提示tok"),
-		tableCol(ctokW, "完成tok"),
-		"TPS",
-	)
-	lines = append(lines, renderTableHeader(st, width, hdr))
-	lines = append(lines, dividerLine(st, width))
-	d.ReqVis = listVisibleItems(maxH, 3)
-	d.AdjustReqOffset(d.ReqVis, len(rs.Requests))
-
+	// ── 预计算每行数据（按展示顺序，最新在前）──
+	type reqRow struct {
+		success  bool
+		errMsg   string
+		id       string
+		status   string
+		total    string
+		ttft     string
+		cache    string
+		ptok     string
+		ctok     string
+		tps      string
+	}
 	reqs := rs.Requests
-	start := d.ReqOff
-	end := minInt(len(reqs), start+d.ReqVis)
-	for pos := start; pos < end; pos++ {
+	reqRows := make([]reqRow, len(reqs))
+	for pos := 0; pos < len(reqs); pos++ {
 		i := requestIndexFromDisplayPos(pos, len(reqs))
 		r := reqs[i]
-		isSel := i == d.ReqSel
-
 		statusText := "✓"
 		if !r.Success {
 			statusText = "✗"
@@ -362,42 +345,84 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		if !r.Success && r.ErrorMessage != "" {
 			totalText = r.ErrorMessage
 		}
-
-		statusStr := statusText
-		if r.Success {
-			statusStr = styleWhenNotSelected(isSel, st.Ok, statusText)
-		} else {
-			statusStr = styleWhenNotSelected(isSel, st.ErrStyle, statusText)
-		}
-		totalStr := totalText
-		if !r.Success && r.ErrorMessage != "" {
-			totalStr = styleWhenNotSelected(isSel, st.ErrStyle, totalText)
-		}
-
-		marker := selectionMarker(isSel)
-
-		rowContent := lipgloss.JoinHorizontal(lipgloss.Top,
-			tableCol(markW, marker),
-			tableCol(idW, fmt.Sprintf("#%d", len(reqs)-pos)),
-			tableCol(statW, statusStr),
-			tableCol(timeW, totalStr),
-			tableCol(ttftW, fmtDuration(r.TTFT)),
-			tableCol(cacheW, fmt.Sprintf("%.0f%%", r.CacheHitRate*100)),
-			tableCol(ptokW, fmt.Sprintf("%dtok", r.PromptTokens)),
-			tableCol(ctokW, fmt.Sprintf("%dtok", r.CompletionTokens)),
-			fmt.Sprintf("%.1f/s", r.TPS),
-		)
-
-		rendered := renderTableRow(st, width, isSel, rowContent)
-		lines = append(lines, rendered)
-
-		// 行间分隔线
-		if pos < end-1 && len(lines) < maxH-1 {
-			lines = append(lines, dividerLine(st, width))
+		reqRows[pos] = reqRow{
+			success: r.Success,
+			errMsg:  r.ErrorMessage,
+			id:      fmt.Sprintf("#%d", len(reqs)-pos),
+			status:  statusText,
+			total:   totalText,
+			ttft:    fmtDuration(r.TTFT),
+			cache:   fmt.Sprintf("%dtok", r.CachedTokens),
+			ptok:    fmt.Sprintf("%dtok", r.PromptTokens),
+			ctok:    fmt.Sprintf("%dtok", r.CompletionTokens),
+			tps:     fmt.Sprintf("%.1f/s", r.TPS),
 		}
 	}
 
-	return finishPanelLines(lines, maxH)
+	// 将 d.ReqSel（绝对索引）转换为展示位置
+	selDisplayPos := requestDisplayPos(d.ReqSel, len(reqs))
+
+	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽
+	colWidths := []int{6, 8, 0, 8, 7, 10, 10, 10} // #, 状态, 总耗时=flex, TTFT, Cache, 提示tok, 完成tok, TPS
+	tableH := maxH - len(titleLines)
+	tbl := lgtable.New().
+		Headers("#", "状态", "总耗时", "TTFT", "Cache", "提示tok", "完成tok", "TPS").
+		Width(width).
+		Height(tableH).
+		YOffset(d.ReqOff).
+		BorderTop(false).BorderBottom(false).
+		BorderLeft(false).BorderRight(false).
+		BorderHeader(true).BorderColumn(true).BorderRow(true).
+		BorderStyle(lipgloss.NewStyle().Foreground(colorDivider)).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			aw := func(s lipgloss.Style) lipgloss.Style {
+				if col < len(colWidths) && colWidths[col] > 0 {
+					return s.Width(colWidths[col]).Padding(0, 1)
+				}
+				return s.Padding(0, 1)
+			}
+			if row == lgtable.HeaderRow {
+				return aw(st.TableHead)
+			}
+			if row < 0 || row >= len(reqRows) {
+				return aw(st.TableRow)
+			}
+			r := reqRows[row]
+			if row == selDisplayPos {
+				return aw(st.TableRowSel)
+			}
+			switch col {
+			case 1: // status
+				if r.success {
+					return aw(st.Ok)
+				}
+				return aw(st.ErrStyle)
+			case 2: // total
+				if !r.success && r.errMsg != "" {
+					return aw(st.ErrStyle)
+				}
+				return aw(st.Value)
+			case 3, 4, 5, 6, 7: // ttft, cache, ptok, ctok, tps
+				return aw(st.Value)
+			default:
+				return aw(st.TableRow)
+			}
+		})
+
+	for _, r := range reqRows {
+		tbl.Row(r.id, r.status, r.total, r.ttft, r.cache, r.ptok, r.ctok, r.tps)
+	}
+
+	tableStr := tbl.String()
+	d.ReqVis = tbl.VisibleRows()
+	if d.ReqVis < 1 {
+		d.ReqVis = 1
+	}
+	d.AdjustReqOffset(d.ReqVis, len(reqs))
+
+	tableLines := strings.Split(tableStr, "\n")
+	result := append(titleLines, tableLines...)
+	return finishPanelLines(result, maxH)
 }
 
 func requestDisplayPos(reqIndex, total int) int {

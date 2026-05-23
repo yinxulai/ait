@@ -7,6 +7,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	lgtable "charm.land/lipgloss/v2/table"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -194,109 +195,54 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 
 // buildTaskListContent 构建任务列表内容区（含表头 + 任务条目）。
 func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
-	var lines []string
-	listTopLines := len(lines)
-
-	// 列宽（gap=2 作为列间距内置到每个非末尾列的宽度中）
-	const (
-		modeW    = 9  // 7 + 2 gap
-		protoW   = 18 // 8 + 2 gap
-		lastRunW = 16 // 11 + 2 gap
-		rateW    = 10 // 6 + 2 gap  -- 成功率
-		ttftW    = 10 // 6 + 2 gap
-		tpsW     = 16  // 末尾列，无需额外 gap
-	)
-	fixedW := 2 + modeW + protoW + lastRunW + rateW + ttftW + tpsW
-	nameW := maxInt(10, width-fixedW)
-
-	// 表头：2 空格前缀与正文行对齐（cursor=2）
-	header := renderTableHeader(st, width,
-		lipgloss.JoinHorizontal(lipgloss.Top,
-			tableCol(2, ""),
-			tableCol(nameW, "任务名称"),
-			tableCol(modeW, "模式"),
-			tableCol(protoW, "协议"),
-			tableCol(lastRunW, "上次运行"),
-			tableCol(rateW, "成功率"),
-			tableCol(ttftW, "TTFT"),
-			"TPS",
-		))
-	lines = append(lines, header)
-	lines = append(lines, dividerLine(st, width))
-	listMaxH := maxInt(3, maxH-listTopLines)
-	s.Visible = listVisibleItems(listMaxH, 2)
-	s.Offset = ensureVisibleOffset(s.Selected, len(s.Tasks), s.Offset, s.Visible)
-
-	if len(s.Tasks) == 0 {
-		lines = append(lines, "")
-		lines = append(lines, "  "+st.Muted.Render("暂无任务  按 [a] 新建第一个任务"))
-		// 补齐剩余行
-		for len(lines) < maxH {
-			lines = append(lines, "")
-		}
-		return strings.Join(lines, "\n")
+	// ── 预计算每行数据（供 StyleFunc 闭包引用）──
+	type taskRowData struct {
+		name        string
+		mode        string
+		isTurbo     bool
+		proto       string
+		lastRun     string
+		isRunning   bool
+		rate        string
+		ttft        string
+		tps         string
 	}
 
-	start := s.Offset
-	end := minInt(len(s.Tasks), start+s.Visible)
-	for i := start; i < end; i++ {
-		t := s.Tasks[i]
-
-		isSel := i == s.Selected
+	sel := s.Selected
+	rowData := make([]taskRowData, len(s.Tasks))
+	for i, t := range s.Tasks {
 		rs := s.ActiveRuns[t.ID]
 		_, hasActiveRun := s.ActiveRuns[t.ID]
 
-		// ── 指示符 ──
-		prefix := tableCol(2, selectionMarker(isSel))
-
-		// ── 模式（选中行禁用嵌套样式，避免重置整行背景）──
 		modeText := "标准"
-		var modeCol string
+		isTurbo := false
 		if t.Input.Turbo {
 			modeText = "Turbo"
-			modeCol = tableCol(modeW, styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorGold).Bold(true), modeText))
-		} else {
-			modeCol = tableCol(modeW, styleWhenNotSelected(isSel, lipgloss.NewStyle().Foreground(colorPurple), modeText))
+			isTurbo = true
 		}
 
-		// ── 协议 ──
-		proto := tableCol(protoW, shortProtocol(t.Input.NormalizedProtocol()))
-
-		// ── 任务名称 ──
-		nameCol := tableCol(nameW, t.Name)
-
-		// ── 上次运行时间 ──
+		isRunning := hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning))
 		lastRunText := "─"
-		if hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning)) {
+		if isRunning {
 			lastRunText = "运行中"
 		} else if t.LatestRun != nil && !t.LatestRun.FinishedAt.IsZero() {
 			lastRunText = fmtRelativeTime(t.LatestRun.FinishedAt)
 		}
-		lastRunStyle := st.Muted
-		if hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning)) {
-			lastRunStyle = st.Ok
-		}
-		lastRunCol := tableCol(lastRunW, styleWhenNotSelected(isSel, lastRunStyle, lastRunText))
 
-		// ── TTFT ──
-		ttftText := "─"
-		if hasActiveRun && rs != nil && rs.AvgTTFT > 0 {
-			ttftText = fmtDuration(rs.AvgTTFT)
-		} else if !hasActiveRun && t.LatestRun != nil {
-			ttftText = fmtDuration(t.LatestRun.AvgTTFT)
-		}
-		ttftCol := tableCol(ttftW, styleWhenNotSelected(isSel, st.Value, ttftText))
-
-		// ── 成功率 ──
 		rateText := "─"
 		if hasActiveRun && rs != nil && rs.TotalReqs > 0 {
 			rateText = fmt.Sprintf("%.1f%%", rs.SuccessRate)
 		} else if !hasActiveRun && t.LatestRun != nil {
 			rateText = fmt.Sprintf("%.1f%%", t.LatestRun.SuccessRate)
 		}
-		rateCol := tableCol(rateW, styleWhenNotSelected(isSel, st.Value, rateText))
 
-		// ── TPS ──
+		ttftText := "─"
+		if hasActiveRun && rs != nil && rs.AvgTTFT > 0 {
+			ttftText = fmtDuration(rs.AvgTTFT)
+		} else if !hasActiveRun && t.LatestRun != nil {
+			ttftText = fmtDuration(t.LatestRun.AvgTTFT)
+		}
+
 		tpsText := "─"
 		if hasActiveRun && rs != nil && rs.AvgTPS > 0 {
 			tpsText = fmt.Sprintf("%.1f", rs.AvgTPS)
@@ -307,24 +253,103 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 				tpsText = fmt.Sprintf("%.1f", t.LatestRun.AvgTPS)
 			}
 		}
-		tpsCol := styleWhenNotSelected(isSel, st.Value, tpsText)
 
-		// ── 单行：名称 | 模式 | 协议 | 上次运行 | 成功率 | TTFT | TPS ──
-		lines = append(lines, renderTableRow(st, width, isSel, lipgloss.JoinHorizontal(lipgloss.Top,
-			prefix, nameCol, modeCol, proto, lastRunCol, rateCol, ttftCol, tpsCol)))
-
-		// ── 分隔线 ──
-		if i < end-1 && len(lines) < maxH-1 {
-			lines = append(lines, dividerLine(st, width))
+		rowData[i] = taskRowData{
+			name:      t.Name,
+			mode:      modeText,
+			isTurbo:   isTurbo,
+			proto:     shortProtocol(t.Input.NormalizedProtocol()),
+			lastRun:   lastRunText,
+			isRunning: isRunning,
+			rate:      rateText,
+			ttft:      ttftText,
+			tps:       tpsText,
 		}
 	}
 
-	// 补齐剩余行
-	for len(lines) < maxH {
-		lines = append(lines, "")
+	// ── 构建 lipgloss/table ──
+	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽（包括两端各 1 字符 padding）
+	colWidths := []int{0, 8, 22, 12, 8, 10, 10} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, TTFT, TPS
+	t := lgtable.New().
+		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "TTFT", "TPS").
+		Width(width).
+		Height(maxH).
+		YOffset(s.Offset).
+		BorderTop(false).BorderBottom(false).
+		BorderLeft(false).BorderRight(false).
+		BorderHeader(true).BorderColumn(true).BorderRow(true).
+		BorderStyle(lipgloss.NewStyle().Foreground(colorDivider)).
+		StyleFunc(func(row, col int) lipgloss.Style {
+			aw := func(s lipgloss.Style) lipgloss.Style {
+				if col < len(colWidths) && colWidths[col] > 0 {
+					return s.Width(colWidths[col]).Padding(0, 1)
+				}
+				return s.Padding(0, 1)
+			}
+			if row == lgtable.HeaderRow {
+				return aw(st.TableHead)
+			}
+			if row < 0 || row >= len(rowData) {
+				return aw(st.TableRow)
+			}
+			r := rowData[row]
+			if row == sel {
+				return aw(st.TableRowSel)
+			}
+			switch col {
+			case 1: // mode
+				if r.isTurbo {
+					return aw(lipgloss.NewStyle().Foreground(colorGold).Bold(true))
+				}
+				return aw(lipgloss.NewStyle().Foreground(colorPurple))
+			case 3: // lastRun
+				if r.isRunning {
+					return aw(st.Ok)
+				}
+				return aw(st.Muted)
+			case 4, 5, 6: // rate, ttft, tps
+				return aw(st.Value)
+			default:
+				return aw(st.TableRow)
+			}
+		})
+
+	for _, r := range rowData {
+		t.Row(r.name, r.mode, r.proto, r.lastRun, r.rate, r.ttft, r.tps)
 	}
 
-	return strings.Join(lines, "\n")
+	tableStr := t.String()
+	s.Visible = t.VisibleRows()
+	if s.Visible < 1 {
+		s.Visible = 1
+	}
+	s.Offset = ensureVisibleOffset(s.Selected, len(s.Tasks), s.Offset, s.Visible)
+
+	// 空任务状态：在表头下方显示提示
+	if len(s.Tasks) == 0 {
+		tableLines := strings.Split(tableStr, "\n")
+		for len(tableLines) < maxH-1 {
+			tableLines = append(tableLines, "")
+		}
+		tableLines = append(tableLines, "  "+st.Muted.Render("暂无任务  按 [a] 新建第一个任务"))
+		if len(tableLines) > maxH {
+			tableLines = tableLines[:maxH]
+		}
+		for len(tableLines) < maxH {
+			tableLines = append(tableLines, "")
+		}
+		return strings.Join(tableLines, "\n")
+	}
+
+	// 补齐至 maxH
+	tableLines := strings.Split(tableStr, "\n")
+	for len(tableLines) < maxH {
+		tableLines = append(tableLines, "")
+	}
+	if len(tableLines) > maxH {
+		tableLines = tableLines[:maxH]
+	}
+	return strings.Join(tableLines, "\n")
 }
 
 // buildTaskListConfirmContent 渲染删除确认对话框内容。

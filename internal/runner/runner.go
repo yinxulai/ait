@@ -62,10 +62,10 @@ func (r *Runner) acquireSlot(ch chan int) bool {
 }
 
 func calculateCacheHitRate(metrics *client.ResponseMetrics) float64 {
-	if metrics == nil || metrics.PromptTokens <= 0 {
+	if metrics == nil || metrics.CachedInputTokens <= 0 {
 		return 0
 	}
-	return float64(metrics.CachedInputTokens) / float64(metrics.PromptTokens)
+	return 1
 }
 
 // Run 执行性能测试，返回结果数据

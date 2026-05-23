@@ -229,9 +229,9 @@ func TestMapRequestMetrics_SuccessFields(t *testing.T) {
 	if rm.TPS != 50.0 {
 		t.Errorf("TPS: got %v, want 50", rm.TPS)
 	}
-	// CacheHitRate = CachedInputTokens / PromptTokens = 50 / 200 = 0.25
-	if rm.CacheHitRate != 0.25 {
-		t.Errorf("CacheHitRate: got %v, want 0.25", rm.CacheHitRate)
+	// CacheHitRate = 1 if CachedInputTokens > 0 else 0
+	if rm.CacheHitRate != 1.0 {
+		t.Errorf("CacheHitRate: got %v, want 1.0", rm.CacheHitRate)
 	}
 	if rm.TargetIP != "1.2.3.4" {
 		t.Errorf("TargetIP: got %q, want %q", rm.TargetIP, "1.2.3.4")
@@ -281,11 +281,18 @@ func TestMapRequestMetrics_ZeroTotalTimeSkipsTPS(t *testing.T) {
 	}
 }
 
-func TestMapRequestMetrics_ZeroPromptTokensSkipsCacheHitRate(t *testing.T) {
-	m := &client.ResponseMetrics{CachedInputTokens: 10} // PromptTokens == 0
+func TestMapRequestMetrics_CacheHitRateBinary(t *testing.T) {
+	// 有缓存命中 → 1
+	m := &client.ResponseMetrics{CachedInputTokens: 10, PromptTokens: 100}
 	rm := mapRequestMetrics(m, 0, nil)
-	if rm.CacheHitRate != 0 {
-		t.Errorf("expected CacheHitRate=0 when PromptTokens=0, got %v", rm.CacheHitRate)
+	if rm.CacheHitRate != 1.0 {
+		t.Errorf("expected CacheHitRate=1 when CachedInputTokens>0, got %v", rm.CacheHitRate)
+	}
+	// 无缓存命中 → 0
+	m2 := &client.ResponseMetrics{CachedInputTokens: 0, PromptTokens: 100}
+	rm2 := mapRequestMetrics(m2, 0, nil)
+	if rm2.CacheHitRate != 0 {
+		t.Errorf("expected CacheHitRate=0 when CachedInputTokens=0, got %v", rm2.CacheHitRate)
 	}
 }
 
