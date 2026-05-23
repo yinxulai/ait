@@ -59,6 +59,11 @@ type RunState struct {
 	SuccessRate  float64
 	CacheHitRate float64
 
+	// 吞吐量指标（基于整体运行时长，最终稳定值）
+	// RPM = 每分钟完成请求数；TPM = 每分钟输出 Token 数
+	RPM float64
+	TPM float64
+
 	// 详细请求列表（按 index 排序）
 	Requests []*types.RequestMetrics
 

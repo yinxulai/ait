@@ -302,6 +302,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	type histRow struct {
 		statusText  string
 		statusIsOk  bool
+		statusMut bool
 		statusIsMut bool
 		time        string
 		mode        string
@@ -309,6 +310,8 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 		dur         string
 		ttft        string
 		tps         string
+		rpm         string
+		tpm         string
 	}
 	rowData := make([]histRow, effectiveLen)
 	if hasActive {
@@ -327,6 +330,8 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			dur:        "─",
 			ttft:       "─",
 			tps:        fmt.Sprintf("%d/%d 正在运行...", rs.DoneReqs, rs.TotalReqs),
+			rpm:        "─",
+			tpm:        "─",
 		}
 	}
 	for histIdx := 0; histIdx < len(historyEntries); histIdx++ {
@@ -364,15 +369,17 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			dur:         durText,
 			ttft:        fmtDuration(run.AvgTTFT),
 			tps:         fmt.Sprintf("%.1f", run.AvgTPS),
+			rpm:         fmt.Sprintf("%.0f", run.RPM),
+			tpm:         fmt.Sprintf("%.0f", run.TPM),
 		}
 	}
 
 	// colWidths: 0 = 弹性列，>0 = 固定总宽
-	colWidths := []int{4, 0, 7, 8, 7, 7, 7} // 状态图标, 时间=flex, 模式, 成功率, 耗时, TTFT, TPS
+	colWidths := []int{4, 0, 7, 8, 7, 7, 7, 6, 6} // 状态图标, 时间=flex, 模式, 成功率, 耗时, TTFT, TPS, RPM, TPM
 	sel := s.HistorySel
 	tableH := tableMaxH - len(rightTitle)
 	tbl := lgtable.New().
-		Headers("", "时间", "模式", "成功率", "耗时", "TTFT", "TPS").
+		Headers("", "时间", "模式", "成功率", "耗时", "TTFT", "TPS", "RPM", "TPM").
 		Width(rightW).
 		Height(tableH).
 		YOffset(s.HistoryOff).
@@ -401,14 +408,14 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 				}
 				return aw(st.ErrStyle)
 			}
-			if col >= 3 { // rate, dur, ttft, tps
+			if col >= 3 { // rate, dur, ttft, tps, rpm, tpm
 				return aw(st.Value)
 			}
 			return aw(st.TableRow)
 		})
 
 	for _, r := range rowData {
-		tbl.Row(r.statusText, r.time, r.mode, r.rate, r.dur, r.ttft, r.tps)
+		tbl.Row(r.statusText, r.time, r.mode, r.rate, r.dur, r.ttft, r.tps, r.rpm, r.tpm)
 	}
 
 	tableStr := tbl.String()
@@ -549,6 +556,10 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 	lines = appendPairRow(lines,
 		"TTFT", fmtDuration(sel.AvgTTFT), st.Value,
 		"TPS", fmt.Sprintf("%.1f", sel.AvgTPS), st.MetricVal,
+	)
+	lines = appendPairRow(lines,
+		"RPM", fmt.Sprintf("%.0f req/min", sel.RPM), st.MetricVal,
+		"TPM", fmt.Sprintf("%.0f tok/min", sel.TPM), st.MetricVal,
 	)
 	lines = appendSingleField(lines, "协议", shortProtocol(sel.Protocol), st.Value)
 	lines = appendSingleField(lines, "模型", sel.Model, st.Value)

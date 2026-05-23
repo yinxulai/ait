@@ -27,6 +27,7 @@ type activeRun struct {
 	tpsSum       float64
 	ttftSum      time.Duration
 	cacheSum     float64
+	tokenSum     int64   // 累计成功请求的输出 Token 数，用于计算 TPM
 	doneCount    int // 与 state.DoneReqs 保持同步，方便不加锁时计算
 }
 
@@ -175,6 +176,24 @@ func buildRunStateFromStoredRun(run *store.StoredRun, requests []types.RequestMe
 	}
 	state.FailedReqs = state.DoneReqs - state.SuccessReqs
 	state.TotalReqs = run.TotalReqs(requests)
+
+	// 从存储数据重建 RPM/TPM
+	end := time.Now()
+	if run.Metadata.FinishedAt != nil {
+		end = *run.Metadata.FinishedAt
+	}
+	if !run.Metadata.StartedAt.IsZero() {
+		if elapsed := end.Sub(run.Metadata.StartedAt).Minutes(); elapsed > 0 {
+			var tokenSum int64
+			for _, r := range requests {
+				if r.Success {
+					tokenSum += int64(r.CompletionTokens)
+				}
+			}
+			state.RPM = float64(state.DoneReqs) / elapsed
+			state.TPM = float64(tokenSum) / elapsed
+		}
+	}
 	if run.Result == nil {
 		return state
 	}
@@ -380,6 +399,7 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 					ar.tpsSum += rm.TPS
 					ar.ttftSum += rm.TTFT
 					ar.cacheSum += rm.CacheHitRate
+					ar.tokenSum += int64(rm.CompletionTokens)
 				} else {
 					ar.state.FailedReqs++
 				}
@@ -390,6 +410,11 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 				}
 				if ar.state.DoneReqs > 0 {
 					ar.state.SuccessRate = float64(ar.state.SuccessReqs) / float64(ar.state.DoneReqs) * 100
+				}
+				// 更新 RPM/TPM（基于运行时长）
+				if elapsed := time.Since(ar.state.StartedAt).Minutes(); elapsed > 0 {
+					ar.state.RPM = float64(ar.state.DoneReqs) / elapsed
+					ar.state.TPM = float64(ar.tokenSum) / elapsed
 				}
 				snap := ar.snapshotState()
 				ar.mu.Unlock()
@@ -435,6 +460,11 @@ func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef typ
 		ar.state.SuccessRate = data.SuccessRate
 		ar.state.CacheHitRate = data.AvgCacheHitRate
 	}
+	// 使用完整运行时长计算最终稳定的 RPM/TPM
+	if elapsed := finishedAt.Sub(ar.state.StartedAt).Minutes(); elapsed > 0 {
+		ar.state.RPM = float64(ar.state.DoneReqs) / elapsed
+		ar.state.TPM = float64(ar.tokenSum) / elapsed
+	}
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
@@ -456,6 +486,11 @@ func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.
 	if result != nil {
 		ar.state.Levels = result.Levels
 		ar.state.CurrentLevel = result.MaxStableConcurrency
+	}
+	// 使用完整运行时长计算最终稳定的 RPM/TPM
+	if elapsed := finishedAt.Sub(ar.state.StartedAt).Minutes(); elapsed > 0 {
+		ar.state.RPM = float64(ar.state.DoneReqs) / elapsed
+		ar.state.TPM = float64(ar.tokenSum) / elapsed
 	}
 	snap := ar.snapshotState()
 	ar.mu.Unlock()

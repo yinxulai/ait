@@ -212,7 +212,7 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	bodyPanel := frame.InnerPanel()
 
 	// ── 计算高度 ──
-	splitOuterH := 7    // 双栏面板外部总高度（含面板边框）
+	splitOuterH := 9    // 双栏面板外部总高度（含面板边框）
 	progressOuterH := 3 // 进度条面板外部高度（1内容+2边框）
 	reqOuterH := RemainingStackOuterHeight(frame.InnerHeight, splitOuterH, progressOuterH)
 	reqListH := PanelContentHeight(reqOuterH)

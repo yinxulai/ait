@@ -210,6 +210,8 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		cache       string
 		ttft        string
 		tps         string
+		rpm         string
+		tpm         string
 	}
 
 	sel := s.Selected
@@ -265,6 +267,20 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 			cacheText = fmt.Sprintf("%.1f%%", t.LatestRun.CacheHitRate*100)
 		}
 
+		rpmText := "─"
+		if hasActiveRun && rs != nil && rs.RPM > 0 {
+			rpmText = fmt.Sprintf("%.0f", rs.RPM)
+		} else if !hasActiveRun && t.LatestRun != nil && t.LatestRun.RPM > 0 {
+			rpmText = fmt.Sprintf("%.0f", t.LatestRun.RPM)
+		}
+
+		tpmText := "─"
+		if hasActiveRun && rs != nil && rs.TPM > 0 {
+			tpmText = fmt.Sprintf("%.0f", rs.TPM)
+		} else if !hasActiveRun && t.LatestRun != nil && t.LatestRun.TPM > 0 {
+			tpmText = fmt.Sprintf("%.0f", t.LatestRun.TPM)
+		}
+
 		rowData[i] = taskRowData{
 			name:      t.Name,
 			mode:      modeText,
@@ -276,14 +292,16 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 			cache:     cacheText,
 			ttft:      ttftText,
 			tps:       tpsText,
+			rpm:       rpmText,
+			tpm:       tpmText,
 		}
 	}
 
 	// ── 构建 lipgloss/table ──
 	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽（包括两端各 1 字符 padding）
-	colWidths := []int{0, 8, 22, 12, 8, 10, 10, 10} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, 缓存命中, TTFT均值, TPS均值
+	colWidths := []int{0, 8, 22, 12, 8, 10, 10, 10, 8, 8} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, 缓存命中, TTFT均值, TPS均值, RPM, TPM
 	t := lgtable.New().
-		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "缓存命中", "均值TTFT", "均值TPS").
+		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "缓存命中", "均值TTFT", "均值TPS", "RPM", "TPM").
 		Width(width).
 		Height(maxH).
 		YOffset(s.Offset).
@@ -314,7 +332,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 					return aw(st.Ok)
 				}
 				return aw(st.Muted)
-			case 4, 5, 6, 7: // rate, cache, ttft, tps
+			case 4, 5, 6, 7, 8, 9: // rate, cache, ttft, tps, rpm, tpm
 				return aw(st.Value)
 			default:
 				return aw(st.TableRow)
@@ -322,7 +340,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		})
 
 	for _, r := range rowData {
-		t.Row(r.name, r.mode, r.proto, r.lastRun, r.rate, r.cache, r.ttft, r.tps)
+		t.Row(r.name, r.mode, r.proto, r.lastRun, r.rate, r.cache, r.ttft, r.tps, r.rpm, r.tpm)
 	}
 
 	tableStr := t.String()

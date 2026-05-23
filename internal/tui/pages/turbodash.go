@@ -216,7 +216,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	bodyPanel := frame.InnerPanel()
 
 	// ── 计算高度 ──
-	splitOuterH := 7
+	splitOuterH := 9
 	progressOuterH := 3
 	levelOuterH := RemainingStackOuterHeight(frame.InnerHeight, splitOuterH, progressOuterH)
 	levelListH := PanelContentHeight(levelOuterH)

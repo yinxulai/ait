@@ -682,6 +682,12 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	stdDevTPS := math.Sqrt(varianceSumTPS / float64(validCount))
 	stdDevTotalThroughputTPS := math.Sqrt(varianceSumTotalThroughputTPS / float64(validCount))
 
+	var rpm, tpm float64
+	if totalTime.Minutes() > 0 {
+		rpm = float64(successCount) / totalTime.Minutes()
+		tpm = float64(sumOutputTokens) / totalTime.Minutes()
+	}
+
 	return &types.ReportData{
 		TotalRequests:       requestCount,
 		Concurrency:         r.input.Concurrency,
@@ -731,6 +737,8 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		AvgTotalThroughputTPS: avgTotalThroughputTPS,
 		MinTotalThroughputTPS: minTotalThroughputTPS,
 		MaxTotalThroughputTPS: maxTotalThroughputTPS,
+		RPM:                 rpm,
+		TPM:                 tpm,
 		StdDevTotalTime:        stdDevTotalTime,
 		StdDevTTFT:             stdDevTTFT,
 		StdDevTPOT:             stdDevTPOT,

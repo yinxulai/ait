@@ -208,6 +208,10 @@ type ReportData struct {
 	MinTPS              float64       `json:"min_tps"`                // 最小输出 TPS
 	MaxTPS              float64       `json:"max_tps"`                // 最大输出 TPS
 
+	// 分钟吩吐量（基于整体运行时长，最终稳定值）
+	RPM float64 `json:"rpm"` // 每分钟完成请求数
+	TPM float64 `json:"tpm"` // 每分钟输出 Token 数
+
 	// 吞吐量指标 - 统计结果
 	AvgTotalThroughputTPS float64 `json:"avg_total_throughput_tps"` // 平均吞吐 TPS (输入+输出 tokens per second)
 	MinTotalThroughputTPS float64 `json:"min_total_throughput_tps"` // 最小吞吐 TPS
@@ -256,6 +260,8 @@ type TaskRunSummary struct {
 	AvgTTFT              time.Duration `json:"avg_ttft"`
 	AvgTPS               float64       `json:"avg_tps"`
 	CacheHitRate         float64       `json:"cache_hit_rate"`
+	RPM                  float64       `json:"rpm,omitempty"`
+	TPM                  float64       `json:"tpm,omitempty"`
 	MaxStableConcurrency int           `json:"max_stable_concurrency,omitempty"`
 	ErrorSummary         string        `json:"error_summary,omitempty"`
 }
@@ -298,6 +304,8 @@ type TurboLevelResult struct {
 	PeakTPS       float64       `json:"peak_tps"`
 	AvgTTFT       time.Duration `json:"avg_ttft"`
 	CacheHitRate  float64       `json:"cache_hit_rate"`
+	RPM           float64       `json:"rpm,omitempty"`
+	TPM           float64       `json:"tpm,omitempty"`
 	AvgTotalTime  time.Duration `json:"avg_total_time"`
 	StdDevTPS     float64       `json:"stddev_tps"`
 	Stable        bool          `json:"stable"`

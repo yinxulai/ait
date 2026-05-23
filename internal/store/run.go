@@ -302,6 +302,25 @@ func (r StoredRun) Summary(requests []types.RequestMetrics) types.TaskRunSummary
 	summary.AvgTTFT = derived.AvgTTFT
 	summary.AvgTPS = derived.AvgTPS
 	summary.CacheHitRate = derived.CacheHitRate
+
+	// 从时间信息计算 RPM/TPM
+	if !r.Metadata.StartedAt.IsZero() {
+		end := time.Now()
+		if r.Metadata.FinishedAt != nil {
+			end = *r.Metadata.FinishedAt
+		}
+		if elapsed := end.Sub(r.Metadata.StartedAt).Minutes(); elapsed > 0 {
+			var totalTokens int64
+			for _, req := range requests {
+				if req.Success {
+					totalTokens += int64(req.CompletionTokens)
+				}
+			}
+			summary.RPM = float64(len(requests)) / elapsed
+			summary.TPM = float64(totalTokens) / elapsed
+		}
+	}
+
 	if r.Result != nil {
 		summary.ErrorSummary = r.Result.ErrorSummary
 		summary.MaxStableConcurrency = r.Result.MaxStableConcurrency
@@ -310,6 +329,8 @@ func (r StoredRun) Summary(requests []types.RequestMetrics) types.TaskRunSummary
 			summary.AvgTTFT = r.Result.StandardResult.AvgTTFT
 			summary.AvgTPS = r.Result.StandardResult.AvgTPS
 			summary.CacheHitRate = r.Result.StandardResult.AvgCacheHitRate
+			summary.RPM = r.Result.StandardResult.RPM
+			summary.TPM = r.Result.StandardResult.TPM
 		}
 		if r.Result.TurboResult != nil {
 			summary.MaxStableConcurrency = r.Result.TurboResult.MaxStableConcurrency
