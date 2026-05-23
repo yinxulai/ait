@@ -87,10 +87,16 @@ func (r *Runner) Run() (*types.ReportData, error) {
 			defer func() { <-ch }()
 
 			// 获取当前请求使用的prompt
-			systemPrompt := r.input.PromptSource.GetSystemContent()
-			userPrompt := r.input.PromptSource.GetContentByIndex(idx)
-			
-			metrics, err := r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			var metrics *client.ResponseMetrics
+			var err error
+			if r.input.PromptMode == "raw" {
+				rawBody := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.RawRequest(rawBody)
+			} else {
+				systemPrompt := r.input.PromptSource.GetSystemContent()
+				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			}
 			if err != nil {
 				// 即使有错误，也尝试保存 metrics（如果有的话）
 				if metrics != nil {
@@ -130,9 +136,16 @@ func (r *Runner) RunWithCallback(cb RequestDoneCallback) (*types.ReportData, err
 			defer wg.Done()
 			defer func() { <-ch }()
 
-			systemPrompt := r.input.PromptSource.GetSystemContent()
-			userPrompt := r.input.PromptSource.GetContentByIndex(idx)
-			metrics, err := r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			var metrics *client.ResponseMetrics
+			var err error
+			if r.input.PromptMode == "raw" {
+				rawBody := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.RawRequest(rawBody)
+			} else {
+				systemPrompt := r.input.PromptSource.GetSystemContent()
+				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			}
 			if metrics != nil {
 				results[idx] = metrics
 			}
@@ -233,10 +246,16 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			defer func() { <-ch }()
 
 			// 获取当前请求使用的prompt
-			systemPrompt := r.input.PromptSource.GetSystemContent()
-			userPrompt := r.input.PromptSource.GetContentByIndex(idx)
-			
-			metrics, err := r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			var metrics *client.ResponseMetrics
+			var err error
+			if r.input.PromptMode == "raw" {
+				rawBody := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.RawRequest(rawBody)
+			} else {
+				systemPrompt := r.input.PromptSource.GetSystemContent()
+				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			}
 			if err != nil {
 				ttftsMutex.Lock()
 				errorMessages = append(errorMessages, err.Error())

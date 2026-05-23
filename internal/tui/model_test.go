@@ -67,8 +67,8 @@ func TestOpenWizard_NewTask_Defaults(t *testing.T) {
 	if m.wizard.PromptMode != pages.PromptModeGenerated {
 		t.Errorf("default PromptMode = %q, want %q", m.wizard.PromptMode, pages.PromptModeGenerated)
 	}
-	if m.wizard.PromptLength != 100 {
-		t.Errorf("default PromptLength = %d, want 100", m.wizard.PromptLength)
+	if m.wizard.PromptLength != 4096 {
+		t.Errorf("default PromptLength = %d, want 4096", m.wizard.PromptLength)
 	}
 }
 

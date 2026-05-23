@@ -411,6 +411,20 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 		return nil, err
 	}
 
+	return c.doRequest(jsonData, stream)
+}
+
+// RawRequest 使用原始 JSON 请求体发送请求，stream 从请求体中的 stream 字段自动检测。
+func (c *OpenAIClient) RawRequest(rawBody string) (*ResponseMetrics, error) {
+	var tmp struct {
+		Stream bool `json:"stream"`
+	}
+	_ = json.Unmarshal([]byte(rawBody), &tmp)
+	return c.doRequest([]byte(rawBody), tmp.Stream)
+}
+
+// doRequest 执行 HTTP 请求并解析响应（支持流式和非流式）
+func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics, error) {
 	req, err := http.NewRequestWithContext(context.Background(), "POST", c.endpointURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		// 记录错误日志

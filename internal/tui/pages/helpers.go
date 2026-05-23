@@ -628,6 +628,15 @@ func promptSummary(promptMode, promptText, promptFile string, promptLength int) 
 		return "文件: " + promptFile
 	case "generated":
 		return fmt.Sprintf("生成 %d 字符", promptLength)
+	case "raw":
+		if promptText != "" {
+			r := []rune(promptText)
+			if len(r) > 20 {
+				return "RAW: " + string(r[:20]) + "…"
+			}
+			return "RAW: " + promptText
+		}
+		return "(未设置)"
 	default:
 		if promptText != "" {
 			r := []rune(promptText)

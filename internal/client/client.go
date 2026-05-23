@@ -38,6 +38,8 @@ type ResponseMetrics struct {
 type ModelClient interface {
 	// Request 发送请求。systemPrompt 为空时行为与原来相同（不添加 system 消息）。
 	Request(systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error)
+	// RawRequest 使用原始 JSON 请求体发送请求，stream 从请求体中的 stream 字段自动检测。
+	RawRequest(rawBody string) (*ResponseMetrics, error)
 	GetProtocol() string
 	GetModel() string
 	SetLogger(logger *logger.Logger) // 设置日志记录器

@@ -40,6 +40,15 @@ func HydrateInput(input types.Input) (types.Input, error) {
 			return input, err
 		}
 		input.PromptSource = source
+	case "raw":
+		if input.PromptText == "" {
+			return input, fmt.Errorf("prompt_text is required for prompt_mode=raw (paste the raw JSON request body)")
+		}
+		source, err := prompt.LoadPrompts(input.PromptText)
+		if err != nil {
+			return input, err
+		}
+		input.PromptSource = source
 	default:
 		return input, fmt.Errorf("unsupported prompt_mode: %s", input.PromptMode)
 	}

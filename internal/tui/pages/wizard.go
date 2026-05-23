@@ -19,6 +19,7 @@ const (
 	PromptModeText      = "text"
 	PromptModeFile      = "file"
 	PromptModeGenerated = "generated"
+	PromptModeRaw       = "raw"
 )
 
 // wizardStep 步骤枚举
@@ -131,7 +132,7 @@ func NewWizardState() *WizardState {
 		MinSuccessRate:  90,
 		Stream:          true,
 		PromptMode:      PromptModeGenerated,
-		PromptLength:    100,
+		PromptLength:    4096,
 		input:           newWizardTextInput(),
 	}
 	loadCurrentFieldInput(wz)
@@ -379,7 +380,7 @@ func step2Fields(turbo bool) []fieldDef {
 	})
 
 	// Prompt 字段（共用）
-	promptModes := []string{PromptModeText, PromptModeFile, PromptModeGenerated}
+	promptModes := []string{PromptModeText, PromptModeFile, PromptModeGenerated, PromptModeRaw}
 	fields = append(fields,
 		fieldDef{
 			kind: fieldEnum, label: "输入方式",
@@ -389,6 +390,8 @@ func step2Fields(turbo bool) []fieldDef {
 					return "文件"
 				case PromptModeGenerated:
 					return "按长度生成"
+				case PromptModeRaw:
+					return "RAW 请求体"
 				default:
 					return "直接输入"
 				}
@@ -408,7 +411,7 @@ func step2Fields(turbo bool) []fieldDef {
 				}
 				wz.PromptMode = promptModes[idx]
 				if wz.PromptMode == PromptModeGenerated && wz.PromptLength <= 0 {
-					wz.PromptLength = 100
+					wz.PromptLength = 4096
 				}
 			},
 		},
@@ -668,13 +671,17 @@ func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string 
 		topLines = append(topLines, dividerLine(st, width))
 	}
 
-	bodyLines, focusLine := buildWizardBody(wz, st, width)
+	bodyLines, focusLine, focusEndLine := buildWizardBody(wz, st, width)
 	bodyH := maxInt(1, availableForContent-len(topLines))
 	offset := 0
 	if wz.Step == wizardStep3 {
 		offset = clampInt(wz.ScrollOff, 0, maxInt(0, len(bodyLines)-bodyH))
 	} else if focusLine >= 0 {
-		offset = ensureVisibleOffset(focusLine, len(bodyLines), 0, bodyH)
+		// 先确保聚焦块末尾（含提示行）可见，再保证起始行不滚出视口顶部
+		offset = ensureVisibleOffset(focusEndLine, len(bodyLines), 0, bodyH)
+		if focusLine < offset {
+			offset = focusLine
+		}
 	}
 	end := minInt(len(bodyLines), offset+bodyH)
 	visibleBody := append([]string{}, bodyLines[offset:end]...)
@@ -698,9 +705,10 @@ func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string 
 	return strings.Join(lines, "\n")
 }
 
-func buildWizardBody(wz *WizardState, st Styles, contentW int) ([]string, int) {
+func buildWizardBody(wz *WizardState, st Styles, contentW int) ([]string, int, int) {
 	var lines []string
 	focusLine := -1
+	focusEndLine := -1
 
 	// appendField 将字段渲染结果按行展开追加，因为 FieldActive/FieldIdle 带 Border
 	// 会产生 3 行输出（顶部边框 + 内容 + 底部边框），必须逐行记录才能正确计算高度。
@@ -710,6 +718,9 @@ func buildWizardBody(wz *WizardState, st Styles, contentW int) ([]string, int) {
 		}
 		for _, l := range strings.Split(rendered, "\n") {
 			lines = append(lines, l)
+		}
+		if focused {
+			focusEndLine = len(lines) - 1
 		}
 	}
 
@@ -727,13 +738,42 @@ func buildWizardBody(wz *WizardState, st Styles, contentW int) ([]string, int) {
 				lines = append(lines, "", st.Muted.Render("Prompt 配置"))
 			}
 			appendField(renderWizardField(st, f, wz, i == wz.FieldIndex, contentW), i == wz.FieldIndex)
+			if f.label == "测试模式" {
+				if wz.Turbo {
+					lines = append(lines, st.Muted.Render("               自动从低并发起步，逐级加压，找到最大稳定吞吐点"))
+				} else {
+					lines = append(lines, st.Muted.Render("               固定并发数和请求总数，测量在指定负载下的延迟与成功率"))
+				}
+			}
+			if f.label == "输入方式" {
+				switch wz.PromptMode {
+				case PromptModeText:
+					lines = append(lines, st.Muted.Render("               直接粘贴或输入 Prompt 文本，所有请求共享同一段内容"))
+				case PromptModeFile:
+					lines = append(lines, st.Muted.Render("               从文件读取 Prompt，支持通配符匹配多个文件（请求按文件轮换）"))
+				case PromptModeGenerated:
+					lines = append(lines, st.Muted.Render("               按指定字符数自动生成测试文本，内容含大量公共前缀以模拟缓存命中"))
+				case PromptModeRaw:
+					lines = append(lines, st.Muted.Render("               粘贴完整的 HTTP 请求 JSON Body，将跳过参数组装直接发送"))
+				}
+			}
+			if f.label == "内容" && (wz.PromptMode == PromptModeText || wz.PromptMode == PromptModeFile || wz.PromptMode == PromptModeGenerated) {
+				lines = append(lines, st.Muted.Render("               提示：大多数服务需要 ≥ 1024 tokens 才能命中缓存"))
+			}
+			if f.label == "内容" && wz.PromptMode == PromptModeRaw {
+				lines = append(lines, st.Muted.Render("               提示：粘贴 API 请求的完整 JSON Body，将直接作为 HTTP 请求体发送"))
+			}
+			// 提示行追加完毕后，更新聚焦块的末尾行（含提示）
+			if i == wz.FieldIndex {
+				focusEndLine = len(lines) - 1
+			}
 		}
 
 	case wizardStep3:
 		lines = append(lines, renderStep3Summary(wz, st, contentW)...)
 	}
 
-	return lines, focusLine
+	return lines, focusLine, focusEndLine
 }
 
 // renderWizardField 渲染向导的一个字段行。
@@ -836,6 +876,8 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 		addRow("字符数", strconv.Itoa(len([]rune(wz.PromptText))), st.Muted)
 	} else if wz.PromptMode == PromptModeGenerated {
 		addRow("目标长度", strconv.Itoa(wz.PromptLength), st.Muted)
+	} else if wz.PromptMode == PromptModeRaw {
+		addRow("Body 字节数", strconv.Itoa(len(wz.PromptText)), st.Muted)
 	}
 
 	lines = append(lines, "", st.Muted.Render("保存位置: ~/.ait/tasks/<task-id>.json"))
@@ -871,6 +913,8 @@ func wizardFieldLabel(f fieldDef, wz *WizardState) string {
 		return "文件路径"
 	case PromptModeGenerated:
 		return "生成长度"
+	case PromptModeRaw:
+		return "JSON Body"
 	default:
 		return "Prompt"
 	}
@@ -882,6 +926,8 @@ func wizardPromptModeLabel(mode string) string {
 		return "文件"
 	case PromptModeGenerated:
 		return "按长度生成"
+	case PromptModeRaw:
+		return "RAW 请求体"
 	default:
 		return "直接输入"
 	}

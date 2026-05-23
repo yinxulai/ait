@@ -295,11 +295,11 @@ func splitGeneratedPromptLengths(total int) (commonLen, userLen int) {
 		return 0, total
 	}
 
-	commonLen = total * 7 / 10
+	commonLen = total * 9 / 10
 	userLen = total - commonLen
 
-	if userLen < 12 {
-		userLen = 12
+	if userLen < 24 {
+		userLen = 24
 		if total < userLen {
 			userLen = total
 		}
