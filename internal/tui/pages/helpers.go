@@ -471,8 +471,8 @@ func applyColWidth(s lipgloss.Style, col int, colWidths []int) lipgloss.Style {
 // appendRunMetricLines 向 lines 追加 4 行运行指标（成功率/TPS/TTFT/缓存命中）。
 func appendRunMetricLines(lines []string, st Styles, rs *server.RunState) []string {
 	lines = append(lines, " "+labelValue(st, "成功率  ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate))))
-	lines = append(lines, " "+labelValue(st, "TPS     ", st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
-	lines = append(lines, " "+labelValue(st, "TTFT    ", st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
+	lines = append(lines, " "+labelValue(st, "TPS均值 ", st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
+	lines = append(lines, " "+labelValue(st, "TTFT均值", st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
 	lines = append(lines, " "+labelValue(st, "缓存命中", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
 	return lines
 }

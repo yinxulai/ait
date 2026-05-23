@@ -278,9 +278,9 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 
 	// ── 构建 lipgloss/table ──
 	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽（包括两端各 1 字符 padding）
-	colWidths := []int{0, 8, 22, 12, 8, 8, 10, 10} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, 缓存, TTFT, TPS
+	colWidths := []int{0, 8, 22, 12, 8, 10, 10, 10} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, 缓存命中, TTFT均值, TPS均值
 	t := lgtable.New().
-		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "缓存", "TTFT", "TPS").
+		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "缓存命中", "均值TTFT", "均值TPS").
 		Width(width).
 		Height(maxH).
 		YOffset(s.Offset).
