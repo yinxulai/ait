@@ -213,7 +213,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	bodyPanel := frame.InnerPanel()
 
 	// ── 计算高度 ──
-	splitOuterH := 9
+	splitOuterH := 7
 	progressOuterH := 3
 	levelOuterH := RemainingStackOuterHeight(frame.InnerHeight, splitOuterH, progressOuterH)
 	levelListH := PanelContentHeight(levelOuterH)
@@ -370,10 +370,10 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 	selDisplayPos := requestDisplayPos(d.ReqSel, len(reqs))
 
 	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽
-	colWidths := []int{6, 5, 6, 0, 8, 7, 10, 10, 10} // #, 状态, 级别, 总耗时=flex, TTFT, Cache, 提示tok, 完成tok, TPS
+	colWidths := []int{6, 5, 6, 0, 8, 10, 12, 12, 10} // #, 状态, 级别, 总耗时=flex, TTFT, Cache, 输入, 输出, TPS
 	tableH := maxH - len(titleLines)
 	tbl := lgtable.New().
-		Headers("#", "状态", "级别", "总耗时", "TTFT", "Cache", "提示tok", "完成tok", "TPS").
+		Headers("#", "状态", "级别", "总耗时", "TTFT", "Cache", "输入", "输出", "TPS").
 		Width(width).
 		Height(tableH).
 		YOffset(d.ReqOff).

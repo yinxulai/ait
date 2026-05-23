@@ -209,7 +209,7 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	bodyPanel := frame.InnerPanel()
 
 	// ── 计算高度 ──
-	splitOuterH := 9    // 双栏面板外部总高度（含面板边框）
+	splitOuterH := 7    // 双栏面板外部总高度（含面板边框）
 	progressOuterH := 3 // 进度条面板外部高度（1内容+2边框）
 	reqOuterH := RemainingStackOuterHeight(frame.InnerHeight, splitOuterH, progressOuterH)
 	reqListH := PanelContentHeight(reqOuterH)
@@ -263,7 +263,6 @@ func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) stri
 			st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
 		lines = append(lines, " "+labelValue(st, "缓存命中",
 			st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
-		lines = append(lines, " "+st.Muted.Render(fmt.Sprintf(" 成功: %d   失败: %d", rs.SuccessReqs, rs.FailedReqs)))
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -363,10 +362,10 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 	selDisplayPos := requestDisplayPos(d.ReqSel, len(reqs))
 
 	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽
-	colWidths := []int{6, 8, 0, 8, 7, 10, 10, 10} // #, 状态, 总耗时=flex, TTFT, Cache, 提示tok, 完成tok, TPS
+	colWidths := []int{6, 8, 0, 8, 10, 12, 12, 10} // #, 状态, 总耗时=flex, TTFT, Cache, 输入, 输出, TPS
 	tableH := maxH - len(titleLines)
 	tbl := lgtable.New().
-		Headers("#", "状态", "总耗时", "TTFT", "Cache", "提示tok", "完成tok", "TPS").
+		Headers("#", "状态", "总耗时", "TTFT", "Cache", "输入", "输出", "TPS").
 		Width(width).
 		Height(tableH).
 		YOffset(d.ReqOff).
