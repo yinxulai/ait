@@ -266,8 +266,9 @@ func renderHotkeys(st Styles, width int, hk PageHotkeys) string {
 	hkLine := renderPrimaryHotkeyItems(hk.Hotkeys, maxInt(8, w-4))
 	line1 := renderChromeLine(st.HotkeysPrimary, w, " "+hkLine, "")
 
-	appStamp := lipgloss.NewStyle().Foreground(colorPink).Bold(true).Render("AIT") +
-		lipgloss.NewStyle().Foreground(colorMuted).Render("  终端 · "+time.Now().Format("15:04"))
+	appStamp := lipgloss.NewStyle().Background(colorHotkeysSecondaryBg).Foreground(colorMuted).Render(time.Now().Format("2006-01-02 15:04:05")+"  ") +
+		lipgloss.NewStyle().Background(colorHotkeysSecondaryBg).Foreground(colorPink).Bold(true).Render("github.com/yinxulai/ait") +
+		lipgloss.NewStyle().Background(colorHotkeysSecondaryBg).Foreground(colorMuted).Render("  Powered by Alain")
 	left2 := renderSecondaryHotkeyItems(hk.Hints, maxInt(8, w-lipgloss.Width(appStamp)-4))
 	line2 := renderChromeLine(st.HotkeysSecondary, w, " "+left2, appStamp+" ")
 
