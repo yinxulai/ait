@@ -37,13 +37,10 @@ type WizardState struct {
 
 	// Step 1: 基本信息
 	Name        string
-	// 协议多选（至少选一个）
-	SelOpenAICompletions bool
-	SelOpenAIResponses   bool
-	SelAnthropic         bool
+	Protocol    string // types.Protocol* 常量
 	EndpointURL string
 	APIKey      string
-	ModelsText  string // 逗号分隔，支持多个模型
+	Model       string
 
 	// Step 2: 测试参数
 	Turbo  bool
@@ -122,8 +119,8 @@ func loadCurrentFieldInput(wz *WizardState) {
 // NewWizardState 创建新建任务向导状态（使用默认值）。
 func NewWizardState() *WizardState {
 	wz := &WizardState{
-		Step:                 wizardStep1,
-		SelOpenAICompletions: true,
+		Step:            wizardStep1,
+		Protocol:        types.ProtocolOpenAICompletions,
 		Concurrency:     10,
 		Count:           100,
 		Timeout:         30,
@@ -152,19 +149,10 @@ func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 
 	wz.EditingID = t.ID
 	wz.Name = t.Name
-	switch types.NormalizeProtocol(inp.Protocol) {
-	case types.ProtocolOpenAIResponses:
-		wz.SelOpenAICompletions = false
-		wz.SelOpenAIResponses = true
-	case types.ProtocolAnthropicMessages:
-		wz.SelOpenAICompletions = false
-		wz.SelAnthropic = true
-	default:
-		wz.SelOpenAICompletions = true
-	}
+	wz.Protocol = types.NormalizeProtocol(inp.Protocol)
 	wz.EndpointURL = inp.EndpointURL
 	wz.APIKey = inp.ApiKey
-	wz.ModelsText = inp.Model
+	wz.Model = inp.Model
 	wz.Turbo = inp.Turbo
 	wz.Stream = inp.Stream
 	wz.PromptText = inp.PromptText
@@ -210,53 +198,6 @@ func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 	return wz
 }
 
-// ParseModels 解析 ModelsText，返回去重后的模型名列表。
-func (wz *WizardState) ParseModels() []string {
-	raw := strings.NewReplacer("\n", ",", ";", ",").Replace(wz.ModelsText)
-	seen := map[string]bool{}
-	var result []string
-	for _, m := range strings.Split(raw, ",") {
-		m = strings.TrimSpace(m)
-		if m != "" && !seen[m] {
-			seen[m] = true
-			result = append(result, m)
-		}
-	}
-	return result
-}
-
-// SelectedProtocols 返回已勾选的协议列表（保持固定顺序）。
-func (wz *WizardState) SelectedProtocols() []string {
-	var protos []string
-	if wz.SelOpenAICompletions {
-		protos = append(protos, types.ProtocolOpenAICompletions)
-	}
-	if wz.SelOpenAIResponses {
-		protos = append(protos, types.ProtocolOpenAIResponses)
-	}
-	if wz.SelAnthropic {
-		protos = append(protos, types.ProtocolAnthropicMessages)
-	}
-	return protos
-}
-
-// SingleProtocol 返回单协议场景下的协议名（优先第一个勾选；默认 OpenAI Chat）。
-func (wz *WizardState) SingleProtocol() string {
-	protos := wz.SelectedProtocols()
-	if len(protos) > 0 {
-		return protos[0]
-	}
-	return types.ProtocolOpenAICompletions
-}
-
-// IsBatch 判断当前配置是否需要批量创建（多模型或多协议，且非编辑模式）。
-func (wz *WizardState) IsBatch() bool {
-	if wz.EditingID != "" {
-		return false
-	}
-	return len(wz.ParseModels()) > 1 || len(wz.SelectedProtocols()) > 1
-}
-
 // BuildTaskConfig 将向导状态转换为 server.TaskConfig。
 func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 	turboRate := wz.MinSuccessRate / 100 // 转回小数
@@ -267,17 +208,13 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 	if wz.Timeout > 0 {
 		timeout = time.Duration(wz.Timeout) * time.Second
 	}
-	model := ""
-	if models := wz.ParseModels(); len(models) > 0 {
-		model = models[0]
-	}
 	return server.TaskConfig{
 		Name: wizardFallback(wz.Name, "未命名任务"),
 		Input: types.Input{
-			Protocol:    wz.SingleProtocol(),
+			Protocol:    wz.Protocol,
 			EndpointURL: wz.EndpointURL,
 			ApiKey:      wz.APIKey,
-			Model:       model,
+			Model:       wz.Model,
 			Concurrency: wz.Concurrency,
 			Count:       wz.Count,
 			Timeout:     timeout,
@@ -296,64 +233,6 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 			PromptLength: wz.PromptLength,
 		},
 	}
-}
-
-// BuildBatchTaskConfigs 返回 (模型 × 协议) 笛卡尔积的任务配置列表。
-func (wz *WizardState) BuildBatchTaskConfigs() []server.TaskConfig {
-	protos := wz.SelectedProtocols()
-	models := wz.ParseModels()
-	if len(protos) == 0 || len(models) == 0 {
-		return nil
-	}
-	turboRate := wz.MinSuccessRate / 100
-	if turboRate <= 0 {
-		turboRate = 0.9
-	}
-	var timeout time.Duration
-	if wz.Timeout > 0 {
-		timeout = time.Duration(wz.Timeout) * time.Second
-	}
-	multiProto := len(protos) > 1
-	var cfgs []server.TaskConfig
-	for _, model := range models {
-		for _, proto := range protos {
-			endpointURL := wz.EndpointURL
-			displayBase := endpointURL
-			if displayBase == "" {
-				displayBase = types.DefaultEndpointURL(proto)
-			}
-			taskName := fmt.Sprintf("%s@%s", model, strings.TrimRight(displayBase, "/"))
-			if multiProto {
-				taskName = fmt.Sprintf("%s (%s)@%s", model, proto, strings.TrimRight(displayBase, "/"))
-			}
-			cfgs = append(cfgs, server.TaskConfig{
-				Name: taskName,
-				Input: types.Input{
-					Protocol:    proto,
-					EndpointURL: endpointURL,
-					ApiKey:      wz.APIKey,
-					Model:       model,
-					Concurrency: wz.Concurrency,
-					Count:       wz.Count,
-					Timeout:     timeout,
-					Stream:      wz.Stream,
-					Turbo:       wz.Turbo,
-					TurboConfig: types.TurboConfig{
-						InitConcurrency: wz.InitConcurrency,
-						MaxConcurrency:  wz.MaxConcurrency,
-						StepSize:        wz.StepSize,
-						LevelRequests:   wz.LevelRequests,
-						MinSuccessRate:  turboRate,
-					},
-					PromptMode:   wz.PromptMode,
-					PromptText:   wz.PromptText,
-					PromptFile:   wz.PromptFile,
-					PromptLength: wz.PromptLength,
-				},
-			})
-		}
-	}
-	return cfgs
 }
 
 // fieldDef 向导字段定义
@@ -395,6 +274,11 @@ func intField(label string, get func(*WizardState) int, set func(*WizardState, i
 
 // step1Fields 返回步骤1的字段列表。
 func step1Fields() []fieldDef {
+	protocols := []string{
+		types.ProtocolOpenAICompletions,
+		types.ProtocolOpenAIResponses,
+		types.ProtocolAnthropicMessages,
+	}
 	return []fieldDef{
 		{
 			kind: fieldText, label: "任务名称",
@@ -402,19 +286,25 @@ func step1Fields() []fieldDef {
 			set: func(wz *WizardState, v string) { wz.Name = v },
 		},
 		{
-			kind:   fieldBool, label: "OpenAI Chat",
-			get:    func(wz *WizardState) string { return boolLabel(wz.SelOpenAICompletions) },
-			toggle: func(wz *WizardState, _ bool) { wz.SelOpenAICompletions = !wz.SelOpenAICompletions },
-		},
-		{
-			kind:   fieldBool, label: "OpenAI Resp",
-			get:    func(wz *WizardState) string { return boolLabel(wz.SelOpenAIResponses) },
-			toggle: func(wz *WizardState, _ bool) { wz.SelOpenAIResponses = !wz.SelOpenAIResponses },
-		},
-		{
-			kind:   fieldBool, label: "Anthropic",
-			get:    func(wz *WizardState) string { return boolLabel(wz.SelAnthropic) },
-			toggle: func(wz *WizardState, _ bool) { wz.SelAnthropic = !wz.SelAnthropic },
+			kind: fieldEnum, label: "协议类型",
+			get: func(wz *WizardState) string { return wz.Protocol },
+			toggle: func(wz *WizardState, forward bool) {
+				idx := 0
+				for i, p := range protocols {
+					if p == wz.Protocol {
+						idx = i
+						break
+					}
+				}
+				if forward {
+					idx = (idx + 1) % len(protocols)
+				} else {
+					idx = (idx - 1 + len(protocols)) % len(protocols)
+				}
+				wz.Protocol = protocols[idx]
+				// 清空 endpoint，使其跟随协议默认值
+				wz.EndpointURL = ""
+			},
 		},
 		{
 			kind: fieldText, label: "接口地址",
@@ -422,7 +312,7 @@ func step1Fields() []fieldDef {
 				if wz.EndpointURL != "" {
 					return wz.EndpointURL
 				}
-				return types.DefaultEndpointURL(wz.SingleProtocol())
+				return types.DefaultEndpointURL(wz.Protocol)
 			},
 			getRaw: func(wz *WizardState) string { return wz.EndpointURL },
 			set:    func(wz *WizardState, v string) { wz.EndpointURL = v },
@@ -433,9 +323,9 @@ func step1Fields() []fieldDef {
 			set: func(wz *WizardState, v string) { wz.APIKey = v },
 		},
 		{
-			kind: fieldText, label: "模型列表",
-			get: func(wz *WizardState) string { return wz.ModelsText },
-			set: func(wz *WizardState, v string) { wz.ModelsText = v },
+			kind: fieldText, label: "测试模型",
+			get: func(wz *WizardState) string { return wz.Model },
+			set: func(wz *WizardState, v string) { wz.Model = v },
 		},
 	}
 }
@@ -589,14 +479,6 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 		case "end":
 			wz.ScrollOff = 1 << 30
 		case "enter":
-			if wz.IsBatch() {
-				cfgs := wz.BuildBatchTaskConfigs()
-				if len(cfgs) == 0 {
-					return wz, nil, nav
-				}
-				nav = NavAction{To: NavTaskList}
-				return wz, client.CreateBatchTasksCmd(cfgs), nav
-			}
 			cfg := wz.BuildTaskConfig()
 			var cmd tea.Cmd
 			if wz.EditingID != "" {
@@ -607,17 +489,15 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 			nav = NavAction{To: NavTaskList}
 			return wz, cmd, nav
 		case "r":
-			if !wz.IsBatch() {
-				cfg := wz.BuildTaskConfig()
-				var cmd tea.Cmd
-				if wz.EditingID != "" {
-					cmd = client.UpdateTaskCmd(wz.EditingID, cfg)
-				} else {
-					cmd = client.CreateTaskCmd(cfg, true) // 保存并运行
-				}
-				nav = NavAction{To: NavTaskList}
-				return wz, cmd, nav
+			cfg := wz.BuildTaskConfig()
+			var cmd tea.Cmd
+			if wz.EditingID != "" {
+				cmd = client.UpdateTaskCmd(wz.EditingID, cfg)
+			} else {
+				cmd = client.CreateTaskCmd(cfg, true) // 保存并运行
 			}
+			nav = NavAction{To: NavTaskList}
+			return wz, cmd, nav
 		case "q", "ctrl+c":
 			nav = NavAction{To: NavQuit}
 		}
@@ -730,12 +610,8 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 	}
 	stepTitle := stepTitles[int(wz.Step)]
 	headerLeft := []string{stepTitle}
-	if protos := wz.SelectedProtocols(); len(protos) > 0 && wz.Step >= wizardStep2 {
-		if len(protos) == 1 {
-			headerLeft = append(headerLeft, strings.ToUpper(protos[0]))
-		} else {
-			headerLeft = append(headerLeft, fmt.Sprintf("%d 协议", len(protos)))
-		}
+	if wz.Protocol != "" && wz.Step >= wizardStep2 {
+		headerLeft = append(headerLeft, strings.ToUpper(wz.Protocol))
 	}
 	headerRight := []string{}
 	if wz.Step >= wizardStep2 {
@@ -745,16 +621,12 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 			headerRight = append(headerRight, "标准模式")
 		}
 	}
-	if n := len(wz.ParseModels()); n == 1 {
-		headerRight = append(headerRight, "模型 "+truncate(wz.ParseModels()[0], 18))
-	} else if n > 1 {
-		headerRight = append(headerRight, fmt.Sprintf("%d 个模型", n))
+	if wz.Model != "" {
+		headerRight = append(headerRight, "模型 "+truncate(wz.Model, 18))
 	}
 	action := "创建任务"
 	if wz.EditingID != "" {
 		action = "编辑任务"
-	} else if wz.IsBatch() {
-		action = "批量创建"
 	}
 
 	l := PageLayout{
@@ -763,7 +635,7 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 		HeaderMeta:      fmt.Sprintf("步骤 %d/3", int(wz.Step)+1),
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeys(wizardHotkeyItems(wz), "[q] 退出"),
+		Hotkeys:         NewPageHotkeys(wizardHotkeyItems(wz.Step), "[q] 退出"),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
@@ -774,7 +646,7 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string {
 	var topLines []string
 	if maxH >= 8 && width >= 46 {
-		topLines = append(topLines, renderWizardStepStrip(wz.Step, wz.IsBatch()))
+		topLines = append(topLines, renderWizardStepStrip(wz.Step))
 	}
 
 	bottomCount := 1
@@ -926,9 +798,6 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 
 // renderStep3Summary 渲染步骤3的确认内容。
 func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
-	if wz.IsBatch() {
-		return renderBatchConfirmLines(wz, st, innerW)
-	}
 	var lines []string
 	addRow := func(label, value string, valueStyle lipgloss.Style) {
 		appendWizardSummaryRow(&lines, st, label, value, innerW, valueStyle)
@@ -936,19 +805,14 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 
 	lines = append(lines, st.SectionHead.Render("配置概览"))
 	addRow("任务名称", wizardFallback(wz.Name, "未命名任务"), st.Value)
-	proto := wz.SingleProtocol()
-	addRow("协议", proto, st.Value)
+	addRow("协议", wz.Protocol, st.Value)
 	endpointDisplay := wz.EndpointURL
 	if endpointDisplay == "" {
-		endpointDisplay = types.DefaultEndpointURL(proto)
+		endpointDisplay = types.DefaultEndpointURL(wz.Protocol)
 	}
 	addRow("接口地址", endpointDisplay, st.Value)
 	addRow("API 密钥", wizardFallback(maskAPIKey(wz.APIKey), "未填写"), st.Value)
-	model := ""
-	if models := wz.ParseModels(); len(models) > 0 {
-		model = models[0]
-	}
-	addRow("测试模型", wizardFallback(model, "未填写"), st.Value)
+	addRow("测试模型", wizardFallback(wz.Model, "未填写"), st.Value)
 
 	lines = append(lines, "", st.SectionHead.Render("执行参数"))
 	if wz.Turbo {
@@ -979,43 +843,11 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 	return lines
 }
 
-// renderBatchConfirmLines 渲染批量创建的确认内容。
-func renderBatchConfirmLines(wz *WizardState, st Styles, _ int) []string {
-	var lines []string
-	cfgs := wz.BuildBatchTaskConfigs()
-	if len(cfgs) == 0 {
-		lines = append(lines, st.Muted.Render("请至少选择一个协议并填写一个模型名称。"))
-		return lines
-	}
-	lines = append(lines, st.SectionHead.Render(fmt.Sprintf("批量任务预览（共 %d 个）", len(cfgs))))
-	lines = append(lines, "")
-	for i, cfg := range cfgs {
-		lines = append(lines, fmt.Sprintf("  %d. %s", i+1, cfg.Name))
-		lines = append(lines, fmt.Sprintf("     协议: %s  模型: %s", cfg.Input.Protocol, cfg.Input.Model))
-		if cfg.Input.Turbo {
-			lines = append(lines, fmt.Sprintf("     并发: %d→%d  请求: %d/级",
-				cfg.Input.TurboConfig.InitConcurrency, cfg.Input.TurboConfig.MaxConcurrency, cfg.Input.TurboConfig.LevelRequests))
-		} else {
-			lines = append(lines, fmt.Sprintf("     并发: %d  请求: %d", cfg.Input.Concurrency, cfg.Input.Count))
-		}
-		if i < len(cfgs)-1 {
-			lines = append(lines, "")
-		}
-	}
-	lines = append(lines, "")
-	lines = append(lines, st.Muted.Render("保存位置: ~/.ait/tasks/<task-id>.json"))
-	return lines
-}
-
-func renderWizardStepStrip(step wizardStep, isBatch bool) string {
+func renderWizardStepStrip(step wizardStep) string {
 	active := lipgloss.NewStyle().Background(colorPink).Foreground(colorWhite).Bold(true).Padding(0, 1)
 	done := lipgloss.NewStyle().Background(colorCyan).Foreground(lipgloss.Color("233")).Bold(true).Padding(0, 1)
 	idle := lipgloss.NewStyle().Background(lipgloss.Color("238")).Foreground(colorMuted).Padding(0, 1)
-	label3 := "3 确认保存"
-	if isBatch {
-		label3 = "3 确认创建"
-	}
-	labels := []string{"1 基本信息", "2 测试参数", label3}
+	labels := []string{"1 基本信息", "2 测试参数", "3 确认保存"}
 	parts := make([]string, 0, len(labels))
 	for i, label := range labels {
 		switch {
@@ -1095,16 +927,13 @@ func appendWizardSummaryRow(lines *[]string, st Styles, label, value string, wid
 	}
 }
 
-func wizardHotkeyItems(wz *WizardState) []HotkeyItem {
-	switch wz.Step {
+func wizardHotkeyItems(step wizardStep) []HotkeyItem {
+	switch step {
 	case wizardStep1:
 		return Hotkeys_Wizard_Step1()
 	case wizardStep2:
 		return Hotkeys_Wizard_Step2()
 	default:
-		if wz.IsBatch() {
-			return Hotkeys_Wizard_Step3_Batch()
-		}
 		return Hotkeys_Wizard_Step3()
 	}
 }

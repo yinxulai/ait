@@ -88,7 +88,7 @@ func Hotkeys_TaskDetail_Running() []HotkeyItem {
 func Hotkeys_Wizard_Step1() []HotkeyItem {
 	return []HotkeyItem{
 		HotkeyAction("Tab/↑↓", "切换字段"),
-		HotkeyAction("Space/←→", "切换选项"),
+		HotkeyAction("←→", "切换协议"),
 		HotkeyAction("Enter", "下一步"),
 		HotkeyAction("Esc", "返回列表"),
 	}
@@ -111,16 +111,6 @@ func Hotkeys_Wizard_Step3() []HotkeyItem {
 		HotkeyAction("PgUp/PgDn", "翻页"),
 		HotkeyAction("Enter", "保存"),
 		HotkeyAction("r", "保存并运行"),
-		HotkeyAction("Esc", "返回修改"),
-	}
-}
-
-// Hotkeys_Wizard_Step3_Batch 批量创建确认页热键。
-func Hotkeys_Wizard_Step3_Batch() []HotkeyItem {
-	return []HotkeyItem{
-		HotkeyAction("↑↓", "滚动"),
-		HotkeyAction("PgUp/PgDn", "翻页"),
-		HotkeyAction("Enter", "批量创建"),
 		HotkeyAction("Esc", "返回修改"),
 	}
 }

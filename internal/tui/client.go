@@ -76,18 +76,6 @@ func (c *Client) CopyTaskCmd(id string) tea.Cmd {
 	}
 }
 
-// CreateBatchTasksCmd 批量异步创建任务。
-func (c *Client) CreateBatchTasksCmd(cfgs []server.TaskConfig) tea.Cmd {
-	return func() tea.Msg {
-		for _, cfg := range cfgs {
-			if _, err := c.srv.CreateTask(cfg); err != nil {
-				return ErrorMsg{Err: fmt.Errorf("批量创建任务 %q 失败: %w", cfg.Name, err)}
-			}
-		}
-		return BatchTasksSavedMsg{Count: len(cfgs)}
-	}
-}
-
 // ─── 运行管理 ─────────────────────────────────────────────────────────────────
 
 // StartRunCmd 异步启动运行。

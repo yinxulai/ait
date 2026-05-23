@@ -55,9 +55,6 @@ type Client interface {
 	GetRunStateForHistoryCmd(runID server.RunID, summary *types.TaskRunSummary) tea.Cmd
 	GenerateReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd
 
-	// 批量创建任务
-	CreateBatchTasksCmd(cfgs []server.TaskConfig) tea.Cmd
-
 	// 全局配置
 	SaveProxyConfigCmd(proxyURL string) tea.Cmd
 	LoadProxyConfigCmd() tea.Cmd

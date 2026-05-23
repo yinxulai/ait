@@ -95,8 +95,8 @@ func TestOpenWizard_EditTask_Populate(t *testing.T) {
 	if m.wizard.EditingID != "task-123" {
 		t.Errorf("EditingID = %q, want %q", m.wizard.EditingID, "task-123")
 	}
-	if m.wizard.ModelsText != "gpt-4" {
-		t.Errorf("ModelsText = %q, want %q", m.wizard.ModelsText, "gpt-4")
+	if m.wizard.Model != "gpt-4" {
+		t.Errorf("Model = %q, want %q", m.wizard.Model, "gpt-4")
 	}
 	if m.wizard.Concurrency != 5 {
 		t.Errorf("Concurrency = %d, want 5", m.wizard.Concurrency)
@@ -107,7 +107,7 @@ func TestBuildTaskInput_Standard(t *testing.T) {
 	m := NewModel(&stubServer{})
 	m.wizard = pages.NewWizardState()
 	wz := m.wizard
-	wz.ModelsText = "gpt-4.1"
+	wz.Model = "gpt-4.1"
 	wz.APIKey = "sk-test"
 	wz.Concurrency = 8
 	wz.Count = 120
@@ -137,10 +137,9 @@ func TestBuildTaskInput_Turbo(t *testing.T) {
 	m := NewModel(&stubServer{})
 	m.wizard = pages.NewWizardState()
 	wz := m.wizard
-	wz.ModelsText = "claude-3-7-sonnet"
+	wz.Model = "claude-3-7-sonnet"
 	wz.APIKey = "sk-ant"
-	wz.SelOpenAICompletions = false
-	wz.SelAnthropic = true
+	wz.Protocol = types.ProtocolAnthropicMessages
 	wz.Turbo = true
 	wz.InitConcurrency = 1
 	wz.MaxConcurrency = 12
