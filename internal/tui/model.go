@@ -279,7 +279,7 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.err = nil
 
 	// ── 全局快捷键（所有页面层共享）──
-	if msg.String() == "F2" {
+	if msg.String() == "f2" {
 		if i18n.Active() == i18n.ZH {
 			i18n.SetLang(i18n.EN)
 		} else {

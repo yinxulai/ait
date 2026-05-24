@@ -411,8 +411,8 @@ var translations = [2]map[Key]string{
 		KHintBack:      "[b/Esc] 返回",
 		KHintEscBack:   "[Esc] 返回",
 		KHintGoBack:    "[b/Esc] 返回上一页",
-		KHintSelect:    "[↑↓] 选择",
-		KHintNew:       "[a] 新建",
+		KHintSelect:    "[↑↓] 上下切换",
+		KHintNew:       "[a] 创建任务",
 
 		// Metric labels
 		KSuccessRate:  "成功率",
@@ -748,8 +748,8 @@ var translations = [2]map[Key]string{
 		KHintBack:      "[b/Esc] Back",
 		KHintEscBack:   "[Esc] Back",
 		KHintGoBack:    "[b/Esc] Go Back",
-		KHintSelect:    "[↑↓] Select",
-		KHintNew:       "[a] New",
+		KHintSelect:    "[↑↓] Navigate",
+		KHintNew:       "[a] New Task",
 
 		// Metric labels
 		KSuccessRate:  "Success Rate",

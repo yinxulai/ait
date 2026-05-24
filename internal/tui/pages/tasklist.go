@@ -181,7 +181,7 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 		HeaderMeta:      fmt.Sprintf("%d", len(s.Tasks)),
 		HeaderInfoLeft:  []string{fmt.Sprintf("%s %d", i18n.T(i18n.KRunning), runningCount)},
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[↑↓]", "[a]", i18n.T(i18n.KHintQuit)),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, i18n.T(i18n.KHintSelect), i18n.T(i18n.KHintNew), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
