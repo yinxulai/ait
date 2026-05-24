@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	lgtable "charm.land/lipgloss/v2/table"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -188,25 +189,25 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	default:
 		cbItems = Hotkeys_Dashboard_Done_NoSel()
 	}
-	headerLeft := []string{"等待数据"}
+	headerLeft := []string{i18n.T(i18n.KWaitingStatus)}
 	headerRight := []string{}
 	if rs != nil {
-		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("完成 %d/%d", rs.DoneReqs, rs.TotalReqs)}
-		headerRight = []string{fmt.Sprintf("成功率 %.1f%%", rs.SuccessRate)}
+		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)}
+		headerRight = []string{fmt.Sprintf(i18n.T(i18n.KSuccessRateFmt), rs.SuccessRate)}
 		if !rs.StartedAt.IsZero() {
-			headerRight = append(headerRight, "开始 "+fmtRelativeTime(rs.StartedAt))
+			headerRight = append(headerRight, i18n.T(i18n.KStart)+" "+fmtRelativeTime(rs.StartedAt))
 		}
 	}
 	if d.TaskID != "" {
-		headerRight = append(headerRight, "任务 "+truncate(d.TaskID, 14))
+		headerRight = append(headerRight, truncate(d.TaskID, 14))
 	}
 	l := PageLayout{
-		HeaderTitle:     "标准运行监控",
-		HeaderSubtitle:  "实时查看运行进度、吞吐和单请求明细",
-		HeaderMeta:      "标准模式",
+		HeaderTitle:     i18n.T(i18n.KStdMonitorTitle),
+		HeaderSubtitle:  i18n.T(i18n.KStdMonitorSubtitle),
+		HeaderMeta:      i18n.T(i18n.KStandardMode),
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, i18n.T(i18n.KHintGoBack), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	bodyPanel := frame.InnerPanel()
@@ -237,15 +238,16 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 
 // buildDashParamsPanel 构建左侧任务参数面板。
 func buildDashParamsPanel(d *DashboardState, rs *server.RunState, st Styles, maxH, width int) string {
-	lines := panelTitleLines(st, "运行进度", width, false)
+	lines := panelTitleLines(st, i18n.T(i18n.KProgress), width, false)
 
 	if rs == nil {
-		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 	} else {
-		// 参数从 RunState 读取（实际可从 task 传入，此处用 RunState 已知信息展示）
-		lines = append(lines, " "+labelValue(st, "进度", fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)))
-		lines = append(lines, " "+labelValue(st, "成功", fmt.Sprintf("%d", rs.SuccessReqs)))
-		lines = append(lines, " "+labelValue(st, "失败", fmt.Sprintf("%d", rs.FailedReqs)))
+		lbls := []string{i18n.T(i18n.KProgress), i18n.T(i18n.KSuccessCount), i18n.T(i18n.KFailureCount)}
+		lw := maxLabelWidth(lbls)
+		lines = append(lines, " "+labelValue(st, lbls[0], fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs), lw))
+		lines = append(lines, " "+labelValue(st, lbls[1], fmt.Sprintf("%d", rs.SuccessReqs), lw))
+		lines = append(lines, " "+labelValue(st, lbls[2], fmt.Sprintf("%d", rs.FailedReqs), lw))
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -253,10 +255,10 @@ func buildDashParamsPanel(d *DashboardState, rs *server.RunState, st Styles, max
 
 // buildDashMetricsPanel 构建右侧实时指标面板。
 func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) string {
-	lines := panelTitleLines(st, "实时指标", width, false)
+	lines := panelTitleLines(st, i18n.T(i18n.KInProgress), width, false)
 
 	if rs == nil {
-		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 	} else {
 		lines = appendRunMetricLines(lines, st, rs)
 	}
@@ -267,7 +269,7 @@ func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) stri
 // buildProgressLine 构建进度条行。
 func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 	if rs == nil {
-		return " 进度  " + st.Muted.Render("等待中...")
+		return " " + padToDisplayWidth(i18n.T(i18n.KProgress), 4) + "  " + st.Muted.Render(i18n.T(i18n.KWaitingDots))
 	}
 	total := rs.TotalReqs
 	done := rs.DoneReqs
@@ -284,17 +286,17 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 		}
 	}
 	suffix := fmt.Sprintf("  %d / %d   %s", done, total, elapsed)
-	return renderProgressBar(st, " 进度  ", suffix, ratio, width)
+	return renderProgressBar(st, " "+padToDisplayWidth(i18n.T(i18n.KProgress), 4)+"  ", suffix, ratio, width)
 }
 
 // buildRequestList 构建请求列表区域。
 func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, maxH int) string {
-	titleLines := panelTitleLines(st, "请求列表", width, true)
+	titleLines := panelTitleLines(st, i18n.T(i18n.KRequests), width, true)
 
 	if rs == nil || len(rs.Requests) == 0 {
-		msg := "等待请求..."
+		msg := i18n.T(i18n.KWaitingData)
 		if rs != nil && rs.Status != server.RunStatusRunning {
-			msg = "无请求详情数据"
+			msg = i18n.T(i18n.KNoRunRecords)
 		}
 		titleLines = append(titleLines, " "+st.Muted.Render(msg))
 		return finishPanelLines(titleLines, maxH)
@@ -347,7 +349,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 	colWidths := []int{6, 8, 0, 8, 10, 12, 12, 10} // #, 状态, 总耗时=flex, TTFT, Cache, 输入, 输出, TPS
 	tableH := maxH - len(titleLines)
 	tbl := lgtable.New().
-		Headers("#", "状态", "总耗时", "TTFT", "Cache", "输入", "输出", "TPS").
+		Headers("#", i18n.T(i18n.KStatus), i18n.T(i18n.KTotalTime), "TTFT", "Cache", i18n.T(i18n.KColInput), i18n.T(i18n.KColOutput), "TPS").
 		Width(width).
 		Height(tableH).
 		YOffset(d.ReqOff).

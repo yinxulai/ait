@@ -7,6 +7,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	"github.com/yinxulai/ait/internal/i18n"
 )
 
 // 代理类型常量
@@ -60,11 +61,11 @@ func proxyTypeLabel(t string) string {
 func proxyTypeHint(t string) string {
 	switch t {
 	case ProxyTypeSOCKS5:
-		return "示例: socks5://127.0.0.1:1080"
+		return i18n.T(i18n.KExSOCKS5)
 	case ProxyTypeSSH:
-		return "示例: ssh://user@host:22"
+		return i18n.T(i18n.KExSSH)
 	default:
-		return "示例: http://127.0.0.1:7890"
+		return i18n.T(i18n.KExHTTP)
 	}
 }
 
@@ -187,10 +188,10 @@ func RenderProxyConfig(s *ProxyConfigState, st Styles, width, height int) string
 	}
 
 	l := PageLayout{
-		HeaderTitle:    "代理配置",
-		HeaderSubtitle: "设置全局 HTTP 代理，适用于所有任务的请求。留空则使用系统环境变量或直连。",
-		HeaderMeta:     "全局配置",
-		Hotkeys:        NewPageHotkeysWithHelp(Hotkeys_ProxyConfig(), "[Esc] 返回", "[q] 退出"),
+		HeaderTitle:    i18n.T(i18n.KProxyConfig),
+		HeaderSubtitle: i18n.T(i18n.KProxySubtitle),
+		HeaderMeta:     i18n.T(i18n.KGlobalConfig),
+		Hotkeys:        NewPageHotkeysWithHelp(Hotkeys_ProxyConfig(), i18n.T(i18n.KHintGoBack), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
@@ -222,7 +223,7 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 	}
 	typeLabelBlock := lipgloss.NewStyle().Width(15).Height(3).
 		AlignVertical(lipgloss.Center).
-		Render(st.Label.Render("代理类型"))
+		Render(st.Label.Render(i18n.T(i18n.KProxyType)))
 	typeRendered := typeFieldStyle.Width(fieldW + 4).Render(st.Value.Render(typeLabel))
 	appendBlock(lipgloss.JoinHorizontal(lipgloss.Top, typeLabelBlock, typeRendered))
 
@@ -238,20 +239,20 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 	} else {
 		v := s.input.Value()
 		if v == "" {
-			urlRendered = urlFieldStyle.Width(fieldW + 4).Render(st.Muted.Render("未填写"))
+			urlRendered = urlFieldStyle.Width(fieldW + 4).Render(st.Muted.Render(i18n.T(i18n.KNotSet)))
 		} else {
 			urlRendered = urlFieldStyle.Width(fieldW + 4).Render(st.Value.Render(fitTail(v, fieldW)))
 		}
 	}
 	urlLabelBlock := lipgloss.NewStyle().Width(15).Height(3).
 		AlignVertical(lipgloss.Center).
-		Render(st.Label.Render("代理地址"))
+		Render(st.Label.Render(i18n.T(i18n.KProxyURL)))
 	appendBlock(lipgloss.JoinHorizontal(lipgloss.Top, urlLabelBlock, urlRendered))
 
 	lines = append(lines, "")
 	lines = append(lines, st.Muted.Render(truncate(proxyTypeHint(s.ProxyType), contentW)))
 	lines = append(lines, "")
-	lines = append(lines, st.Muted.Render(truncate("配置保存至 ~/.ait/config.json，重启无需重新输入。", contentW)))
+	lines = append(lines, st.Muted.Render(truncate(i18n.T(i18n.KProxySaveHint), contentW)))
 
 	// 填充至 maxH
 	for len(lines) < maxH {

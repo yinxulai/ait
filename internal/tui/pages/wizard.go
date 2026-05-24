@@ -10,6 +10,7 @@ import (
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -210,7 +211,7 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 		timeout = time.Duration(wz.Timeout) * time.Second
 	}
 	return server.TaskConfig{
-		Name: wizardFallback(wz.Name, "未命名任务"),
+		Name: wizardFallback(wz.Name, i18n.T(i18n.KWzUntitled)),
 		Input: types.Input{
 			Protocol:    wz.Protocol,
 			EndpointURL: wz.EndpointURL,
@@ -286,12 +287,12 @@ func step1Fields() []fieldDef {
 	}
 	return []fieldDef{
 		{
-			kind: fieldText, label: "任务名称",
+			kind: fieldText, label: i18n.T(i18n.KWzTaskName),
 			get: func(wz *WizardState) string { return wz.Name },
 			set: func(wz *WizardState, v string) { wz.Name = v },
 		},
 		{
-			kind: fieldEnum, label: "协议类型",
+			kind: fieldEnum, label: i18n.T(i18n.KWzProtocol),
 			get: func(wz *WizardState) string { return wz.Protocol },
 			toggle: func(wz *WizardState, forward bool) {
 				idx := 0
@@ -312,7 +313,7 @@ func step1Fields() []fieldDef {
 			},
 		},
 		{
-			kind: fieldText, label: "接口地址",
+			kind: fieldText, label: i18n.T(i18n.KWzEndpoint),
 			get: func(wz *WizardState) string {
 				if wz.EndpointURL != "" {
 					return wz.EndpointURL
@@ -323,13 +324,13 @@ func step1Fields() []fieldDef {
 			set:    func(wz *WizardState, v string) { wz.EndpointURL = v },
 		},
 		{
-			kind: fieldText, label: "API 密钥",
+			kind: fieldText, label: i18n.T(i18n.KWzAPIKey),
 			get:      func(wz *WizardState) string { return wz.APIKey },
 			set:      func(wz *WizardState, v string) { wz.APIKey = v },
 			password: true,
 		},
 		{
-			kind: fieldText, label: "测试模型",
+			kind: fieldText, label: i18n.T(i18n.KWzTestModel),
 			get: func(wz *WizardState) string { return wz.Model },
 			set: func(wz *WizardState, v string) { wz.Model = v },
 		},
@@ -340,12 +341,12 @@ func step1Fields() []fieldDef {
 func step2Fields(turbo bool) []fieldDef {
 	fields := []fieldDef{
 		{
-			kind: fieldBool, label: "测试模式",
+			kind: fieldBool, label: i18n.T(i18n.KWzTestMode),
 			get: func(wz *WizardState) string {
 				if wz.Turbo {
-					return "Turbo 模式"
+					return i18n.T(i18n.KWzTurboMode)
 				}
-				return "标准模式"
+				return i18n.T(i18n.KWzStandardMode)
 			},
 			toggle:             func(wz *WizardState, _ bool) { wz.Turbo = !wz.Turbo },
 			triggersFieldReset: true,
@@ -354,19 +355,19 @@ func step2Fields(turbo bool) []fieldDef {
 
 	if !turbo {
 		fields = append(fields,
-			intField("并发数", func(wz *WizardState) int { return wz.Concurrency }, func(wz *WizardState, n int) { wz.Concurrency = n }),
-			intField("请求总数", func(wz *WizardState) int { return wz.Count }, func(wz *WizardState, n int) { wz.Count = n }),
-			intField("超时(秒)", func(wz *WizardState) int { return wz.Timeout }, func(wz *WizardState, n int) { wz.Timeout = n }),
+			intField(i18n.T(i18n.KWzConcurrency), func(wz *WizardState) int { return wz.Concurrency }, func(wz *WizardState, n int) { wz.Concurrency = n }),
+			intField(i18n.T(i18n.KWzTotalRequests), func(wz *WizardState) int { return wz.Count }, func(wz *WizardState, n int) { wz.Count = n }),
+			intField(i18n.T(i18n.KWzTimeoutSecs), func(wz *WizardState) int { return wz.Timeout }, func(wz *WizardState, n int) { wz.Timeout = n }),
 		)
 	} else {
 		fields = append(fields,
-			intField("初始并发", func(wz *WizardState) int { return wz.InitConcurrency }, func(wz *WizardState, n int) { wz.InitConcurrency = n }),
-			intField("最大并发", func(wz *WizardState) int { return wz.MaxConcurrency }, func(wz *WizardState, n int) { wz.MaxConcurrency = n }),
-			intField("步进值", func(wz *WizardState) int { return wz.StepSize }, func(wz *WizardState, n int) { wz.StepSize = n }),
-			intField("每级请求数", func(wz *WizardState) int { return wz.LevelRequests }, func(wz *WizardState, n int) { wz.LevelRequests = n }),
+			intField(i18n.T(i18n.KWzInitConc), func(wz *WizardState) int { return wz.InitConcurrency }, func(wz *WizardState, n int) { wz.InitConcurrency = n }),
+			intField(i18n.T(i18n.KWzMaxConc), func(wz *WizardState) int { return wz.MaxConcurrency }, func(wz *WizardState, n int) { wz.MaxConcurrency = n }),
+			intField(i18n.T(i18n.KWzStepSize), func(wz *WizardState) int { return wz.StepSize }, func(wz *WizardState, n int) { wz.StepSize = n }),
+			intField(i18n.T(i18n.KWzLevelReqs), func(wz *WizardState) int { return wz.LevelRequests }, func(wz *WizardState, n int) { wz.LevelRequests = n }),
 			fieldDef{
 				kind:  fieldNumber,
-				label: "最低成功率",
+				label: i18n.T(i18n.KWzMinSuccessRate),
 				get:   func(wz *WizardState) string { return fmt.Sprintf("%.0f", wz.MinSuccessRate) },
 				set: func(wz *WizardState, v string) {
 					if f, err := strconv.ParseFloat(v, 64); err == nil && f > 0 && f <= 100 {
@@ -380,7 +381,7 @@ func step2Fields(turbo bool) []fieldDef {
 	// 流式模式：与测试模式无关，两种模式均可配置
 	fields = append(fields, fieldDef{
 		kind:   fieldBool,
-		label:  "流式模式",
+		label:  i18n.T(i18n.KWzStreamMode),
 		get:    func(wz *WizardState) string { return boolLabel(wz.Stream) },
 		toggle: func(wz *WizardState, _ bool) { wz.Stream = !wz.Stream },
 	})
@@ -389,17 +390,17 @@ func step2Fields(turbo bool) []fieldDef {
 	promptModes := []string{PromptModeText, PromptModeFile, PromptModeGenerated, PromptModeRaw}
 	fields = append(fields,
 		fieldDef{
-			kind: fieldEnum, label: "输入方式",
+			kind: fieldEnum, label: i18n.T(i18n.KWzInputMode),
 			get: func(wz *WizardState) string {
 				switch wz.PromptMode {
 				case PromptModeFile:
-					return "文件"
+					return i18n.T(i18n.KWzInputFile)
 				case PromptModeGenerated:
-					return "按长度生成"
+					return i18n.T(i18n.KWzInputGenerated)
 				case PromptModeRaw:
-					return "RAW 请求体"
+					return i18n.T(i18n.KWzInputRaw)
 				default:
-					return "直接输入"
+					return i18n.T(i18n.KWzInputDirect)
 				}
 			},
 			toggle: func(wz *WizardState, forward bool) {
@@ -426,7 +427,7 @@ func step2Fields(turbo bool) []fieldDef {
 	// 根据 prompt 模式添加对应字段（在渲染时动态决定）
 	fields = append(fields,
 		fieldDef{
-			kind: fieldText, label: "内容",
+			kind: fieldText, label: i18n.T(i18n.KWzPromptContent),
 			get: func(wz *WizardState) string {
 				switch wz.PromptMode {
 				case PromptModeFile:
@@ -614,11 +615,11 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 	if wz == nil {
 		return renderTooSmall(st, width, height)
 	}
-	stepTitles := []string{"基本信息", "测试参数", "确认保存"}
+	stepTitles := []string{i18n.T(i18n.KWzStep1Label), i18n.T(i18n.KWzStep2Label), i18n.T(i18n.KWzStep3Label)}
 	stepDescs := []string{
-		"配置任务名称、模型协议和连接信息。",
-		"选择压测模式，并补全并发与 Prompt 参数。",
-		"保存前快速检查关键配置。",
+		i18n.T(i18n.KWzStep1Desc),
+		i18n.T(i18n.KWzStep2Desc),
+		i18n.T(i18n.KWzStep3Desc),
 	}
 	stepTitle := stepTitles[int(wz.Step)]
 	headerLeft := []string{stepTitle}
@@ -628,26 +629,26 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 	headerRight := []string{}
 	if wz.Step >= wizardStep2 {
 		if wz.Turbo {
-			headerRight = append(headerRight, "Turbo 模式")
+			headerRight = append(headerRight, i18n.T(i18n.KTurboMode))
 		} else {
-			headerRight = append(headerRight, "标准模式")
+			headerRight = append(headerRight, i18n.T(i18n.KStandardMode))
 		}
 	}
 	if wz.Model != "" {
-		headerRight = append(headerRight, "模型 "+truncate(wz.Model, 18))
+		headerRight = append(headerRight, truncate(wz.Model, 18))
 	}
-	action := "创建任务"
+	action := i18n.T(i18n.KNewTask)
 	if wz.EditingID != "" {
-		action = "编辑任务"
+		action = i18n.T(i18n.KEdit)
 	}
 
 	l := PageLayout{
 		HeaderTitle:     action,
 		HeaderSubtitle:  stepDescs[int(wz.Step)],
-		HeaderMeta:      fmt.Sprintf("步骤 %d/3", int(wz.Step)+1),
+		HeaderMeta:      fmt.Sprintf(i18n.T(i18n.KWzStepFmt), int(wz.Step)+1),
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeysWithHelp(wizardHotkeyItems(wz.Step), "[Ctrl+C] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(wizardHotkeyItems(wz.Step), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
@@ -743,34 +744,34 @@ func buildWizardBody(wz *WizardState, st Styles, contentW int) ([]string, int, i
 	case wizardStep2:
 		fields := step2Fields(wz.Turbo)
 		for i, f := range fields {
-			if f.label == "输入方式" {
-				lines = append(lines, "", st.Muted.Render("Prompt 配置"))
+			if f.label == i18n.T(i18n.KWzInputMode) {
+				lines = append(lines, "", st.Muted.Render(i18n.T(i18n.KWzPromptConfig)))
 			}
 			appendField(renderWizardField(st, f, wz, i == wz.FieldIndex, contentW), i == wz.FieldIndex)
-			if f.label == "测试模式" {
+			if f.label == i18n.T(i18n.KWzTestMode) {
 				if wz.Turbo {
-					lines = append(lines, st.Muted.Render("               自动从低并发起步，逐级加压，找到最大稳定吞吐点"))
+					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzTurboModeLabel)))
 				} else {
-					lines = append(lines, st.Muted.Render("               固定并发数和请求总数，测量在指定负载下的延迟与成功率"))
+					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzSelectModeHint)))
 				}
 			}
-			if f.label == "输入方式" {
+			if f.label == i18n.T(i18n.KWzInputMode) {
 				switch wz.PromptMode {
 				case PromptModeText:
-					lines = append(lines, st.Muted.Render("               直接粘贴或输入 Prompt 文本，所有请求共享同一段内容"))
+					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzHintDirect)))
 				case PromptModeFile:
-					lines = append(lines, st.Muted.Render("               从文件读取 Prompt，支持通配符匹配多个文件（请求按文件轮换）"))
+					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzHintFile)))
 				case PromptModeGenerated:
-					lines = append(lines, st.Muted.Render("               按指定字符数自动生成测试文本，内容含大量公共前缀以模拟缓存命中"))
+					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzHintCacheToken)))
 				case PromptModeRaw:
-					lines = append(lines, st.Muted.Render("               粘贴完整的 HTTP 请求 JSON Body，将跳过参数组装直接发送"))
+					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzHintRaw)))
 				}
 			}
-			if f.label == "内容" && (wz.PromptMode == PromptModeText || wz.PromptMode == PromptModeFile || wz.PromptMode == PromptModeGenerated) {
-				lines = append(lines, st.Muted.Render("               提示：大多数服务需要 ≥ 1024 tokens 才能命中缓存"))
+			if f.label == i18n.T(i18n.KWzPromptContent) && (wz.PromptMode == PromptModeText || wz.PromptMode == PromptModeFile || wz.PromptMode == PromptModeGenerated) {
+				lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzHintCacheToken)))
 			}
-			if f.label == "内容" && wz.PromptMode == PromptModeRaw {
-				lines = append(lines, st.Muted.Render("               提示：粘贴 API 请求的完整 JSON Body，将直接作为 HTTP 请求体发送"))
+			if f.label == i18n.T(i18n.KWzPromptContent) && wz.PromptMode == PromptModeRaw {
+				lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzHintRawBody)))
 			}
 			// 提示行追加完毕后，更新聚焦块的末尾行（含提示）
 			if i == wz.FieldIndex {
@@ -794,7 +795,7 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 	}
 
 	// API key 遮蔽显示
-	if f.label == "API 密钥" && valueStr != "" {
+	if f.password && valueStr != "" {
 		valueStr = maskAPIKey(valueStr)
 	}
 
@@ -805,7 +806,7 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 	fieldW := maxInt(10, maxW-19)
 	valueStyle := st.Value
 	if valueStr == "" && !active {
-		valueStr = "未填写"
+		valueStr = i18n.T(i18n.KWzNotFilled)
 		valueStyle = st.Muted
 	}
 
@@ -849,44 +850,44 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 		appendWizardSummaryRow(&lines, st, label, value, innerW, valueStyle)
 	}
 
-	lines = append(lines, st.SectionHead.Render("配置概览"))
-	addRow("任务名称", wizardFallback(wz.Name, "未命名任务"), st.Value)
-	addRow("协议", wz.Protocol, st.Value)
+	lines = append(lines, st.SectionHead.Render(i18n.T(i18n.KProtocol)))
+	addRow(i18n.T(i18n.KWzTaskName), wizardFallback(wz.Name, i18n.T(i18n.KWzUntitled)), st.Value)
+	addRow(i18n.T(i18n.KWzProtocol), wz.Protocol, st.Value)
 	endpointDisplay := wz.EndpointURL
 	if endpointDisplay == "" {
 		endpointDisplay = types.DefaultEndpointURL(wz.Protocol)
 	}
-	addRow("接口地址", endpointDisplay, st.Value)
-	addRow("API 密钥", wizardFallback(maskAPIKey(wz.APIKey), "未填写"), st.Value)
-	addRow("测试模型", wizardFallback(wz.Model, "未填写"), st.Value)
+	addRow(i18n.T(i18n.KWzEndpoint), endpointDisplay, st.Value)
+	addRow(i18n.T(i18n.KWzAPIKey), wizardFallback(maskAPIKey(wz.APIKey), i18n.T(i18n.KWzNotFilled)), st.Value)
+	addRow(i18n.T(i18n.KWzTestModel), wizardFallback(wz.Model, i18n.T(i18n.KWzNotFilled)), st.Value)
 
-	lines = append(lines, "", st.SectionHead.Render("执行参数"))
+	lines = append(lines, "", st.SectionHead.Render(i18n.T(i18n.KWzExecParams)))
 	if wz.Turbo {
-		addRow("测试模式", "Turbo 模式", st.Value)
-		addRow("并发爬坡", fmt.Sprintf("%d → %d · 步进 +%d · 每级 %d 请求",
+		addRow(i18n.T(i18n.KWzTestMode), i18n.T(i18n.KWzTurboMode), st.Value)
+		addRow(i18n.T(i18n.KWzConcurrencyRamp), fmt.Sprintf("%d → %d · +%d · %d req",
 			wz.InitConcurrency, wz.MaxConcurrency, wz.StepSize, wz.LevelRequests), st.Value)
-		addRow("停止条件", fmt.Sprintf("成功率 < %.0f%%", wz.MinSuccessRate), st.Value)
+		addRow(i18n.T(i18n.KWzStopCondition), fmt.Sprintf("< %.0f%%", wz.MinSuccessRate), st.Value)
 	} else {
-		addRow("测试模式", "标准模式", st.Value)
-		addRow("并发数", strconv.Itoa(wz.Concurrency), st.Value)
-		addRow("请求总数", strconv.Itoa(wz.Count), st.Value)
-		addRow("超时", fmt.Sprintf("%ds", wz.Timeout), st.Value)
+		addRow(i18n.T(i18n.KWzTestMode), i18n.T(i18n.KWzStandardMode), st.Value)
+		addRow(i18n.T(i18n.KWzConcurrency), strconv.Itoa(wz.Concurrency), st.Value)
+		addRow(i18n.T(i18n.KWzTotalRequests), strconv.Itoa(wz.Count), st.Value)
+		addRow(i18n.T(i18n.KWzTimeoutLabel), fmt.Sprintf("%ds", wz.Timeout), st.Value)
 	}
-	addRow("流式模式", boolLabel(wz.Stream), st.Value)
+	addRow(i18n.T(i18n.KWzStreamMode), boolLabel(wz.Stream), st.Value)
 
-	lines = append(lines, "", st.SectionHead.Render("Prompt"))
-	addRow("输入方式", wizardPromptModeLabel(wz.PromptMode), st.Value)
+	lines = append(lines, "", st.SectionHead.Render(i18n.T(i18n.KWzPromptSection)))
+	addRow(i18n.T(i18n.KWzInputMode), wizardPromptModeLabel(wz.PromptMode), st.Value)
 	promptDesc := promptSummary(wz.PromptMode, wz.PromptText, wz.PromptFile, wz.PromptLength)
-	addRow("内容摘要", wizardFallback(promptDesc, "未填写"), st.Value)
+	addRow(i18n.T(i18n.KWzContentSummary), wizardFallback(promptDesc, i18n.T(i18n.KWzNotFilled)), st.Value)
 	if wz.PromptMode == PromptModeText {
-		addRow("字符数", strconv.Itoa(len([]rune(wz.PromptText))), st.Muted)
+		addRow(i18n.T(i18n.KWzContentSummary), strconv.Itoa(len([]rune(wz.PromptText))), st.Muted)
 	} else if wz.PromptMode == PromptModeGenerated {
-		addRow("目标长度", strconv.Itoa(wz.PromptLength), st.Muted)
+		addRow(i18n.T(i18n.KWzLevelReqs), strconv.Itoa(wz.PromptLength), st.Muted)
 	} else if wz.PromptMode == PromptModeRaw {
-		addRow("Body 字节数", strconv.Itoa(len(wz.PromptText)), st.Muted)
+		addRow(i18n.T(i18n.KWzBodyBytes), strconv.Itoa(len(wz.PromptText)), st.Muted)
 	}
 
-	lines = append(lines, "", st.Muted.Render("保存位置: ~/.ait/tasks/<task-id>.json"))
+	lines = append(lines, "", st.Muted.Render(i18n.T(i18n.KWzSaveLocation)))
 
 	return lines
 }
@@ -895,7 +896,11 @@ func renderWizardStepStrip(step wizardStep) string {
 	active := lipgloss.NewStyle().Background(colorPink).Foreground(colorWhite).Bold(true).Padding(0, 1)
 	done := lipgloss.NewStyle().Background(colorCyan).Foreground(lipgloss.Color("233")).Bold(true).Padding(0, 1)
 	idle := lipgloss.NewStyle().Background(lipgloss.Color("238")).Foreground(colorMuted).Padding(0, 1)
-	labels := []string{"1 基本信息", "2 测试参数", "3 确认保存"}
+	labels := []string{
+		"1 " + i18n.T(i18n.KWzStep1Label),
+		"2 " + i18n.T(i18n.KWzStep2Label),
+		"3 " + i18n.T(i18n.KWzStep3Label),
+	}
 	parts := make([]string, 0, len(labels))
 	for i, label := range labels {
 		switch {
@@ -911,31 +916,31 @@ func renderWizardStepStrip(step wizardStep) string {
 }
 
 func wizardFieldLabel(f fieldDef, wz *WizardState) string {
-	if f.label != "内容" {
+	if f.label != i18n.T(i18n.KWzPromptContent) {
 		return f.label
 	}
 	switch wz.PromptMode {
 	case PromptModeFile:
-		return "文件路径"
+		return i18n.T(i18n.KWzFileSummary)
 	case PromptModeGenerated:
-		return "生成长度"
+		return i18n.T(i18n.KWzRAWBody)
 	case PromptModeRaw:
-		return "JSON Body"
+		return i18n.T(i18n.KWzJSONBody)
 	default:
-		return "Prompt"
+		return i18n.T(i18n.KWzPromptLabelShort)
 	}
 }
 
 func wizardPromptModeLabel(mode string) string {
 	switch mode {
 	case PromptModeFile:
-		return "文件"
+		return i18n.T(i18n.KWzInputFile)
 	case PromptModeGenerated:
-		return "按长度生成"
+		return i18n.T(i18n.KWzInputGenerated)
 	case PromptModeRaw:
-		return "RAW 请求体"
+		return i18n.T(i18n.KWzInputRaw)
 	default:
-		return "直接输入"
+		return i18n.T(i18n.KWzInputDirect)
 	}
 }
 
@@ -993,12 +998,12 @@ func wizardHotkeyItems(step wizardStep) []HotkeyItem {
 func wizardStatusText(wz *WizardState, offset, end, scrollTotal, visible int) string {
 	if wz.Step == wizardStep3 {
 		if scrollTotal <= 0 {
-			return "暂无确认项"
+			return i18n.T(i18n.KWzNoConfirmItems)
 		}
 		if scrollTotal > visible {
-			return fmt.Sprintf("确认项 %d-%d/%d", offset+1, end, scrollTotal)
+			return fmt.Sprintf(i18n.T(i18n.KWzConfirmRange), offset+1, end, scrollTotal)
 		}
-		return fmt.Sprintf("共 %d 项待确认", scrollTotal)
+		return fmt.Sprintf(i18n.T(i18n.KWzConfirmTotal), scrollTotal)
 	}
 	var fieldTotal int
 	switch wz.Step {
@@ -1008,7 +1013,7 @@ func wizardStatusText(wz *WizardState, offset, end, scrollTotal, visible int) st
 		fieldTotal = len(step2Fields(wz.Turbo))
 	}
 	if fieldTotal <= 0 {
-		return "暂无配置项"
+		return i18n.T(i18n.KWzNoFields)
 	}
-	return fmt.Sprintf("当前字段 %d/%d", wz.FieldIndex+1, fieldTotal)
+	return fmt.Sprintf(i18n.T(i18n.KWzFieldProgress), wz.FieldIndex+1, fieldTotal)
 }

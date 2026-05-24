@@ -8,6 +8,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	lgtable "charm.land/lipgloss/v2/table"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -151,7 +152,7 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 
 	var cbItems []HotkeyItem
 	if s.ConfirmDelete {
-		cbItems = []HotkeyItem{HotkeyAction("y/Enter", "确认删除"), HotkeyAction("n/Esc", "取消")}
+		cbItems = []HotkeyItem{HotkeyAction("y/Enter", i18n.T(i18n.KConfirmDelete)), HotkeyAction("n/Esc", i18n.T(i18n.KCancel))}
 	} else if t, ok := s.CurrentTask(); ok {
 		if s.IsTaskRunning(t.ID) {
 			cbItems = Hotkeys_TaskList_Running()
@@ -159,7 +160,7 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 			cbItems = Hotkeys_TaskList_Normal()
 		}
 	} else {
-		cbItems = []HotkeyItem{HotkeyAction("a", "新建任务")}
+		cbItems = []HotkeyItem{HotkeyAction("a", i18n.T(i18n.KNewTask))}
 	}
 	runningCount := 0
 	for _, rs := range s.ActiveRuns {
@@ -167,20 +168,20 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 			runningCount++
 		}
 	}
-	headerRight := []string{"暂无运行历史"}
+	headerRight := []string{i18n.T(i18n.KNoRunHistory)}
 	if latest := s.latestRunAt(); latest != nil {
-		headerRight = []string{"最近运行 " + fmtRelativeTime(*latest)}
+		headerRight = []string{fmtRelativeTime(*latest)}
 	}
 	if t, ok := s.CurrentTask(); ok {
-		headerRight = append([]string{"当前 " + truncate(t.Name, 22)}, headerRight...)
+		headerRight = append([]string{truncate(t.Name, 22)}, headerRight...)
 	}
 	l := PageLayout{
-		HeaderTitle:     "任务中心",
-		HeaderSubtitle:  "创建任务、运行压测、查看执行记录与导出报告",
-		HeaderMeta:      fmt.Sprintf("%d 个任务", len(s.Tasks)),
-		HeaderInfoLeft:  []string{fmt.Sprintf("运行中 %d", runningCount)},
+		HeaderTitle:     i18n.T(i18n.KTaskCenter),
+		HeaderSubtitle:  i18n.T(i18n.KTaskListSubtitle),
+		HeaderMeta:      fmt.Sprintf("%d", len(s.Tasks)),
+		HeaderInfoLeft:  []string{fmt.Sprintf("%s %d", i18n.T(i18n.KRunning), runningCount)},
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[↑↓] 选择", "[a] 新建", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[↑↓]", "[a]", i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
@@ -220,7 +221,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		rs := s.ActiveRuns[t.ID]
 		_, hasActiveRun := s.ActiveRuns[t.ID]
 
-		modeText := "标准"
+		modeText := i18n.T(i18n.KStandardMode)
 		isTurbo := false
 		if t.Input.Turbo {
 			modeText = "Turbo"
@@ -230,7 +231,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		isRunning := hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning))
 		lastRunText := "─"
 		if isRunning {
-			lastRunText = "运行中"
+			lastRunText = i18n.T(i18n.KRunning)
 		} else if t.LatestRun != nil && !t.LatestRun.FinishedAt.IsZero() {
 			lastRunText = fmtRelativeTime(t.LatestRun.FinishedAt)
 		}
@@ -254,7 +255,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 			tpsText = fmt.Sprintf("%.1f", rs.AvgTPS)
 		} else if !hasActiveRun && t.LatestRun != nil {
 			if t.Input.Turbo && t.LatestRun.MaxStableConcurrency > 0 {
-				tpsText = fmt.Sprintf("并发%d", t.LatestRun.MaxStableConcurrency)
+				tpsText = fmt.Sprintf(i18n.T(i18n.KConcFmt), t.LatestRun.MaxStableConcurrency)
 			} else if !t.Input.Turbo {
 				tpsText = fmt.Sprintf("%.1f", t.LatestRun.AvgTPS)
 			}
@@ -301,7 +302,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽（包括两端各 1 字符 padding）
 	colWidths := []int{0, 8, 22, 12, 8, 10, 10, 10, 8, 8} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, 缓存命中, TTFT均值, TPS均值, RPM, TPM
 	t := lgtable.New().
-		Headers("任务名称", "模式", "协议", "上次运行", "成功率", "缓存命中", "均值TTFT", "均值TPS", "RPM", "TPM").
+		Headers(i18n.T(i18n.KTaskName), i18n.T(i18n.KMode), i18n.T(i18n.KProtocol), i18n.T(i18n.KLastRun), i18n.T(i18n.KSuccessRate), i18n.T(i18n.KColCacheHit), i18n.T(i18n.KColAvgTTFT), i18n.T(i18n.KColAvgTPS), "RPM", "TPM").
 		Width(width).
 		Height(maxH).
 		YOffset(s.Offset).
@@ -356,7 +357,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		for len(tableLines) < maxH-1 {
 			tableLines = append(tableLines, "")
 		}
-		tableLines = append(tableLines, "  "+st.Muted.Render("暂无任务  按 [a] 新建第一个任务"))
+		tableLines = append(tableLines, "  "+st.Muted.Render(i18n.T(i18n.KNoTasks)))
 		if len(tableLines) > maxH {
 			tableLines = tableLines[:maxH]
 		}
@@ -385,14 +386,14 @@ func buildTaskListConfirmContent(s *TaskListState, st Styles, width, maxH int) s
 		return strings.Repeat("\n", maxH-1)
 	}
 	lines = append(lines, "")
-	lines = append(lines, st.ErrStyle.Render("  确认删除任务？"))
+	lines = append(lines, st.ErrStyle.Render("  "+i18n.T(i18n.KConfirmDeletePrompt)))
 	lines = append(lines, "")
-	lines = append(lines, "  "+st.Label.Render("任务名称")+"  "+st.Value.Render(truncate(task.Name, maxInt(8, width-14))))
-	lines = append(lines, "  "+st.Label.Render("任务 ID ")+"  "+st.Muted.Render(task.ID))
+	lines = append(lines, "  "+st.Label.Render(i18n.T(i18n.KTaskName))+"  "+st.Value.Render(truncate(task.Name, maxInt(8, width-14))))
+	lines = append(lines, "  "+st.Label.Render(i18n.T(i18n.KTaskID))+"  "+st.Muted.Render(task.ID))
 	lines = append(lines, "")
-	lines = append(lines, "  "+st.Muted.Render("此操作不可恢复，任务的历史运行记录将一并删除。"))
+	lines = append(lines, "  "+st.Muted.Render(i18n.T(i18n.KIrreversible)))
 	lines = append(lines, "")
-	lines = append(lines, "  "+st.Value.Render("[y / Enter]")+"  确认删除       "+st.Value.Render("[n / Esc]")+"  取消")
+	lines = append(lines, "  "+st.Value.Render("[y / Enter]")+"  "+i18n.T(i18n.KConfirmDelete)+"       "+st.Value.Render("[n / Esc]")+"  "+i18n.T(i18n.KCancel))
 	for len(lines) < maxH {
 		lines = append(lines, "")
 	}

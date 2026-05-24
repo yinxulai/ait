@@ -4,6 +4,7 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -118,18 +119,18 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 		idx = len(s.Requests) - 1
 	}
 	r := s.Requests[idx]
-	status := "失败"
+	status := i18n.T(i18n.KRunFailed)
 	if r.Success {
-		status = "成功"
+		status = i18n.T(i18n.KCompleted)
 	}
 
 	l := PageLayout{
-		HeaderTitle:     "请求详情",
-		HeaderSubtitle:  "查看单次请求的耗时、网络阶段和完整报文",
+		HeaderTitle:     i18n.T(i18n.KViewRequest),
+		HeaderSubtitle:  i18n.T(i18n.KReqDetailSubtitle),
 		HeaderMeta:      truncate(string(s.RunID), 18),
-		HeaderInfoLeft:  []string{fmt.Sprintf("请求 %d/%d", idx+1, len(s.Requests)), status},
-		HeaderInfoRight: []string{fmt.Sprintf("缓存 %.0f%%", r.CacheHitRate*100), "耗时 " + fmtDuration(r.TotalTime)},
-		Hotkeys:         NewPageHotkeysWithHelp(Hotkeys_ReqDetail(), "[b/Esc] 返回上一页", "[q] 退出"),
+		HeaderInfoLeft:  []string{fmt.Sprintf("%s %d/%d", i18n.T(i18n.KRequests), idx+1, len(s.Requests)), status},
+		HeaderInfoRight: []string{fmt.Sprintf("%.0f%%", r.CacheHitRate*100), fmtDuration(r.TotalTime)},
+		Hotkeys:         NewPageHotkeysWithHelp(Hotkeys_ReqDetail(), i18n.T(i18n.KHintGoBack), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	bodyPanel := frame.InnerPanel()
@@ -161,16 +162,16 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 
 // buildReqPerfPanel 构建请求左侧性能指标面板。
 func buildReqPerfPanel(r *types.RequestMetrics, st Styles, maxH, width int) string {
-	lines := panelTitleLines(st, "性能指标", width, true)
+	lines := panelTitleLines(st, i18n.T(i18n.KStatus), width, true)
 
 	if r == nil {
-		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 		return finishPanelLines(lines, maxH)
 	}
 
-	statusStr := st.Ok.Render("✓ 成功")
+	statusStr := st.Ok.Render("✓ " + i18n.T(i18n.KCompleted))
 	if !r.Success {
-		statusStr = st.ErrStyle.Render("✗ 失败")
+		statusStr = st.ErrStyle.Render("✗ " + i18n.T(i18n.KRunFailed))
 	}
 	totalTime := "─"
 	if r.TotalTime > 0 {
@@ -190,20 +191,25 @@ func buildReqPerfPanel(r *types.RequestMetrics, st Styles, maxH, width int) stri
 	if !r.Success {
 		errorSummary = normalizeInlineText(r.ErrorMessage)
 		if errorSummary == "" {
-			errorSummary = "请求失败"
+			errorSummary = i18n.T(i18n.KRunFailed)
 		}
 		errorSummary = truncate(errorSummary, maxInt(8, width-8))
 	}
 
-	lines = append(lines, " "+labelValue(st, "状态    ", statusStr))
-	lines = append(lines, " "+labelValue(st, "总耗时  ", st.MetricVal.Render(totalTime)))
-	lines = append(lines, " "+labelValue(st, "TTFT    ", st.MetricVal.Render(ttft)))
-	lines = append(lines, " "+labelValue(st, "输出TPS ", st.MetricVal.Render(tps)))
-	lines = append(lines, " "+labelValue(st, "Token    ", tokenSummary))
+	lbls := []string{
+		i18n.T(i18n.KStatus), i18n.T(i18n.KTotalTime), "TTFT",
+		i18n.T(i18n.KOutputTPS), i18n.T(i18n.KToken), i18n.T(i18n.KCache),
+	}
+	lw := maxLabelWidth(lbls)
+	lines = append(lines, " "+labelValue(st, lbls[0], statusStr, lw))
+	lines = append(lines, " "+labelValue(st, lbls[1], st.MetricVal.Render(totalTime), lw))
+	lines = append(lines, " "+labelValue(st, lbls[2], st.MetricVal.Render(ttft), lw))
+	lines = append(lines, " "+labelValue(st, lbls[3], st.MetricVal.Render(tps), lw))
+	lines = append(lines, " "+labelValue(st, lbls[4], tokenSummary, lw))
 	if r.Success {
-		lines = append(lines, " "+labelValue(st, "缓存    ", cacheSummary))
+		lines = append(lines, " "+labelValue(st, lbls[5], cacheSummary, lw))
 	} else {
-		lines = append(lines, " "+st.ErrStyle.Render("错误: "+errorSummary))
+		lines = append(lines, " "+st.ErrStyle.Render(i18n.T(i18n.KError)+": "+errorSummary))
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -211,18 +217,22 @@ func buildReqPerfPanel(r *types.RequestMetrics, st Styles, maxH, width int) stri
 
 // buildReqNetworkPanel 构建请求右侧网络指标面板。
 func buildReqNetworkPanel(r *types.RequestMetrics, st Styles, maxH, width int) string {
-	lines := panelTitleLines(st, "网络指标", width, true)
+	lines := panelTitleLines(st, i18n.T(i18n.KTCPConnect), width, true)
 
 	if r == nil {
-		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 		return finishPanelLines(lines, maxH)
 	}
 
-	lines = append(lines, " "+labelValue(st, "DNS      ", fmtDuration(r.DNSTime)))
-	lines = append(lines, " "+labelValue(st, "TCP 连接 ", fmtDuration(r.ConnectTime)))
-	lines = append(lines, " "+labelValue(st, "TLS 握手 ", fmtDuration(r.TLSTime)))
+	lbls := []string{
+		i18n.T(i18n.KDNS), i18n.T(i18n.KTCPConnect), i18n.T(i18n.KTLSHandshake), i18n.T(i18n.KTargetIP),
+	}
+	lw := maxLabelWidth(lbls)
+	lines = append(lines, " "+labelValue(st, lbls[0], fmtDuration(r.DNSTime), lw))
+	lines = append(lines, " "+labelValue(st, lbls[1], fmtDuration(r.ConnectTime), lw))
+	lines = append(lines, " "+labelValue(st, lbls[2], fmtDuration(r.TLSTime), lw))
 	if r.TargetIP != "" {
-		lines = append(lines, " "+labelValue(st, "目标 IP  ", truncate(r.TargetIP, maxInt(4, width-12))))
+		lines = append(lines, " "+labelValue(st, lbls[3], truncate(r.TargetIP, maxInt(4, width-12)), lw))
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -230,11 +240,11 @@ func buildReqNetworkPanel(r *types.RequestMetrics, st Styles, maxH, width int) s
 
 // buildInputSection 构建输入 (请求体) 区域。
 func buildInputSection(r *types.RequestMetrics, st Styles, width, maxH int) string {
-	lines := panelTitleLines(st, "请求体 (Request Body)", width, true)
+	lines := panelTitleLines(st, i18n.T(i18n.KRequestBody), width, true)
 	lines = append(lines, " "+dividerLine(st, width-2))
 
 	if r.RequestBody == "" {
-		lines = append(lines, " "+st.Muted.Render("(未记录)"))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KNotRecorded)))
 	} else {
 		for _, l := range wrapText(r.RequestBody, width-3) {
 			if len(lines) >= maxH-1 {
@@ -249,11 +259,11 @@ func buildInputSection(r *types.RequestMetrics, st Styles, width, maxH int) stri
 
 // buildOutputSection 构建输出 (响应体) 区域。
 func buildOutputSection(r *types.RequestMetrics, scrollY int, st Styles, width, maxH int) string {
-	lines := panelTitleLines(st, "响应体 (Response Body)", width, true)
+	lines := panelTitleLines(st, i18n.T(i18n.KResponseBody), width, true)
 	lines = append(lines, " "+dividerLine(st, width-2))
 
 	if r.ResponseBody == "" {
-		lines = append(lines, " "+st.Muted.Render("(未记录)"))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KNotRecorded)))
 	} else {
 		allLines := wrapText(r.ResponseBody, width-3)
 		if scrollY >= len(allLines) {
@@ -269,7 +279,7 @@ func buildOutputSection(r *types.RequestMetrics, scrollY int, st Styles, width, 
 			lines = append(lines, " "+l)
 		}
 		if len(allLines) > maxH-3 {
-			lines = append(lines, " "+st.Muted.Render("（↑↓ 滚动查看完整内容）"))
+			lines = append(lines, " "+st.Muted.Render("("+i18n.T(i18n.KScrollMore)+")"))
 		}
 	}
 

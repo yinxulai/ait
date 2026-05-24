@@ -6,6 +6,8 @@ import (
 	"time"
 
 	"charm.land/lipgloss/v2"
+	"github.com/mattn/go-runewidth"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 )
 
@@ -36,6 +38,27 @@ func truncate(s string, maxW int) string {
 // padRight 右侧补空格至 width（按可见列宽）。
 func padRight(s string, width int) string {
 	return lipgloss.NewStyle().Width(width).Render(s)
+}
+
+// padToDisplayWidth 用空格将 s 右侧填充至 w 显示列宽。
+// 使用 runewidth 精确测量 CJK（2列）与 ASCII（1列）字符。
+func padToDisplayWidth(s string, w int) string {
+	cur := runewidth.StringWidth(s)
+	if cur >= w {
+		return s
+	}
+	return s + strings.Repeat(" ", w-cur)
+}
+
+// maxLabelWidth 返回一组标签中最大的显示列宽。
+func maxLabelWidth(labels []string) int {
+	max := 0
+	for _, l := range labels {
+		if w := runewidth.StringWidth(l); w > max {
+			max = w
+		}
+	}
+	return max
 }
 
 // wrapText 将文本按 maxW 列宽折行，返回行切片（CJK 字符按 2 列宽计算）。
@@ -117,17 +140,17 @@ func fmtRelativeTime(t time.Time) string {
 	}
 	d := time.Since(t)
 	if d < time.Minute {
-		return "刚刚"
+		return i18n.T(i18n.KJustNow)
 	}
 	if d < time.Hour {
-		return fmt.Sprintf("%d 分钟前", int(d.Minutes()))
+		return fmt.Sprintf(i18n.T(i18n.KMinutesAgoFmt), int(d.Minutes()))
 	}
 	if d < 24*time.Hour {
-		return fmt.Sprintf("%d 小时前", int(d.Hours()))
+		return fmt.Sprintf(i18n.T(i18n.KHoursAgoFmt), int(d.Hours()))
 	}
 	days := int(d.Hours() / 24)
 	if days < 30 {
-		return fmt.Sprintf("%d 天前", days)
+		return fmt.Sprintf(i18n.T(i18n.KDaysAgoFmt), days)
 	}
 	return t.Format("2006-01-02")
 }
@@ -305,7 +328,7 @@ func renderPrimaryHotkeyItems(items []HotkeyItem, maxW int) string {
 			Background(lipgloss.Color("239")).
 			Foreground(colorMuted).
 			Padding(0, 1).
-			Render("当前页暂无快捷操作")
+			Render(i18n.T(i18n.KNoHotkeys))
 	}
 
 	var rendered []string
@@ -433,15 +456,15 @@ func nonEmptyParts(parts []string) []string {
 func runStatusText(status string) string {
 	switch strings.ToLower(strings.TrimSpace(status)) {
 	case "running":
-		return "运行中"
+		return i18n.T(i18n.KRunning)
 	case "completed":
-		return "已完成"
+		return i18n.T(i18n.KCompleted)
 	case "failed":
-		return "运行失败"
+		return i18n.T(i18n.KRunFailed)
 	case "stopped":
-		return "已停止"
+		return i18n.T(i18n.KStopped)
 	case "":
-		return "等待数据"
+		return i18n.T(i18n.KWaitingStatus)
 	default:
 		return status
 	}
@@ -452,7 +475,7 @@ func modeShortLabel(mode string) string {
 	if mode == "turbo" {
 		return "Turbo"
 	}
-	return "标准"
+	return i18n.T(i18n.KStandardMode)
 }
 
 // isRunStateRunning 判断 RunState 是否处于运行状态。
@@ -470,13 +493,23 @@ func applyColWidth(s lipgloss.Style, col int, colWidths []int) lipgloss.Style {
 }
 
 // appendRunMetricLines 向 lines 追加 6 行运行指标（成功率/TPS/TTFT/缓存命中/RPM/TPM）。
+// 标签宽度由当前语言的最大标签宽度自动计算，无需手动添加空格对齐。
 func appendRunMetricLines(lines []string, st Styles, rs *server.RunState) []string {
-	lines = append(lines, " "+labelValue(st, "成功率  ", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate))))
-	lines = append(lines, " "+labelValue(st, "TPS均值 ", st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS))))
-	lines = append(lines, " "+labelValue(st, "TTFT均值", st.MetricVal.Render(fmtDuration(rs.AvgTTFT))))
-	lines = append(lines, " "+labelValue(st, "缓存命中", st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100))))
-	lines = append(lines, " "+labelValue(st, "RPM     ", st.MetricVal.Render(fmt.Sprintf("%.0f req/min", rs.RPM))))
-	lines = append(lines, " "+labelValue(st, "TPM     ", st.MetricVal.Render(fmt.Sprintf("%.0f tok/min", rs.TPM))))
+	lbls := []string{
+		i18n.T(i18n.KSuccessRate),
+		i18n.T(i18n.KAvgTPS),
+		i18n.T(i18n.KAvgTTFT),
+		i18n.T(i18n.KCacheHit),
+		i18n.T(i18n.KRPM),
+		i18n.T(i18n.KTPM),
+	}
+	lw := maxLabelWidth(lbls)
+	lines = append(lines, " "+labelValue(st, lbls[0], st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.SuccessRate)), lw))
+	lines = append(lines, " "+labelValue(st, lbls[1], st.MetricVal.Render(fmt.Sprintf("%.1f tok/s", rs.AvgTPS)), lw))
+	lines = append(lines, " "+labelValue(st, lbls[2], st.MetricVal.Render(fmtDuration(rs.AvgTTFT)), lw))
+	lines = append(lines, " "+labelValue(st, lbls[3], st.MetricVal.Render(fmt.Sprintf("%.1f%%", rs.CacheHitRate*100)), lw))
+	lines = append(lines, " "+labelValue(st, lbls[4], st.MetricVal.Render(fmt.Sprintf("%.0f req/min", rs.RPM)), lw))
+	lines = append(lines, " "+labelValue(st, lbls[5], st.MetricVal.Render(fmt.Sprintf("%.0f tok/min", rs.TPM)), lw))
 	return lines
 }
 
@@ -603,9 +636,9 @@ func shortProtocol(p string) string {
 func promptSummary(promptMode, promptText, promptFile string, promptLength int) string {
 	switch promptMode {
 	case "file":
-		return "文件: " + promptFile
+		return i18n.T(i18n.KFileSummaryPfx) + promptFile
 	case "generated":
-		return fmt.Sprintf("生成 %d 字符", promptLength)
+		return fmt.Sprintf(i18n.T(i18n.KWzGeneratedFmt), promptLength)
 	case "raw":
 		if promptText != "" {
 			r := []rune(promptText)
@@ -614,7 +647,7 @@ func promptSummary(promptMode, promptText, promptFile string, promptLength int) 
 			}
 			return "RAW: " + promptText
 		}
-		return "(未设置)"
+		return i18n.T(i18n.KNotSet)
 	default:
 		if promptText != "" {
 			r := []rune(promptText)
@@ -623,21 +656,27 @@ func promptSummary(promptMode, promptText, promptFile string, promptLength int) 
 			}
 			return promptText
 		}
-		return "(未设置)"
+		return i18n.T(i18n.KNotSet)
 	}
 }
 
-// boolLabel 将 bool 值转换为"开启"/"关闭"。
+// boolLabel 将 bool 值转换为当前语言的开启/关闭标签。
 func boolLabel(b bool) string {
 	if b {
-		return "开启"
+		return i18n.T(i18n.KEnabled)
 	}
-	return "关闭"
+	return i18n.T(i18n.KDisabled)
 }
 
 // labelValue 渲染一个 label:value 对。
-func labelValue(st Styles, label, value string) string {
-	return st.Label.Render(label) + "  " + st.Value.Render(value)
+// 可选参数 labelW 指定标签显示列宽，由 padToDisplayWidth 填充至指定宽度。
+// 同组标签调用时传入 maxLabelWidth(labels) 即可实现自动对齐。
+func labelValue(st Styles, label, value string, labelW ...int) string {
+	l := label
+	if len(labelW) > 0 && labelW[0] > 0 {
+		l = padToDisplayWidth(label, labelW[0])
+	}
+	return st.Label.Render(l) + "  " + st.Value.Render(value)
 }
 
 // wrapPanel 用带边框的 Panel 包裹内容，outerW 为包含边框的总宽度。

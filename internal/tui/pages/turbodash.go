@@ -7,6 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	lgtable "charm.land/lipgloss/v2/table"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -183,10 +184,10 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	default:
 		cbItems = Hotkeys_TurboDash_Done_NoSel()
 	}
-	headerLeft := []string{"等待数据"}
+	headerLeft := []string{i18n.T(i18n.KWaitingStatus)}
 	headerRight := []string{}
 	if rs != nil {
-		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("完成 %d/%d", rs.DoneReqs, rs.TotalReqs)}
+		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)}
 		var levelNum int
 		if d.IsRunning() {
 			levelNum = len(rs.Levels) + 1
@@ -196,21 +197,21 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 		if levelNum < 1 {
 			levelNum = 1
 		}
-		headerRight = []string{fmt.Sprintf("级别 %d", levelNum)}
+		headerRight = []string{fmt.Sprintf("%s %d", i18n.T(i18n.KColLevel), levelNum)}
 		if len(rs.Levels) > 0 {
-			headerRight = append(headerRight, fmt.Sprintf("已探测 %d 档", len(rs.Levels)))
+			headerRight = append(headerRight, fmt.Sprintf("%d", len(rs.Levels)))
 		}
 	}
 	if d.TaskID != "" {
-		headerRight = append(headerRight, "任务 "+truncate(d.TaskID, 14))
+		headerRight = append(headerRight, truncate(d.TaskID, 14))
 	}
 	l := PageLayout{
-		HeaderTitle:     "Turbo 探测监控",
-		HeaderSubtitle:  "观察并发爬坡过程、级别指标与稳定区间",
-		HeaderMeta:      "Turbo 模式",
+		HeaderTitle:     i18n.T(i18n.KTurboMonitor),
+		HeaderSubtitle:  i18n.T(i18n.KTurboSubtitle),
+		HeaderMeta:      i18n.T(i18n.KTurboModeMeta),
 		HeaderInfoLeft:  headerLeft,
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, i18n.T(i18n.KHintGoBack), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	bodyPanel := frame.InnerPanel()
@@ -241,15 +242,17 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 
 // buildTurboDashParams 构建 Turbo 仪表盘左侧任务参数面板。
 func buildTurboDashParams(rs *server.RunState, st Styles, maxH, width int) string {
-	lines := panelTitleLines(st, "任务参数", width, false)
+	lines := panelTitleLines(st, i18n.T(i18n.KConcurrency), width, false)
 
 	if rs == nil {
-		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 	} else {
 		tc := rs.TurboConfig
-		lines = append(lines, " "+labelValue(st, "爬坡  ", fmt.Sprintf("%d→%d  步进+%d", tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize)))
-		lines = append(lines, " "+labelValue(st, "每级  ", fmt.Sprintf("%d 请求", tc.LevelRequests)))
-		lines = append(lines, " "+labelValue(st, "停止  ", fmt.Sprintf("成功率 < %.0f%%", tc.MinSuccessRate*100)))
+		lbls := []string{i18n.T(i18n.KRamp), i18n.T(i18n.KPerLevel), i18n.T(i18n.KStopCondLabel)}
+		lw := maxLabelWidth(lbls)
+		lines = append(lines, " "+labelValue(st, lbls[0], fmt.Sprintf("%d→%d  +%d", tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize), lw))
+		lines = append(lines, " "+labelValue(st, lbls[1], fmt.Sprintf("%d req", tc.LevelRequests), lw))
+		lines = append(lines, " "+labelValue(st, lbls[2], fmt.Sprintf("%.0f%%", tc.MinSuccessRate*100), lw))
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -263,10 +266,10 @@ func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) stri
 	if rs != nil {
 		curLevel = rs.CurrentLevel
 	}
-	lines = panelTitleLines(st, fmt.Sprintf("当前级别实时指标 [并发 = %d]", curLevel), width, false)
+	lines = panelTitleLines(st, fmt.Sprintf(i18n.T(i18n.KTurboCurLevelFmt), curLevel), width, false)
 
 	if rs == nil {
-		lines = append(lines, " "+st.Muted.Render("等待数据..."))
+		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 	} else {
 		lines = appendRunMetricLines(lines, st, rs)
 	}
@@ -277,7 +280,7 @@ func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) stri
 // buildTurboProgressLine 构建 Turbo 模式进度条行。
 func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	if rs == nil {
-		return " 进度  " + st.Muted.Render("等待中...")
+		return " " + padToDisplayWidth(i18n.T(i18n.KProgress), 4) + "  " + st.Muted.Render(i18n.T(i18n.KWaitingDots))
 	}
 	total := rs.TotalReqs
 	done := rs.DoneReqs
@@ -294,18 +297,18 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	} else {
 		levelTotalStr = fmt.Sprintf("%d", levelDone)
 	}
-	suffix := fmt.Sprintf("  %d/%d  当前并发 %d   总进度: %s 级", done, total, rs.CurrentLevel, levelTotalStr)
-	return renderProgressBar(st, " 进度  ", suffix, ratio, width)
+	suffix := fmt.Sprintf(i18n.T(i18n.KTurboDashSuffix), done, total, rs.CurrentLevel, levelTotalStr)
+	return renderProgressBar(st, " "+padToDisplayWidth(i18n.T(i18n.KProgress), 4)+"  ", suffix, ratio, width)
 }
 
 // buildTurboRequestList 构建 Turbo 模式请求列表区域。
 func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, width, maxH int) string {
-	titleLines := panelTitleLines(st, "请求列表", width, true)
+	titleLines := panelTitleLines(st, i18n.T(i18n.KRequests), width, true)
 
 	if rs == nil || len(rs.Requests) == 0 {
-		msg := "等待请求..."
+		msg := i18n.T(i18n.KWaitingData)
 		if rs != nil && rs.Status != server.RunStatusRunning {
-			msg = "无请求详情数据"
+			msg = i18n.T(i18n.KNoRunRecords)
 		}
 		titleLines = append(titleLines, " "+st.Muted.Render(msg))
 		return finishPanelLines(titleLines, maxH)
@@ -359,7 +362,7 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 	colWidths := []int{6, 5, 6, 0, 8, 10, 12, 12, 10} // #, 状态, 级别, 总耗时=flex, TTFT, Cache, 输入, 输出, TPS
 	tableH := maxH - len(titleLines)
 	tbl := lgtable.New().
-		Headers("#", "状态", "级别", "总耗时", "TTFT", "Cache", "输入", "输出", "TPS").
+		Headers("#", i18n.T(i18n.KStatus), i18n.T(i18n.KColLevel), i18n.T(i18n.KTotalTime), "TTFT", "Cache", i18n.T(i18n.KColInput), i18n.T(i18n.KColOutput), "TPS").
 		Width(width).
 		Height(tableH).
 		YOffset(d.ReqOff).

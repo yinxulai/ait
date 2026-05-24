@@ -1,6 +1,10 @@
 package pages
 
-import "strings"
+import (
+	"strings"
+
+	"github.com/yinxulai/ait/internal/i18n"
+)
 
 // ── 尺寸常量 ──────────────────────────────────────────────────────────────────
 
@@ -49,7 +53,7 @@ func NewPageHotkeys(hotkeys []HotkeyItem, hints ...string) PageHotkeys {
 // NewPageHotkeysWithHelp 在 NewPageHotkeys 基础上自动追加 [?] 帮助。
 // 非帮助页使用此函数以统一显示帮助入口。
 func NewPageHotkeysWithHelp(hotkeys []HotkeyItem, hints ...string) PageHotkeys {
-	withHelp := append(hotkeys, HotkeyAction("?", "帮助"))
+	withHelp := append(hotkeys, HotkeyAction("?", i18n.T(i18n.KHelp)))
 	return PageHotkeys{
 		Hotkeys: withHelp,
 		Hints:   HotkeyTexts(hints...),
@@ -215,5 +219,5 @@ func renderTooSmall(st Styles, width, _ int) string {
 	if width < 4 {
 		return "..."
 	}
-	return st.Muted.Render(truncate("窗口过小 ↔ 请放大终端", width))
+	return st.Muted.Render(truncate(i18n.T(i18n.KWindowTooSmall), width))
 }

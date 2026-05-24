@@ -8,6 +8,7 @@ import (
 	"charm.land/lipgloss/v2"
 	lgtable "charm.land/lipgloss/v2/table"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
 )
@@ -184,25 +185,25 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 	default:
 		cbItems = Hotkeys_TaskDetail_NoHistory()
 	}
-	modeStr := "标准模式"
+	modeStr := i18n.T(i18n.KStandardMode)
 	if inp.Turbo {
-		modeStr = "Turbo 模式"
+		modeStr = i18n.T(i18n.KTurboMode)
 	}
-	headerRight := []string{"暂无运行记录"}
+	headerRight := []string{i18n.T(i18n.KNoRunRecords)}
 	historyCount := len(taskDetailHistoryEntries(s))
 	if historyCount > 0 {
-		headerRight = []string{fmt.Sprintf("历史 %d 条", historyCount)}
+		headerRight = []string{fmt.Sprintf("%d", historyCount)}
 	}
 	if hasActive {
-		headerRight = append([]string{"运行中"}, headerRight...)
+		headerRight = append([]string{i18n.T(i18n.KRunning)}, headerRight...)
 	}
 	l := PageLayout{
 		HeaderTitle:     truncate(t.Name, 28),
-		HeaderSubtitle:  "查看任务配置、当前运行状态与历史记录",
-		HeaderMeta:      "任务详情",
+		HeaderSubtitle:  i18n.T(i18n.KTaskDetailSubtitle),
+		HeaderMeta:      i18n.T(i18n.KRecordDetails),
 		HeaderInfoLeft:  []string{modeStr, inp.NormalizedProtocol()},
 		HeaderInfoRight: headerRight,
-		Hotkeys:         NewPageHotkeysWithHelp(cbItems, "[b/Esc] 返回上一页", "[q] 退出"),
+		Hotkeys:         NewPageHotkeysWithHelp(cbItems, i18n.T(i18n.KHintGoBack), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 
@@ -219,47 +220,47 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 
 	// ─── 左栏：配置摘要 ─────────────────────────────────────────
 	leftW := leftPanelFrame.InnerWidth
-	leftLines := panelTitleLines(st, "配置摘要", leftW, false)
+	leftLines := panelTitleLines(st, i18n.T(i18n.KProtocol), leftW, false)
 
 	proto := inp.NormalizedProtocol()
-	leftLines = append(leftLines, padRight(" "+st.Label.Render("协议")+"  "+st.Value.Render(proto), leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KProtocol))+"  "+st.Value.Render(proto), leftW))
 	endpoint := truncate(inp.ResolvedEndpointURL(), leftW-8)
-	leftLines = append(leftLines, padRight(" "+st.Label.Render("接口")+"  "+st.Value.Render(endpoint), leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KEndpoint))+"  "+st.Value.Render(endpoint), leftW))
 	if inp.ProxyURL != "" {
 		proxy := truncate(inp.ProxyURL, leftW-8)
-		leftLines = append(leftLines, padRight(" "+st.Label.Render("代理")+"  "+st.Value.Render(proxy), leftW))
+		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KProxy))+"  "+st.Value.Render(proxy), leftW))
 	}
 	leftLines = append(leftLines, padRight("", leftW))
 
 	model := truncate(inp.Model, leftW-10)
-	leftLines = append(leftLines, padRight(" "+st.Label.Render("模型")+"  "+st.Value.Render(model), leftW))
-	modeStr := "标准模式"
+	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KModel))+"  "+st.Value.Render(model), leftW))
+	modeStr := i18n.T(i18n.KStandardMode)
 	if inp.Turbo {
-		modeStr = "Turbo 模式"
+		modeStr = i18n.T(i18n.KTurboMode)
 	}
-	leftLines = append(leftLines, padRight(" "+st.Label.Render("模式")+"  "+st.Value.Render(modeStr), leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KMode))+"  "+st.Value.Render(modeStr), leftW))
 	if inp.Turbo {
 		tc := inp.TurboConfig
-		leftLines = append(leftLines, padRight(" "+st.Label.Render("并发")+"  "+st.Value.Render(
+		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KConcurrency))+"  "+st.Value.Render(
 			fmt.Sprintf("%d → %d", tc.InitConcurrency, tc.MaxConcurrency)), leftW))
-		leftLines = append(leftLines, padRight(" "+st.Label.Render("步进")+"  "+st.Value.Render(
-			fmt.Sprintf("+%d  每级%d请求", tc.StepSize, tc.LevelRequests)), leftW))
+		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KStepLabel))+"  "+st.Value.Render(
+			fmt.Sprintf("+%d  %d req", tc.StepSize, tc.LevelRequests)), leftW))
 	} else {
-		leftLines = append(leftLines, padRight(" "+st.Label.Render("并发")+"  "+st.Value.Render(
+		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KConcurrency))+"  "+st.Value.Render(
 			fmt.Sprintf("%d", inp.Concurrency)), leftW))
-		leftLines = append(leftLines, padRight(" "+st.Label.Render("请求")+"  "+st.Value.Render(
+		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KRequests))+"  "+st.Value.Render(
 			fmt.Sprintf("%d", inp.Count)), leftW))
 	}
 	leftLines = append(leftLines, padRight("", leftW))
-	leftLines = append(leftLines, padRight(" "+st.Label.Render("超时")+"  "+st.Value.Render(fmtDuration(inp.Timeout)), leftW))
-	leftLines = append(leftLines, padRight(" "+st.Label.Render("流式")+"  "+st.Value.Render(boolLabel(inp.Stream)), leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KTimeout))+"  "+st.Value.Render(fmtDuration(inp.Timeout)), leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KStream))+"  "+st.Value.Render(boolLabel(inp.Stream)), leftW))
 	prompt := promptSummary(inp.PromptMode, inp.PromptText, inp.PromptFile, inp.PromptLength)
-	leftLines = append(leftLines, padRight(" "+st.Label.Render("Prompt")+"  "+st.Value.Render(truncate(prompt, leftW-12)), leftW))
+	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KPromptLabel))+"  "+st.Value.Render(truncate(prompt, leftW-12)), leftW))
 	leftContent := finishPanelLines(leftLines, panelContentH)
 
 	// ─── 右栏：历史运行记录 ─────────────────────────────────────
 	rightW := rightPanelFrame.InnerWidth
-	rightTitle := panelTitleLines(st, "历史运行记录", rightW, false) // 2 行
+	rightTitle := panelTitleLines(st, i18n.T(i18n.KRunHistory), rightW, false) // 2 行
 	historyEntries := taskDetailHistoryEntries(s)
 
 	hasActive := s.ActiveRun != nil
@@ -269,7 +270,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	}
 
 	if effectiveLen == 0 {
-		rightLines := append(rightTitle, padRight(" "+st.Muted.Render("暂无运行记录"), rightW))
+		rightLines := append(rightTitle, padRight(" "+st.Muted.Render(i18n.T(i18n.KNoRunRecords)), rightW))
 		rightContent := finishPanelLines(rightLines, panelContentH)
 		return renderSplitPanels(st, leftPanelFrame, rightPanelFrame, leftContent, rightContent)
 	}
@@ -329,7 +330,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			rate:       rateStr,
 			dur:        "─",
 			ttft:       "─",
-			tps:        fmt.Sprintf("%d/%d 正在运行...", rs.DoneReqs, rs.TotalReqs),
+			tps:        fmt.Sprintf("%d/%d %s", rs.DoneReqs, rs.TotalReqs, i18n.T(i18n.KRunning)),
 			rpm:        "─",
 			tpm:        "─",
 		}
@@ -379,7 +380,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	sel := s.HistorySel
 	tableH := tableMaxH - len(rightTitle)
 	tbl := lgtable.New().
-		Headers("", "时间", "模式", "成功率", "耗时", "TTFT", "TPS", "RPM", "TPM").
+		Headers("", i18n.T(i18n.KTime), i18n.T(i18n.KMode), i18n.T(i18n.KSuccessRate), i18n.T(i18n.KElapsed), "TTFT", "TPS", "RPM", "TPM").
 		Width(rightW).
 		Height(tableH).
 		YOffset(s.HistoryOff).
@@ -481,9 +482,13 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 	finishedText := sel.FinishedAt.Format("2006-01-02 15:04")
 	if sel.FinishedAt.IsZero() {
 		elapsedText = fmtDuration(time.Since(sel.StartedAt))
-		finishedText = "进行中"
+		finishedText = i18n.T(i18n.KRunning)
 	}
-	labelW := 8
+	labelW := maxLabelWidth([]string{
+		i18n.T(i18n.KStatus), i18n.T(i18n.KMode), i18n.T(i18n.KStart), i18n.T(i18n.KEnd),
+		i18n.T(i18n.KElapsed), i18n.T(i18n.KSuccessRate), "TTFT", "TPS", "RPM", "TPM",
+		i18n.T(i18n.KProtocol), i18n.T(i18n.KModel), i18n.T(i18n.KCache), i18n.T(i18n.KErrorSummary),
+	})
 	indent := " "
 	gap := 4
 	contentW := maxInt(12, width-lipgloss.Width(indent))
@@ -538,20 +543,20 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 
 	lines := []string{
 		padRight(st.Divider.Render(strings.Repeat("─", width)), width),
-		padRight(" "+st.SectionHead.Render("记录详情"), width),
+		padRight(" "+st.SectionHead.Render(i18n.T(i18n.KRecordDetails)), width),
 	}
 
 	lines = appendPairRow(lines,
-		"状态", statusText, statusStyle,
-		"模式", modeText, st.Value,
+		i18n.T(i18n.KStatus), statusText, statusStyle,
+		i18n.T(i18n.KMode), modeText, st.Value,
 	)
 	lines = appendPairRow(lines,
-		"开始", sel.StartedAt.Format("2006-01-02 15:04"), st.Value,
-		"结束", finishedText, st.Value,
+		i18n.T(i18n.KStart), sel.StartedAt.Format("2006-01-02 15:04"), st.Value,
+		i18n.T(i18n.KEnd), finishedText, st.Value,
 	)
 	lines = appendPairRow(lines,
-		"耗时", elapsedText, st.Value,
-		"成功率", fmt.Sprintf("%.1f%%", sel.SuccessRate), st.Value,
+		i18n.T(i18n.KElapsed), elapsedText, st.Value,
+		i18n.T(i18n.KSuccessRate), fmt.Sprintf("%.1f%%", sel.SuccessRate), st.Value,
 	)
 	lines = appendPairRow(lines,
 		"TTFT", fmtDuration(sel.AvgTTFT), st.Value,
@@ -561,13 +566,13 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 		"RPM", fmt.Sprintf("%.0f req/min", sel.RPM), st.MetricVal,
 		"TPM", fmt.Sprintf("%.0f tok/min", sel.TPM), st.MetricVal,
 	)
-	lines = appendSingleField(lines, "协议", shortProtocol(sel.Protocol), st.Value)
-	lines = appendSingleField(lines, "模型", sel.Model, st.Value)
+	lines = appendSingleField(lines, i18n.T(i18n.KProtocol), shortProtocol(sel.Protocol), st.Value)
+	lines = appendSingleField(lines, i18n.T(i18n.KModel), sel.Model, st.Value)
 	if sel.CacheHitRate > 0 {
-		lines = appendSingleField(lines, "缓存", fmt.Sprintf("%.1f%%", sel.CacheHitRate*100), st.Value)
+		lines = appendSingleField(lines, i18n.T(i18n.KCache), fmt.Sprintf("%.1f%%", sel.CacheHitRate*100), st.Value)
 	}
 	if sel.ErrorSummary != "" {
-		lines = append(lines, indent+st.Label.Render("错误摘要"))
+		lines = append(lines, indent+st.Label.Render(i18n.T(i18n.KErrorSummary)))
 		for _, seg := range wrapText(sel.ErrorSummary, maxInt(10, contentW-2)) {
 			lines = append(lines, indent+"  "+st.ErrStyle.Render(seg))
 		}

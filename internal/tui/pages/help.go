@@ -5,6 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	"github.com/yinxulai/ait/internal/i18n"
 )
 
 // HelpState 帮助页状态。
@@ -81,10 +82,10 @@ func RenderHelp(s *HelpState, st Styles, width, height int) string {
 	}
 
 	l := PageLayout{
-		HeaderTitle:    "帮助",
-		HeaderSubtitle: "AIT — AI 接口压测工具概念说明与操作指南",
-		HeaderMeta:     "帮助",
-		Hotkeys:        NewPageHotkeys(Hotkeys_Help(), "[b/Esc] 返回", "[q] 退出"),
+		HeaderTitle:    i18n.T(i18n.KHelpTitle),
+		HeaderSubtitle: i18n.T(i18n.KHelpSubtitle),
+		HeaderMeta:     i18n.T(i18n.KHelpMeta),
+		Hotkeys:        NewPageHotkeys(Hotkeys_Help(), i18n.T(i18n.KHintEscBack), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
 	panel := NewPanelFrame(frame.OuterWidth)
@@ -108,82 +109,82 @@ type helpItem struct {
 func helpContent() []helpSection {
 	return []helpSection{
 		{
-			title: "核心概念",
+			title: i18n.T(i18n.KHelpSecConcepts),
 			items: []helpItem{
-				{"任务 (Task)", "一组压测配置的集合，包含目标接口、模型、并发数、请求数等参数。任务可多次运行，每次运行独立记录结果。"},
-				{"运行 (Run)", "任务的一次具体执行。每次运行产生独立的指标数据和请求记录，可导出为 JSON/CSV 报告。"},
-				{"标准模式", "以固定并发数执行所有请求，适合衡量稳定负载下的接口性能。"},
-				{"Turbo 模式", "自动从低并发逐步爬坡，找出接口在保持成功率要求下能承受的最大稳定并发数。"},
+				{i18n.T(i18n.KHelpTermTask), i18n.T(i18n.KHelpDescTask)},
+				{i18n.T(i18n.KHelpTermRun), i18n.T(i18n.KHelpDescRun)},
+				{i18n.T(i18n.KHelpTermStandard), i18n.T(i18n.KHelpDescStandard)},
+				{i18n.T(i18n.KHelpTermTurboMode), i18n.T(i18n.KHelpDescTurboMode)},
 			},
 		},
 		{
-			title: "性能指标",
+			title: i18n.T(i18n.KHelpSecMetrics),
 			items: []helpItem{
-				{"TPS", "Tokens Per Second，每秒输出 Token 数，衡量模型的文本生成速率。"},
-				{"均值TPS", "本次运行中所有请求的 TPS 均值，反映整体吞吐水平。"},
-				{"TTFT", "Time To First Token，从发送请求到收到第一个 Token 的耗时，衡量模型响应延迟。"},
-				{"均值TTFT", "本次运行中所有请求的 TTFT 均值。"},
-				{"成功率", "成功完成的请求数占总请求数的百分比。失败包括超时、HTTP 错误、模型返回错误等。"},
-				{"缓存命中", "请求中使用了 KV 缓存（Prompt Cache）的比例。命中缓存可显著降低 TTFT 和推理成本。该指标为二值统计：单次请求若有任何 Token 命中缓存则计为命中。"},
-				{"并发（Turbo）", "Turbo 模式下找到的最大稳定并发数，即在满足最低成功率要求的前提下能同时维持的请求数。"},
+				{i18n.T(i18n.KHelpTermTPS), i18n.T(i18n.KHelpDescTPS)},
+				{i18n.T(i18n.KHelpTermAvgTPS), i18n.T(i18n.KHelpDescAvgTPS)},
+				{i18n.T(i18n.KHelpTermTTFT), i18n.T(i18n.KHelpDescTTFT)},
+				{i18n.T(i18n.KHelpTermAvgTTFT), i18n.T(i18n.KHelpDescAvgTTFT)},
+				{i18n.T(i18n.KHelpTermSuccessRate), i18n.T(i18n.KHelpDescSuccessRate)},
+				{i18n.T(i18n.KHelpTermCacheHit), i18n.T(i18n.KHelpDescCacheHit)},
+				{i18n.T(i18n.KHelpTermConcurrencyTurbo), i18n.T(i18n.KHelpDescConcurrencyTurbo)},
 			},
 		},
 		{
-			title: "协议支持",
+			title: i18n.T(i18n.KHelpSecProtocols),
 			items: []helpItem{
-				{"OpenAI", "兼容 OpenAI Chat Completions API（/v1/chat/completions），支持流式和非流式响应。"},
-				{"Anthropic", "兼容 Anthropic Messages API（/v1/messages），支持流式和非流式响应。"},
+				{i18n.T(i18n.KHelpTermOpenAI), i18n.T(i18n.KHelpDescOpenAI)},
+				{i18n.T(i18n.KHelpTermAnthropic), i18n.T(i18n.KHelpDescAnthropic)},
 			},
 		},
 		{
-			title: "快捷键 — 全局",
+			title: i18n.T(i18n.KHelpSecGlobal),
 			items: []helpItem{
-				{"q / Ctrl+C", "退出程序。"},
-				{"?", "打开此帮助页。"},
-				{"b / Esc", "返回上一页。"},
+				{i18n.T(i18n.KHelpTermQuit), i18n.T(i18n.KHelpDescQuit)},
+				{i18n.T(i18n.KHelpTermQuestionMark), i18n.T(i18n.KHelpDescQuestionMark)},
+				{i18n.T(i18n.KHelpTermBack), i18n.T(i18n.KHelpDescBack)},
 			},
 		},
 		{
-			title: "快捷键 — 任务列表",
+			title: i18n.T(i18n.KHelpSecTaskList),
 			items: []helpItem{
-				{"↑↓ / j k", "选择任务。"},
-				{"Enter", "进入任务详情页。"},
-				{"r", "立即运行选中任务。"},
-				{"s", "停止正在运行的任务（仅任务运行中可用）。"},
-				{"a", "新建任务（打开向导）。"},
-				{"e", "编辑选中任务配置。"},
-				{"d", "删除选中任务（需确认）。"},
-				{"y", "复制选中任务（生成副本）。"},
-				{"p", "打开代理配置页。"},
+				{i18n.T(i18n.KHelpTermSelectTask), i18n.T(i18n.KHelpDescSelectTask)},
+				{i18n.T(i18n.KHelpTermEnterDetail), i18n.T(i18n.KHelpDescEnterDetail)},
+				{i18n.T(i18n.KHelpTermRunTask), i18n.T(i18n.KHelpDescRunTask)},
+				{i18n.T(i18n.KHelpTermStopTask), i18n.T(i18n.KHelpDescStopTask)},
+				{i18n.T(i18n.KHelpTermNewTask), i18n.T(i18n.KHelpDescNewTask)},
+				{i18n.T(i18n.KHelpTermEditTask), i18n.T(i18n.KHelpDescEditTask)},
+				{i18n.T(i18n.KHelpTermDeleteTask), i18n.T(i18n.KHelpDescDeleteTask)},
+				{i18n.T(i18n.KHelpTermCopyTask), i18n.T(i18n.KHelpDescCopyTask)},
+				{i18n.T(i18n.KHelpTermProxy), i18n.T(i18n.KHelpDescProxy)},
 			},
 		},
 		{
-			title: "快捷键 — 任务详情",
+			title: i18n.T(i18n.KHelpSecTaskDetail),
 			items: []helpItem{
-				{"↑↓ / j k", "在历史运行记录中选择条目。"},
-				{"Enter", "查看选中运行的仪表盘；若任务正在运行，进入实时仪表盘。"},
-				{"r", "再次运行该任务（无正在运行的实例时可用）。"},
-				{"g", "将选中的历史运行导出为 JSON 报告。"},
-				{"e", "编辑任务配置。"},
-				{"y", "复制任务。"},
-				{"d", "删除任务。"},
+				{i18n.T(i18n.KHelpTermSelectHistory), i18n.T(i18n.KHelpDescSelectHistory)},
+				{i18n.T(i18n.KHelpTermEnterDash), i18n.T(i18n.KHelpDescEnterDash)},
+				{i18n.T(i18n.KHelpTermRunAgain), i18n.T(i18n.KHelpDescRunAgain)},
+				{i18n.T(i18n.KHelpTermExport), i18n.T(i18n.KHelpDescExport)},
+				{i18n.T(i18n.KHelpTermEditConfig), i18n.T(i18n.KHelpDescEditConfig)},
+				{i18n.T(i18n.KHelpTermCopyTask2), i18n.T(i18n.KHelpDescCopyTask2)},
+				{i18n.T(i18n.KHelpTermDeleteTask2), i18n.T(i18n.KHelpDescDeleteTask2)},
 			},
 		},
 		{
-			title: "快捷键 — 运行仪表盘",
+			title: i18n.T(i18n.KHelpSecDashboard),
 			items: []helpItem{
-				{"↑↓ / j k", "选择请求条目。"},
-				{"Enter", "查看选中请求的详情（耗时、Token、响应体等）。"},
-				{"s", "停止正在运行的任务。"},
-				{"r", "生成 JSON 报告（运行结束后可用）。"},
-				{"b / Esc", "返回任务详情页。"},
+				{i18n.T(i18n.KHelpTermSelectReq), i18n.T(i18n.KHelpDescSelectReq)},
+				{i18n.T(i18n.KHelpTermViewReq), i18n.T(i18n.KHelpDescViewReq)},
+				{i18n.T(i18n.KHelpTermStopDash), i18n.T(i18n.KHelpDescStopDash)},
+				{i18n.T(i18n.KHelpTermGenerateReport), i18n.T(i18n.KHelpDescGenerateReport)},
+				{i18n.T(i18n.KHelpTermBackDash), i18n.T(i18n.KHelpDescBackDash)},
 			},
 		},
 		{
-			title: "报告导出",
+			title: i18n.T(i18n.KHelpSecExport),
 			items: []helpItem{
-				{"JSON 报告", "完整记录每次请求的所有指标、请求/响应体，适合程序化分析。"},
-				{"CSV 报告", "表格形式的汇总数据，可直接在电子表格中打开。报告默认保存在当前工作目录。"},
+				{i18n.T(i18n.KHelpTermJSONReport), i18n.T(i18n.KHelpDescJSONReport)},
+				{i18n.T(i18n.KHelpTermCSVReport), i18n.T(i18n.KHelpDescCSVReport)},
 			},
 		},
 	}
