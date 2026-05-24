@@ -22,6 +22,7 @@ type Config struct {
 	LastSelectedTaskID string `json:"last_selected_task_id,omitempty"`
 	DefaultProtocol    string `json:"default_protocol,omitempty"`
 	ProxyURL           string `json:"proxy_url,omitempty"`
+	Lang               string `json:"lang,omitempty"` // "zh" or "en", empty = zh
 }
 
 func Load() (*Config, error) {

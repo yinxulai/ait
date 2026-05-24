@@ -241,6 +241,8 @@ const (
 	KHelpDescQuestionMark
 	KHelpTermBack
 	KHelpDescBack
+	KHelpTermLangToggle
+	KHelpDescLangToggle
 	KHelpTermSelectTask
 	KHelpDescSelectTask
 	KHelpTermEnterDetail
@@ -357,6 +359,7 @@ const (
 	KMinutesAgoFmt  // "%d 分钟前"
 	KHoursAgoFmt    // "%d 小时前"
 	KDaysAgoFmt     // "%d 天前"
+	KToggleLang     // "切换语言" / "Toggle Lang"
 )
 
 var translations = [2]map[Key]string{
@@ -573,6 +576,8 @@ var translations = [2]map[Key]string{
 		KHelpDescQuestionMark: "打开此帮助页。",
 		KHelpTermBack:         "b / Esc",
 		KHelpDescBack:         "返回上一页。",
+		KHelpTermLangToggle:   "F2",
+		KHelpDescLangToggle:   "切换界面语言（中文 / 英文）。",
 
 		KHelpTermSelectTask:  "↑↓ / j k",
 		KHelpDescSelectTask:  "选择任务。",
@@ -693,6 +698,7 @@ var translations = [2]map[Key]string{
 		KMinutesAgoFmt:  "%d 分钟前",
 		KHoursAgoFmt:    "%d 小时前",
 		KDaysAgoFmt:     "%d 天前",
+		KToggleLang:     "切换语言",
 	},
 	EN: {
 		// Hotkeys
@@ -907,6 +913,8 @@ var translations = [2]map[Key]string{
 		KHelpDescQuestionMark: "Open this help page.",
 		KHelpTermBack:         "b / Esc",
 		KHelpDescBack:         "Go back to the previous page.",
+		KHelpTermLangToggle:   "F2",
+		KHelpDescLangToggle:   "Switch UI language (ZH / EN).",
 
 		KHelpTermSelectTask:  "↑↓ / j k",
 		KHelpDescSelectTask:  "Select a task.",
@@ -1027,6 +1035,7 @@ var translations = [2]map[Key]string{
 		KMinutesAgoFmt:  "%d min ago",
 		KHoursAgoFmt:    "%d hr ago",
 		KDaysAgoFmt:     "%d days ago",
+		KToggleLang:     "Toggle Lang",
 	},
 }
 

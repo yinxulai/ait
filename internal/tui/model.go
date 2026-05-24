@@ -6,6 +6,8 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yinxulai/ait/internal/config"
+	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/tui/pages"
 	"github.com/yinxulai/ait/internal/types"
@@ -276,6 +278,16 @@ func (m *Model) handleKey(msg tea.KeyMsg) (tea.Model, tea.Cmd) {
 	m.status = ""
 	m.err = nil
 
+	// ── 全局快捷键（所有页面层共享）──
+	if msg.String() == "F2" {
+		if i18n.Active() == i18n.ZH {
+			i18n.SetLang(i18n.EN)
+		} else {
+			i18n.SetLang(i18n.ZH)
+		}
+		return m, saveLangConfigCmd(i18n.Active())
+	}
+
 	switch m.view {
 	case viewTaskList:
 		newState, cmd, nav := pages.HandleTaskListKey(m.taskList, msg, m.client)
@@ -443,6 +455,23 @@ func (m *Model) currentNavTarget() pages.NavTarget {
 }
 
 // ─── Server 事件处理 ──────────────────────────────────────────────────────────
+
+// saveLangConfigCmd 将语言设置异步保存到配置文件（尽力而为）。
+func saveLangConfigCmd(lang i18n.Lang) tea.Cmd {
+	return func() tea.Msg {
+		cfg, err := config.Load()
+		if err != nil {
+			cfg = &config.Config{}
+		}
+		if lang == i18n.EN {
+			cfg.Lang = "en"
+		} else {
+			cfg.Lang = "zh"
+		}
+		_ = cfg.Save()
+		return nil
+	}
+}
 
 func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 	e := msg.Event

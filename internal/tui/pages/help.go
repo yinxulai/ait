@@ -141,6 +141,7 @@ func helpContent() []helpSection {
 			items: []helpItem{
 				{i18n.T(i18n.KHelpTermQuit), i18n.T(i18n.KHelpDescQuit)},
 				{i18n.T(i18n.KHelpTermQuestionMark), i18n.T(i18n.KHelpDescQuestionMark)},
+				{i18n.T(i18n.KHelpTermLangToggle), i18n.T(i18n.KHelpDescLangToggle)},
 				{i18n.T(i18n.KHelpTermBack), i18n.T(i18n.KHelpDescBack)},
 			},
 		},

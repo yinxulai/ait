@@ -10,6 +10,8 @@ import (
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/tui"
 	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/config"
+	"github.com/yinxulai/ait/internal/i18n"
 )
 
 // 版本信息，通过 ldflags 在构建时注入。
@@ -36,6 +38,7 @@ func main() {
 	count       := flag.Int("count", 100, "请求总数")
 	timeout     := flag.Int("timeout", 300, "请求超时时间（秒）")
 	turboFlag   := flag.Bool("turbo", false, "是否启用 Turbo 并发探测模式")
+	langFlag    := flag.String("lang", "", "界面语言：zh 或 en")
 	flag.Parse()
 
 	// ── 版本输出 ──────────────────────────────────────────────────────────────
@@ -51,6 +54,15 @@ func main() {
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "初始化 Server 失败: %v\n", err)
 		os.Exit(1)
+	}
+
+	// ── 初始化界面语言（flag > 配置文件 > 默认 ZH）────────────────────────────
+	if *langFlag == "en" {
+		i18n.SetLang(i18n.EN)
+	} else if *langFlag == "zh" {
+		i18n.SetLang(i18n.ZH)
+	} else if cfg, err := config.Load(); err == nil && cfg.Lang == "en" {
+		i18n.SetLang(i18n.EN)
 	}
 
 	// ── 若提供了足够参数则预建任务并自动启动 ────────────────────────────────────

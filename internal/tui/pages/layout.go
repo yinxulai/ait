@@ -50,10 +50,10 @@ func NewPageHotkeys(hotkeys []HotkeyItem, hints ...string) PageHotkeys {
 	}
 }
 
-// NewPageHotkeysWithHelp 在 NewPageHotkeys 基础上自动追加 [?] 帮助。
+// NewPageHotkeysWithHelp 在 NewPageHotkeys 基础上自动追加 [?] 帮助和 [F2] 切换语言。
 // 非帮助页使用此函数以统一显示帮助入口。
 func NewPageHotkeysWithHelp(hotkeys []HotkeyItem, hints ...string) PageHotkeys {
-	withHelp := append(hotkeys, HotkeyAction("?", i18n.T(i18n.KHelp)))
+	withHelp := append(hotkeys, HotkeyAction("F2", i18n.T(i18n.KToggleLang)), HotkeyAction("?", i18n.T(i18n.KHelp)))
 	return PageHotkeys{
 		Hotkeys: withHelp,
 		Hints:   HotkeyTexts(hints...),
