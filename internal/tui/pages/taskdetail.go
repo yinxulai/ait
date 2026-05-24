@@ -376,11 +376,26 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	}
 
 	// colWidths: 0 = 弹性列，>0 = 固定总宽
-	colWidths := []int{4, 0, 7, 8, 7, 7, 7, 6, 6} // 状态图标, 时间=flex, 模式, 成功率, 耗时, TTFT, TPS, RPM, TPM
+	// 动态列宽：取数据最小需求与表头显示宽+2的较大值，确保切换语言后不溢出
+	hw := func(s string) int { return lipgloss.Width(s) + 2 }
+	h3 := i18n.T(i18n.KMode)
+	h4 := i18n.T(i18n.KSuccessRate)
+	h5 := i18n.T(i18n.KElapsed)
+	colWidths := []int{
+		4,                       // 状态图标
+		0,                       // 时间=flex
+		maxInt(7, hw(h3)),       // 模式
+		maxInt(8, hw(h4)),       // 成功率
+		maxInt(7, hw(h5)),       // 耗时
+		maxInt(7, hw("TTFT")),   // TTFT
+		maxInt(7, hw("TPS")),    // TPS
+		maxInt(6, hw("RPM")),    // RPM
+		maxInt(6, hw("TPM")),    // TPM
+	}
 	sel := s.HistorySel
 	tableH := tableMaxH - len(rightTitle)
 	tbl := lgtable.New().
-		Headers("", i18n.T(i18n.KTime), i18n.T(i18n.KMode), i18n.T(i18n.KSuccessRate), i18n.T(i18n.KElapsed), "TTFT", "TPS", "RPM", "TPM").
+		Headers("", i18n.T(i18n.KTime), h3, h4, h5, "TTFT", "TPS", "RPM", "TPM").
 		Width(rightW).
 		Height(tableH).
 		YOffset(s.HistoryOff).

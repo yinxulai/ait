@@ -300,9 +300,29 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 
 	// ── 构建 lipgloss/table ──
 	// colWidths: 0 = 弹性列（占用剩余宽度），>0 = 固定总宽（包括两端各 1 字符 padding）
-	colWidths := []int{0, 8, 22, 12, 8, 10, 10, 10, 8, 8} // 任务名称=flex, 模式, 协议, 上次运行, 成功率, 缓存命中, TTFT均值, TPS均值, RPM, TPM
+	// 动态列宽：取数据最小需求与表头显示宽+2的较大值，确保切换语言后不溢出
+	hw := func(s string) int { return lipgloss.Width(s) + 2 }
+	h1 := i18n.T(i18n.KMode)
+	h2 := i18n.T(i18n.KProtocol)
+	h3 := i18n.T(i18n.KLastRun)
+	h4 := i18n.T(i18n.KSuccessRate)
+	h5 := i18n.T(i18n.KColCacheHit)
+	h6 := i18n.T(i18n.KColAvgTTFT)
+	h7 := i18n.T(i18n.KColAvgTPS)
+	colWidths := []int{
+		0,                       // 任务名称=flex
+		maxInt(8, hw(h1)),       // 模式
+		maxInt(22, hw(h2)),      // 协议（数据可能较长）
+		maxInt(12, hw(h3)),      // 上次运行
+		maxInt(8, hw(h4)),       // 成功率
+		maxInt(10, hw(h5)),      // 缓存命中
+		maxInt(10, hw(h6)),      // TTFT均值
+		maxInt(10, hw(h7)),      // TPS均值
+		maxInt(8, hw("RPM")),    // RPM
+		maxInt(8, hw("TPM")),    // TPM
+	}
 	t := lgtable.New().
-		Headers(i18n.T(i18n.KTaskName), i18n.T(i18n.KMode), i18n.T(i18n.KProtocol), i18n.T(i18n.KLastRun), i18n.T(i18n.KSuccessRate), i18n.T(i18n.KColCacheHit), i18n.T(i18n.KColAvgTTFT), i18n.T(i18n.KColAvgTPS), "RPM", "TPM").
+		Headers(i18n.T(i18n.KTaskName), h1, h2, h3, h4, h5, h6, h7, "RPM", "TPM").
 		Width(width).
 		Height(maxH).
 		YOffset(s.Offset).
