@@ -32,7 +32,7 @@ type MockClient struct {
 	model           string
 }
 
-func (m *MockClient) Request(prompt string, stream bool) (*client.ResponseMetrics, error) {
+func (m *MockClient) Request(systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
 	callIndex := atomic.AddInt64(&m.callCount, 1) - 1
 	
 	if m.requestDelay > 0 {
@@ -92,6 +92,11 @@ func (m *MockClient) ResetCallCount() {
 	atomic.StoreInt64(&m.callCount, 0)
 }
 
+// RawRequest 使用原始 JSON 请求体发送请求（mock 实现）
+func (m *MockClient) RawRequest(rawBody string) (*client.ResponseMetrics, error) {
+	return m.Request("", rawBody, false)
+}
+
 // SetLogger 设置日志记录器
 func (m *MockClient) SetLogger(logger *logger.Logger) {
 	// MockClient 不需要实际的日志记录器，所以这里是空实现
@@ -103,6 +108,7 @@ func NewRunnerWithClient(input types.Input, client client.ModelClient) *Runner {
 		input: input,
 		client: client,
 		upload: upload.New(),
+		stopCh: make(chan struct{}),
 	}
 }
 
@@ -1498,7 +1504,7 @@ type MockClientWithErrorMetrics struct {
 	errorMetrics               *client.ResponseMetrics
 }
 
-func (m *MockClientWithErrorMetrics) Request(prompt string, stream bool) (*client.ResponseMetrics, error) {
+func (m *MockClientWithErrorMetrics) Request(systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
 	callIndex := atomic.AddInt64(&m.callCount, 1) - 1
 	
 	// 检查是否应该失败
@@ -1544,4 +1550,8 @@ func (m *MockClientWithErrorMetrics) GetModel() string {
 
 func (m *MockClientWithErrorMetrics) SetLogger(logger *logger.Logger) {
 	// Mock实现，不需要实际功能
+}
+
+func (m *MockClientWithErrorMetrics) RawRequest(rawBody string) (*client.ResponseMetrics, error) {
+	return m.Request("", rawBody, false)
 }

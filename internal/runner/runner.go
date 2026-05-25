@@ -18,7 +18,11 @@ type Runner struct {
 	input  types.Input
 	upload *upload.Uploader
 	client client.ModelClient
+	stopCh chan struct{}
+	stopOnce sync.Once
 }
+
+type RequestDoneCallback func(metrics *client.ResponseMetrics, index int, err error)
 
 // NewRunner 创建新的性能测试执行器
 func NewRunner(taskID string, config types.Input) (*Runner, error) {
@@ -38,7 +42,33 @@ func NewRunner(taskID string, config types.Input) (*Runner, error) {
 		client: client,
 		input:  config,
 		upload: upload.New(),
+		stopCh: make(chan struct{}),
 	}, nil
+}
+
+func (r *Runner) Stop() {
+	r.stopOnce.Do(func() {
+		close(r.stopCh)
+	})
+}
+
+func (r *Runner) acquireSlot(ch chan int) bool {
+	select {
+	case <-r.stopCh:
+		return false
+	case ch <- 1:
+		return true
+	}
+}
+
+func calculateCacheHitRate(metrics *client.ResponseMetrics) float64 {
+	if metrics == nil || metrics.CachedInputTokens <= 0 {
+		return 0
+	}
+	if metrics.PromptTokens <= 0 {
+		return 0
+	}
+	return float64(metrics.CachedInputTokens) / float64(metrics.PromptTokens)
 }
 
 // Run 执行性能测试，返回结果数据
@@ -47,23 +77,30 @@ func (r *Runner) Run() (*types.ReportData, error) {
 	results := make([]*client.ResponseMetrics, r.input.Count)
 	start := time.Now()
 	ch := make(chan int, r.input.Concurrency)
-
-	completed := int64(0)
-	failed := int64(0)
+	launchedCount := 0
 
 	for i := 0; i < r.input.Count; i++ {
+		if !r.acquireSlot(ch) {
+			break
+		}
+		launchedCount++
 		wg.Add(1)
-		ch <- 1
 		go func(idx int) {
 			defer wg.Done()
 			defer func() { <-ch }()
 
 			// 获取当前请求使用的prompt
-			currentPrompt := r.input.PromptSource.GetRandomContent()
-			
-			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
+			var metrics *client.ResponseMetrics
+			var err error
+			if r.input.PromptMode == "raw" {
+				rawBody := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.RawRequest(rawBody)
+			} else {
+				systemPrompt := r.input.PromptSource.GetSystemContent()
+				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			}
 			if err != nil {
-				atomic.AddInt64(&failed, 1)
 				// 即使有错误，也尝试保存 metrics（如果有的话）
 				if metrics != nil {
 					results[idx] = metrics
@@ -76,15 +113,59 @@ func (r *Runner) Run() (*types.ReportData, error) {
 			if metrics.ErrorMessage == "" && r.upload != nil {
 				r.upload.UploadReport(r.taskID, metrics, r.input)
 			}
-
-			atomic.AddInt64(&completed, 1)
 		}(i)
 	}
 	wg.Wait()
 	elapsed := time.Since(start)
 
 	// 计算并返回结果
-	return r.calculateResult(results, elapsed), nil
+	return r.calculateResult(results, elapsed, launchedCount), nil
+}
+
+func (r *Runner) RunWithCallback(cb RequestDoneCallback) (*types.ReportData, error) {
+	var wg sync.WaitGroup
+	results := make([]*client.ResponseMetrics, r.input.Count)
+	start := time.Now()
+	ch := make(chan int, r.input.Concurrency)
+	launchedCount := 0
+
+	for i := 0; i < r.input.Count; i++ {
+		if !r.acquireSlot(ch) {
+			break
+		}
+		launchedCount++
+		wg.Add(1)
+		go func(idx int) {
+			defer wg.Done()
+			defer func() { <-ch }()
+
+			var metrics *client.ResponseMetrics
+			var err error
+			if r.input.PromptMode == "raw" {
+				rawBody := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.RawRequest(rawBody)
+			} else {
+				systemPrompt := r.input.PromptSource.GetSystemContent()
+				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			}
+			if metrics != nil {
+				results[idx] = metrics
+			}
+
+			if err == nil && metrics != nil && metrics.ErrorMessage == "" && r.upload != nil {
+				r.upload.UploadReport(r.taskID, metrics, r.input)
+			}
+
+			if cb != nil {
+				cb(metrics, idx, err)
+			}
+		}(i)
+	}
+
+	wg.Wait()
+	elapsed := time.Since(start)
+	return r.calculateResult(results, elapsed, launchedCount), nil
 }
 
 // RunWithProgress 运行性能测试并实时显示进度
@@ -103,9 +184,12 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 	var tlsHandshakeTimes []time.Duration
 	var outputTokenCounts []int
 	var inputTokenCounts []int
+	var cachedInputTokenCounts []int
 	var thinkingTokenCounts []int
+	var cacheHitRates []float64
 	var errorMessages []string
 	var ttftsMutex sync.Mutex
+	launchedCount := 0
 
 	// 启动进度更新 goroutine
 	stopProgress := make(chan bool)
@@ -126,8 +210,10 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 					ConnectTimes:      make([]time.Duration, len(connectTimes)),
 					TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
 					InputTokenCounts:  make([]int, len(inputTokenCounts)),
+					CachedInputTokenCounts: make([]int, len(cachedInputTokenCounts)),
 					OutputTokenCounts: make([]int, len(outputTokenCounts)),
 					ThinkingTokenCounts: make([]int, len(thinkingTokenCounts)),
+					CacheHitRates:     make([]float64, len(cacheHitRates)),
 					ErrorMessages:     make([]string, len(errorMessages)),
 					StartTime:         start,
 					ElapsedTime:       time.Since(start),
@@ -138,8 +224,10 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 				copy(stats.ConnectTimes, connectTimes)
 				copy(stats.TLSHandshakeTimes, tlsHandshakeTimes)
 				copy(stats.InputTokenCounts, inputTokenCounts)
+				copy(stats.CachedInputTokenCounts, cachedInputTokenCounts)
 				copy(stats.OutputTokenCounts, outputTokenCounts)
 				copy(stats.ThinkingTokenCounts, thinkingTokenCounts)
+				copy(stats.CacheHitRates, cacheHitRates)
 				copy(stats.ErrorMessages, errorMessages)
 				ttftsMutex.Unlock()
 
@@ -151,16 +239,26 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 	}()
 
 	for i := 0; i < r.input.Count; i++ {
+		if !r.acquireSlot(ch) {
+			break
+		}
+		launchedCount++
 		wg.Add(1)
-		ch <- 1
 		go func(idx int) {
 			defer wg.Done()
 			defer func() { <-ch }()
 
 			// 获取当前请求使用的prompt
-			currentPrompt := r.input.PromptSource.GetRandomContent()
-			
-			metrics, err := r.client.Request(currentPrompt, r.input.Stream)
+			var metrics *client.ResponseMetrics
+			var err error
+			if r.input.PromptMode == "raw" {
+				rawBody := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.RawRequest(rawBody)
+			} else {
+				systemPrompt := r.input.PromptSource.GetSystemContent()
+				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+			}
 			if err != nil {
 				ttftsMutex.Lock()
 				errorMessages = append(errorMessages, err.Error())
@@ -178,7 +276,9 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 						tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
 						outputTokenCounts = append(outputTokenCounts, metrics.CompletionTokens)
 						inputTokenCounts = append(inputTokenCounts, metrics.PromptTokens)
+						cachedInputTokenCounts = append(cachedInputTokenCounts, metrics.CachedInputTokens)
 						thinkingTokenCounts = append(thinkingTokenCounts, metrics.ThinkingTokens)
+						cacheHitRates = append(cacheHitRates, calculateCacheHitRate(metrics))
 					ttftsMutex.Unlock()
 				}
 				return
@@ -194,7 +294,9 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			tlsHandshakeTimes = append(tlsHandshakeTimes, metrics.TLSHandshakeTime)
 			outputTokenCounts = append(outputTokenCounts, metrics.CompletionTokens)
 			inputTokenCounts = append(inputTokenCounts, metrics.PromptTokens)
+			cachedInputTokenCounts = append(cachedInputTokenCounts, metrics.CachedInputTokens)
 			thinkingTokenCounts = append(thinkingTokenCounts, metrics.ThinkingTokens)
+			cacheHitRates = append(cacheHitRates, calculateCacheHitRate(metrics))
 			ttftsMutex.Unlock()
 
 			if metrics.ErrorMessage == "" && r.upload != nil {
@@ -219,8 +321,10 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 		ConnectTimes:      make([]time.Duration, len(connectTimes)),
 		TLSHandshakeTimes: make([]time.Duration, len(tlsHandshakeTimes)),
 		InputTokenCounts:  make([]int, len(inputTokenCounts)),
+		CachedInputTokenCounts: make([]int, len(cachedInputTokenCounts)),
 		OutputTokenCounts: make([]int, len(outputTokenCounts)),
 		ThinkingTokenCounts: make([]int, len(thinkingTokenCounts)),
+		CacheHitRates:     make([]float64, len(cacheHitRates)),
 		ErrorMessages:     make([]string, len(errorMessages)),
 		StartTime:         start,
 		ElapsedTime:       elapsed,
@@ -231,58 +335,55 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 	copy(finalStats.ConnectTimes, connectTimes)
 	copy(finalStats.TLSHandshakeTimes, tlsHandshakeTimes)
 	copy(finalStats.InputTokenCounts, inputTokenCounts)
+	copy(finalStats.CachedInputTokenCounts, cachedInputTokenCounts)
 	copy(finalStats.OutputTokenCounts, outputTokenCounts)
 	copy(finalStats.ThinkingTokenCounts, thinkingTokenCounts)
+	copy(finalStats.CacheHitRates, cacheHitRates)
 	copy(finalStats.ErrorMessages, errorMessages)
 	ttftsMutex.Unlock()
 	progressCallback(finalStats)
 
 	// 计算并返回结果
-	return r.calculateResult(results, elapsed), nil
+	return r.calculateResult(results, elapsed, launchedCount), nil
 }
 
 // calculateResult 计算性能统计结果
-func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime time.Duration) *types.ReportData {
-	if len(results) == 0 {
+func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime time.Duration, totalRequests ...int) *types.ReportData {
+	requestCount := r.input.Count
+	if len(totalRequests) > 0 {
+		requestCount = totalRequests[0]
+	}
+	if requestCount <= 0 || len(results) == 0 {
 		return &types.ReportData{}
 	}
 
-	// 分别收集所有结果和成功结果
 	allResults := make([]*client.ResponseMetrics, 0)
 	successResults := make([]*client.ResponseMetrics, 0)
-	
 	for _, result := range results {
-		if result != nil {
-			allResults = append(allResults, result)
-			// 只有没有错误且有token输出的才算成功
-			if result.ErrorMessage == "" && result.CompletionTokens > 0 {
-				successResults = append(successResults, result)
-			}
+		if result == nil {
+			continue
+		}
+		allResults = append(allResults, result)
+		if result.ErrorMessage == "" && result.CompletionTokens > 0 {
+			successResults = append(successResults, result)
 		}
 	}
-
-	// 如果完全没有数据，返回空结果
 	if len(allResults) == 0 {
 		return &types.ReportData{}
 	}
 
-	// 使用成功结果计算业务指标，使用所有结果计算网络指标
 	validResults := successResults
 	if len(validResults) == 0 {
-		// 如果没有成功的结果，至少尝试使用有部分数据的结果
 		for _, result := range allResults {
 			if result.TotalTime > 0 {
 				validResults = append(validResults, result)
 			}
 		}
-		
-		// 如果仍然没有可用数据
 		if len(validResults) == 0 {
 			return &types.ReportData{}
 		}
 	}
 
-	// 初始化最小值和最大值
 	firstResult := validResults[0]
 	minTTFT := firstResult.TimeToFirstToken
 	maxTTFT := firstResult.TimeToFirstToken
@@ -292,8 +393,12 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	maxOutputTokens := firstResult.CompletionTokens
 	minInputTokens := firstResult.PromptTokens
 	maxInputTokens := firstResult.PromptTokens
+	minCachedInputTokens := firstResult.CachedInputTokens
+	maxCachedInputTokens := firstResult.CachedInputTokens
 	minThinkingTokens := firstResult.ThinkingTokens
 	maxThinkingTokens := firstResult.ThinkingTokens
+	minCacheHitRate := calculateCacheHitRate(firstResult)
+	maxCacheHitRate := minCacheHitRate
 
 	minDNSTime := firstResult.DNSTime
 	maxDNSTime := firstResult.DNSTime
@@ -302,7 +407,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	minTLSTime := firstResult.TLSHandshakeTime
 	maxTLSTime := firstResult.TLSHandshakeTime
 
-	// 计算第一个结果的 TPS 和 TPOT
 	var firstTPS float64
 	if firstResult.TotalTime.Seconds() > 0 {
 		firstTPS = float64(firstResult.CompletionTokens) / firstResult.TotalTime.Seconds()
@@ -310,7 +414,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	minTPS := firstTPS
 	maxTPS := firstTPS
 
-	// 计算第一个结果的总吞吐量 TPS (输入 + 输出 tokens / 时间)
 	var firstTotalThroughputTPS float64
 	if firstResult.TotalTime.Seconds() > 0 {
 		totalTokens := firstResult.PromptTokens + firstResult.CompletionTokens
@@ -319,17 +422,14 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 	minTotalThroughputTPS := firstTotalThroughputTPS
 	maxTotalThroughputTPS := firstTotalThroughputTPS
 
-	// 计算第一个结果的 TPOT (Time Per Output Token)
 	var firstTPOT time.Duration
 	if firstResult.CompletionTokens > 1 {
-		// TPOT = (总耗时 - 首token耗时) / (总token数 - 1)
 		remainingTime := firstResult.TotalTime - firstResult.TimeToFirstToken
 		firstTPOT = remainingTime / time.Duration(firstResult.CompletionTokens-1)
 	}
 	minTPOT := firstTPOT
 	maxTPOT := firstTPOT
 
-	// 获取目标IP（使用第一个有效结果的IP）
 	var targetIP string
 	for _, result := range validResults {
 		if result.TargetIP != "" {
@@ -338,16 +438,14 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		}
 	}
 
-	// 累积统计
 	var sumTTFT, sumTotalTime time.Duration
 	var sumDNSTime, sumConnectTime, sumTLSTime time.Duration
-	var sumOutputTokens, sumInputTokens int
+	var sumOutputTokens, sumInputTokens, sumCachedInputTokens int
 	var sumThinkingTokens int
 	var sumTPOT time.Duration
-	var sumTotalThroughputTPS float64
+	var sumCacheHitRate, sumTotalThroughputTPS float64
 
 	for _, result := range validResults {
-		// TTFT 统计
 		sumTTFT += result.TimeToFirstToken
 		if result.TimeToFirstToken < minTTFT {
 			minTTFT = result.TimeToFirstToken
@@ -356,7 +454,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxTTFT = result.TimeToFirstToken
 		}
 
-		// 总时间统计
 		sumTotalTime += result.TotalTime
 		if result.TotalTime < minTotalTime {
 			minTotalTime = result.TotalTime
@@ -365,14 +462,11 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxTotalTime = result.TotalTime
 		}
 
-		// TPOT 统计
 		var tpot time.Duration
 		if result.CompletionTokens > 1 {
-			// TPOT = (总耗时 - 首token耗时) / (总token数 - 1)
 			remainingTime := result.TotalTime - result.TimeToFirstToken
 			tpot = remainingTime / time.Duration(result.CompletionTokens-1)
 			sumTPOT += tpot
-
 			if tpot < minTPOT || minTPOT == 0 {
 				minTPOT = tpot
 			}
@@ -381,7 +475,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			}
 		}
 
-		// 网络指标统计
 		sumDNSTime += result.DNSTime
 		if result.DNSTime < minDNSTime {
 			minDNSTime = result.DNSTime
@@ -406,7 +499,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxTLSTime = result.TLSHandshakeTime
 		}
 
-		// Output Token 统计
 		sumOutputTokens += result.CompletionTokens
 		if result.CompletionTokens < minOutputTokens {
 			minOutputTokens = result.CompletionTokens
@@ -415,7 +507,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxOutputTokens = result.CompletionTokens
 		}
 
-		// Input Token 统计
 		sumInputTokens += result.PromptTokens
 		if result.PromptTokens < minInputTokens {
 			minInputTokens = result.PromptTokens
@@ -424,7 +515,14 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxInputTokens = result.PromptTokens
 		}
 
-		// Thinking Token 统计
+		sumCachedInputTokens += result.CachedInputTokens
+		if result.CachedInputTokens < minCachedInputTokens {
+			minCachedInputTokens = result.CachedInputTokens
+		}
+		if result.CachedInputTokens > maxCachedInputTokens {
+			maxCachedInputTokens = result.CachedInputTokens
+		}
+
 		sumThinkingTokens += result.ThinkingTokens
 		if result.ThinkingTokens < minThinkingTokens {
 			minThinkingTokens = result.ThinkingTokens
@@ -433,7 +531,15 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxThinkingTokens = result.ThinkingTokens
 		}
 
-		// TPS 统计
+		cacheHitRate := calculateCacheHitRate(result)
+		sumCacheHitRate += cacheHitRate
+		if cacheHitRate < minCacheHitRate {
+			minCacheHitRate = cacheHitRate
+		}
+		if cacheHitRate > maxCacheHitRate {
+			maxCacheHitRate = cacheHitRate
+		}
+
 		var tps float64
 		if result.TotalTime.Seconds() > 0 {
 			tps = float64(result.CompletionTokens) / result.TotalTime.Seconds()
@@ -445,7 +551,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 			maxTPS = tps
 		}
 
-		// 总吞吐量 TPS 统计 (输入 + 输出 tokens / 时间)
 		var totalThroughputTPS float64
 		if result.TotalTime.Seconds() > 0 {
 			totalTokens := result.PromptTokens + result.CompletionTokens
@@ -460,34 +565,35 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		}
 	}
 
+	// successCount 基于真正成功的请求（有输出 token 且无错误）
+	// validCount 可能是 successCount 的 fallback 集，仅用于计算平均指标，不参与成功率
+	successCount := len(successResults)
 	validCount := len(validResults)
+	errorRate := float64(requestCount-successCount) / float64(requestCount) * 100
+	successRate := float64(successCount) / float64(requestCount) * 100
+	resolvedEndpoint := r.input.ResolvedEndpointURL()
 
-	// 计算错误率和成功率
-	errorRate := float64(r.input.Count-validCount) / float64(r.input.Count) * 100
-	successRate := float64(validCount) / float64(r.input.Count) * 100
-
-	// 如果没有有效结果，返回基础结果
 	if validCount == 0 {
 		return &types.ReportData{
-			TotalRequests: r.input.Count,
+			TotalRequests: requestCount,
 			Concurrency:   r.input.Concurrency,
 			TotalTime:     totalTime,
 			IsStream:      r.input.Stream,
 			IsThinking:    r.input.Thinking,
+			Protocol:      r.input.NormalizedProtocol(),
+			EndpointURL:   resolvedEndpoint,
+			BaseUrl:       resolvedEndpoint,
 			ErrorRate:     errorRate,
 			SuccessRate:   successRate,
 		}
 	}
 
-	// 计算各项指标的平均值
-	// 注意：时间指标可以直接用总和除以数量来计算平均值，因为时间是可加性的
 	avgTTFT := sumTTFT / time.Duration(validCount)
 	avgTotalTime := sumTotalTime / time.Duration(validCount)
 	avgDNSTime := sumDNSTime / time.Duration(validCount)
 	avgConnectTime := sumConnectTime / time.Duration(validCount)
 	avgTLSTime := sumTLSTime / time.Duration(validCount)
 
-	// 计算TPOT平均值 - 只对有效的TPOT计算结果求平均
 	var avgTPOT time.Duration
 	validTPOTCount := 0
 	for _, result := range validResults {
@@ -499,53 +605,47 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		avgTPOT = sumTPOT / time.Duration(validTPOTCount)
 	}
 
-	// Token数量计算
 	avgOutputTokens := sumOutputTokens / validCount
 	avgInputTokens := sumInputTokens / validCount
+	avgCachedInputTokens := sumCachedInputTokens / validCount
 	avgThinkingTokens := sumThinkingTokens / validCount
+	avgCacheHitRate := sumCacheHitRate / float64(validCount)
 
-	// TPS是比率指标，需要特殊处理：
-	// 错误方式：float64(sumTokens) / sumTotalTime.Seconds() - 这相当于计算总体批处理的TPS
-	// 正确方式：先计算每个请求的TPS，然后求算术平均值 - 这反映单个请求的平均性能
 	var sumTPS float64
 	for _, result := range validResults {
 		if result.TotalTime.Seconds() > 0 {
-			tps := float64(result.CompletionTokens) / result.TotalTime.Seconds()
-			sumTPS += tps
+			sumTPS += float64(result.CompletionTokens) / result.TotalTime.Seconds()
 		}
 	}
 	avgTPS := sumTPS / float64(validCount)
-
-	// 计算总吞吐量 TPS 的平均值
 	avgTotalThroughputTPS := sumTotalThroughputTPS / float64(validCount)
 
-	// 计算方差 - 第一遍遍历计算平均值后的方差
 	var varianceSumTotalTime, varianceSumTTFT, varianceSumTPOT float64
-	var varianceSumInputTokens, varianceSumOutputTokens, varianceSumThinkingTokens float64
-	var varianceSumTPS, varianceSumTotalThroughputTPS float64
+	var varianceSumInputTokens, varianceSumCachedInputTokens, varianceSumOutputTokens, varianceSumThinkingTokens float64
+	var varianceSumCacheHitRate, varianceSumTPS, varianceSumTotalThroughputTPS float64
 
 	for _, result := range validResults {
-		// 总时间方差
 		diffTotalTime := float64(result.TotalTime - avgTotalTime)
 		varianceSumTotalTime += diffTotalTime * diffTotalTime
 
-		// TTFT 方差
 		diffTTFT := float64(result.TimeToFirstToken - avgTTFT)
 		varianceSumTTFT += diffTTFT * diffTTFT
 
-		// Input Token 方差
 		diffInputTokens := float64(result.PromptTokens - avgInputTokens)
 		varianceSumInputTokens += diffInputTokens * diffInputTokens
 
-		// Output Token 方差
+		diffCachedInputTokens := float64(result.CachedInputTokens - avgCachedInputTokens)
+		varianceSumCachedInputTokens += diffCachedInputTokens * diffCachedInputTokens
+
 		diffOutputTokens := float64(result.CompletionTokens - avgOutputTokens)
 		varianceSumOutputTokens += diffOutputTokens * diffOutputTokens
 
-		// Thinking Token 方差
 		diffThinkingTokens := float64(result.ThinkingTokens - avgThinkingTokens)
 		varianceSumThinkingTokens += diffThinkingTokens * diffThinkingTokens
 
-		// TPS 方差
+		diffCacheHitRate := calculateCacheHitRate(result) - avgCacheHitRate
+		varianceSumCacheHitRate += diffCacheHitRate * diffCacheHitRate
+
 		var tps float64
 		if result.TotalTime.Seconds() > 0 {
 			tps = float64(result.CompletionTokens) / result.TotalTime.Seconds()
@@ -553,7 +653,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		diffTPS := tps - avgTPS
 		varianceSumTPS += diffTPS * diffTPS
 
-		// 总吞吐量 TPS 方差
 		var totalThroughputTPS float64
 		if result.TotalTime.Seconds() > 0 {
 			totalTokens := result.PromptTokens + result.CompletionTokens
@@ -563,7 +662,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		varianceSumTotalThroughputTPS += diffTotalThroughputTPS * diffTotalThroughputTPS
 	}
 
-	// TPOT 方差计算 - 只对有效的 TPOT 计算
 	for _, result := range validResults {
 		if result.CompletionTokens > 1 {
 			remainingTime := result.TotalTime - result.TimeToFirstToken
@@ -573,7 +671,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		}
 	}
 
-	// 计算最终标准差值（方差的平方根）
 	stdDevTotalTime := time.Duration(math.Sqrt(varianceSumTotalTime / float64(validCount)))
 	stdDevTTFT := time.Duration(math.Sqrt(varianceSumTTFT / float64(validCount)))
 	stdDevTPOT := time.Duration(0)
@@ -581,22 +678,31 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		stdDevTPOT = time.Duration(math.Sqrt(varianceSumTPOT / float64(validTPOTCount)))
 	}
 	stdDevInputTokenCount := math.Sqrt(varianceSumInputTokens / float64(validCount))
+	stdDevCachedInputTokenCount := math.Sqrt(varianceSumCachedInputTokens / float64(validCount))
 	stdDevOutputTokenCount := math.Sqrt(varianceSumOutputTokens / float64(validCount))
 	stdDevThinkingTokenCount := math.Sqrt(varianceSumThinkingTokens / float64(validCount))
+	stdDevCacheHitRate := math.Sqrt(varianceSumCacheHitRate / float64(validCount))
 	stdDevTPS := math.Sqrt(varianceSumTPS / float64(validCount))
 	stdDevTotalThroughputTPS := math.Sqrt(varianceSumTotalThroughputTPS / float64(validCount))
 
-	result := &types.ReportData{
-		TotalRequests:       r.input.Count,
+	var rpm, tpm float64
+	if totalTime.Minutes() > 0 {
+		rpm = float64(successCount) / totalTime.Minutes()
+		tpm = float64(sumOutputTokens) / totalTime.Minutes()
+	}
+
+	return &types.ReportData{
+		TotalRequests:       requestCount,
 		Concurrency:         r.input.Concurrency,
 		TotalTime:           totalTime,
 		IsStream:            r.input.Stream,
 		IsThinking:          r.input.Thinking,
-		// 时间指标
+		Protocol:            r.input.NormalizedProtocol(),
+		EndpointURL:         resolvedEndpoint,
+		BaseUrl:             resolvedEndpoint,
 		AvgTotalTime:        avgTotalTime,
 		MinTotalTime:        minTotalTime,
 		MaxTotalTime:        maxTotalTime,
-		// 网络指标
 		AvgDNSTime:          avgDNSTime,
 		MinDNSTime:          minDNSTime,
 		MaxDNSTime:          maxDNSTime,
@@ -607,7 +713,6 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		MinTLSHandshakeTime: minTLSTime,
 		MaxTLSHandshakeTime: maxTLSTime,
 		TargetIP:            targetIP,
-		// 服务性能指标
 		AvgTTFT:             avgTTFT,
 		MinTTFT:             minTTFT,
 		MaxTTFT:             maxTTFT,
@@ -617,32 +722,37 @@ func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime ti
 		AvgInputTokenCount:  avgInputTokens,
 		MinInputTokenCount:  minInputTokens,
 		MaxInputTokenCount:  maxInputTokens,
+		AvgCachedInputTokenCount: avgCachedInputTokens,
+		MinCachedInputTokenCount: minCachedInputTokens,
+		MaxCachedInputTokenCount: maxCachedInputTokens,
 		AvgOutputTokenCount: avgOutputTokens,
 		MinOutputTokenCount: minOutputTokens,
 		MaxOutputTokenCount: maxOutputTokens,
 		AvgThinkingTokenCount: avgThinkingTokens,
 		MinThinkingTokenCount: minThinkingTokens,
 		MaxThinkingTokenCount: maxThinkingTokens,
+		AvgCacheHitRate:     avgCacheHitRate,
+		MinCacheHitRate:     minCacheHitRate,
+		MaxCacheHitRate:     maxCacheHitRate,
 		AvgTPS:              avgTPS,
 		MinTPS:              minTPS,
 		MaxTPS:              maxTPS,
-		// 总吞吐量指标
 		AvgTotalThroughputTPS: avgTotalThroughputTPS,
 		MinTotalThroughputTPS: minTotalThroughputTPS,
 		MaxTotalThroughputTPS: maxTotalThroughputTPS,
-		// 标准差指标
+		RPM:                 rpm,
+		TPM:                 tpm,
 		StdDevTotalTime:        stdDevTotalTime,
 		StdDevTTFT:             stdDevTTFT,
 		StdDevTPOT:             stdDevTPOT,
 		StdDevInputTokenCount:  stdDevInputTokenCount,
+		StdDevCachedInputTokenCount: stdDevCachedInputTokenCount,
 		StdDevOutputTokenCount: stdDevOutputTokenCount,
 		StdDevThinkingTokenCount: stdDevThinkingTokenCount,
+		StdDevCacheHitRate:    stdDevCacheHitRate,
 		StdDevTPS:              stdDevTPS,
 		StdDevTotalThroughputTPS: stdDevTotalThroughputTPS,
-		// 可靠性指标
 		ErrorRate:           errorRate,
 		SuccessRate:         successRate,
 	}
-
-	return result
 }

@@ -11,11 +11,27 @@ import (
 	"unicode/utf8"
 )
 
+var generatedCommonSeeds = []string{
+	"公共消息1：以下内容描述一个固定的评测背景，所有请求都共享这段上下文，以便模拟前缀缓存命中。",
+	"公共消息2：请基于同一组系统约束、相同的领域设定和一致的输出风格进行分析，不要改变整体语境。",
+	"公共消息3：你正在参与稳定负载测试，公共上下文应尽量保持一致，只有用户问题会发生变化。",
+}
+
+var generatedUserSeeds = []string{
+	"随机用户消息1：请提炼以上背景里的三个关键结论，并说明它们为什么重要。",
+	"随机用户消息2：基于上述共享信息，总结最值得关注的风险点与应对方向。",
+	"随机用户消息3：请用简洁结构归纳核心要点，并指出其中最有价值的一条。",
+	"随机用户消息4：结合以上上下文，说明该场景在实际落地时应优先验证哪些指标。",
+	"随机用户消息5：请从性能、稳定性和可观测性三个角度给出简短分析。",
+	"随机用户消息6：在不改变公共背景的前提下，概括最可能影响结果判断的因素。",
+}
+
 // PromptSource 表示prompt的来源信息
 type PromptSource struct {
 	IsFile         bool     // 是否来自文件
 	FilePaths      []string // 文件路径列表
 	Contents       []string // prompt内容列表（仅用于非文件内容）
+	SystemContent  string   // 可选的系统消息内容；为空时表示不额外发送 system 消息
 	DisplayText    string   // 用于显示的文本
 	ShouldTruncate bool     // 是否需要截断显示（对于已经包含长度信息的内容，不需要再次处理）
 }
@@ -98,6 +114,11 @@ func loadMultipleFiles(pattern string) (*PromptSource, error) {
 	}, nil
 }
 
+// GetSystemContent 返回系统消息内容；为空时不发送额外的 system 消息。
+func (ps *PromptSource) GetSystemContent() string {
+	return ps.SystemContent
+}
+
 // GetRandomContent 随机获取一个prompt内容
 func (ps *PromptSource) GetRandomContent() string {
 	// 如果不是文件源，直接返回内容
@@ -144,10 +165,14 @@ func (ps *PromptSource) GetRandomContent() string {
 func (ps *PromptSource) GetContentByIndex(index int) string {
 	// 如果不是文件源，直接返回内容
 	if !ps.IsFile {
-		if index < 0 || index >= len(ps.Contents) {
+		if len(ps.Contents) == 0 {
 			return ps.GetRandomContent()
 		}
-		return ps.Contents[index]
+		if index < 0 {
+			return ps.GetRandomContent()
+		}
+		// 用取模循环，确保多个请求在有限 Contents 上均匀分布
+		return ps.Contents[index%len(ps.Contents)]
 	}
 
 	// 文件源：根据索引读取对应文件
@@ -261,20 +286,140 @@ func GeneratePromptByLength(length int) string {
 	return builder.String()
 }
 
-// LoadPromptByLength 创建指定长度的 PromptSource
+func splitGeneratedPromptLengths(total int) (commonLen, userLen int) {
+	if total <= 0 {
+		return 0, 0
+	}
+
+	if total <= 24 {
+		return 0, total
+	}
+
+	commonLen = total * 9 / 10
+	userLen = total - commonLen
+
+	if userLen < 24 {
+		userLen = 24
+		if total < userLen {
+			userLen = total
+		}
+		commonLen = total - userLen
+	}
+
+	if commonLen < 0 {
+		commonLen = 0
+	}
+	if userLen < 0 {
+		userLen = 0
+	}
+
+	return commonLen, userLen
+}
+
+func splitBudget(total, parts int) []int {
+	if parts <= 0 {
+		return nil
+	}
+	budgets := make([]int, parts)
+	base := total / parts
+	rest := total % parts
+	for i := 0; i < parts; i++ {
+		budgets[i] = base
+		if i < rest {
+			budgets[i]++
+		}
+	}
+	return budgets
+}
+
+func truncateToRunes(text string, length int) string {
+	if length <= 0 {
+		return ""
+	}
+	runes := []rune(text)
+	if len(runes) <= length {
+		return text
+	}
+	return string(runes[:length])
+}
+
+func composeSizedText(seed string, target int) string {
+	if target <= 0 {
+		return ""
+	}
+
+	seed = strings.TrimSpace(seed)
+	if utf8.RuneCountInString(seed) >= target {
+		return truncateToRunes(seed, target)
+	}
+
+	builder := strings.Builder{}
+	builder.WriteString(seed)
+	currentLen := utf8.RuneCountInString(seed)
+
+	if currentLen < target {
+		remaining := target - currentLen
+		if remaining > 0 {
+			builder.WriteString(GeneratePromptByLength(remaining))
+		}
+	}
+
+	return truncateToRunes(builder.String(), target)
+}
+
+func buildGeneratedCommonPrompt(target int) string {
+	if target <= 0 {
+		return ""
+	}
+
+	messageCount := len(generatedCommonSeeds)
+	separatorLen := 2 * (messageCount - 1)
+	if target <= separatorLen+messageCount {
+		return composeSizedText(generatedCommonSeeds[0], target)
+	}
+
+	bodyBudget := target - separatorLen
+	budgets := splitBudget(bodyBudget, messageCount)
+	parts := make([]string, 0, messageCount)
+	for i, budget := range budgets {
+		parts = append(parts, composeSizedText(generatedCommonSeeds[i], budget))
+	}
+
+	return truncateToRunes(strings.Join(parts, "\n\n"), target)
+}
+
+func buildGeneratedUserPrompts(target int) []string {
+	if target <= 0 {
+		return []string{""}
+	}
+
+	contents := make([]string, 0, len(generatedUserSeeds))
+	for _, seed := range generatedUserSeeds {
+		contents = append(contents, composeSizedText(seed, target))
+	}
+	return contents
+}
+
+// LoadPromptByLength 创建指定长度的 PromptSource。
+//
+// generated 模式会构造一段共享公共前缀和多条用户问题变体：
+//   - SystemContent: 共享的公共消息，所有请求保持一致，用于模拟缓存命中前缀。
+//   - Contents: 多条不同的用户消息，请求按索引轮换，模拟公共前缀下的随机用户提问。
+// 单次请求的总 prompt 长度仍与传入的 length 保持一致。
 func LoadPromptByLength(length int) (*PromptSource, error) {
 	if length <= 0 {
 		return nil, fmt.Errorf("prompt 长度必须大于 0")
 	}
-
-	content := GeneratePromptByLength(length)
-	actualLength := utf8.RuneCountInString(content)
+	commonLen, userLen := splitGeneratedPromptLengths(length)
+	systemContent := buildGeneratedCommonPrompt(commonLen)
+	contents := buildGeneratedUserPrompts(userLen)
 
 	return &PromptSource{
 		IsFile:         false,
 		FilePaths:      nil,
-		Contents:       []string{content},
-		DisplayText:    fmt.Sprintf("生成内容 (长度: %d 字符)", actualLength),
-		ShouldTruncate: false, // 已经包含长度信息，不需要再次截断处理
+		Contents:       contents,
+		SystemContent:  systemContent,
+		DisplayText:    fmt.Sprintf("生成内容 (公共消息 %d 字符, 用户变体 x%d, 单次总长 %d 字符)", utf8.RuneCountInString(systemContent), len(contents), length),
+		ShouldTruncate: false,
 	}, nil
 }

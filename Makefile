@@ -1,5 +1,5 @@
 # 项目配置
-BINARIES=ait tpg
+BINARY=ait
 BIN_DIR=bin
 
 # Go 相关变量
@@ -10,7 +10,10 @@ GOTEST=$(GOCMD) test
 GOMOD=$(GOCMD) mod
 
 # 构建标志
-LDFLAGS=-ldflags "-w -s"
+VERSION ?= $(shell git describe --tags --always --dirty 2>/dev/null || echo "dev")
+GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
+BUILD_TIME ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
+LDFLAGS=-ldflags "-w -s -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildTime=$(BUILD_TIME)"
 BUILD_FLAGS=-trimpath $(LDFLAGS)
 
 ## help: 显示此帮助信息
@@ -19,15 +22,25 @@ help:
 	@echo 'Usage:'
 	@sed -n 's/^##//p' ${MAKEFILE_LIST} | column -t -s ':' |  sed -e 's/^/ /'
 
-## build: 构建所有二进制文件
+## build: 构建当前平台二进制
 .PHONY: build
 build:
-	@echo "正在构建所有二进制文件..."
+	@echo "正在构建 $(BINARY)..."
 	@mkdir -p $(BIN_DIR)
-	@for binary in $(BINARIES); do \
-		echo "构建 $$binary..."; \
-		$(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$$binary ./cmd/$$binary/; \
-	done
+	$(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)/
+
+## build-all: 交叉编译所有平台
+.PHONY: build-all
+build-all:
+	@echo "正在交叉编译所有平台..."
+	@mkdir -p $(BIN_DIR)
+	GOOS=linux   GOARCH=amd64  $(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY)-linux-amd64   ./cmd/$(BINARY)/
+	GOOS=linux   GOARCH=arm64  $(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY)-linux-arm64   ./cmd/$(BINARY)/
+	GOOS=linux   GOARCH=386    $(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY)-linux-386     ./cmd/$(BINARY)/
+	GOOS=linux   GOARCH=arm    $(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY)-linux-arm     ./cmd/$(BINARY)/
+	GOOS=darwin  GOARCH=amd64  $(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY)-darwin-amd64  ./cmd/$(BINARY)/
+	GOOS=darwin  GOARCH=arm64  $(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY)-darwin-arm64  ./cmd/$(BINARY)/
+	GOOS=windows GOARCH=amd64  $(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY)-windows-amd64.exe ./cmd/$(BINARY)/
 
 ## test: 运行所有测试
 .PHONY: test

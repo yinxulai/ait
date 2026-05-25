@@ -22,16 +22,24 @@ type ResponseMetrics struct {
 	
 	// 内容指标
 	PromptTokens     int           // 输入 token 数量
+	CachedInputTokens int          // 缓存命中的输入 token 数量
 	ThinkingTokens   int           // 思考/推理 token 数量
 	CompletionTokens int           // 输出 token 数量 (用于TPS计算)
 	
 	// 错误信息
 	ErrorMessage     string        // 错误信息（如果有）
+
+	// 原始数据（供请求详情页展示和复制）
+	RequestBody      string        // 发送给 API 的原始 JSON 请求体
+	ResponseBody     string        // API 返回的原始数据（非流式为 JSON，流式为所有 SSE 行拼接）
 }
 
 // ModelClient 定义统一的模型客户端接口
 type ModelClient interface {
-	Request(prompt string, stream bool) (*ResponseMetrics, error)
+	// Request 发送请求。systemPrompt 为空时行为与原来相同（不添加 system 消息）。
+	Request(systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error)
+	// RawRequest 使用原始 JSON 请求体发送请求，stream 从请求体中的 stream 字段自动检测。
+	RawRequest(rawBody string) (*ResponseMetrics, error)
 	GetProtocol() string
 	GetModel() string
 	SetLogger(logger *logger.Logger) // 设置日志记录器
@@ -39,12 +47,12 @@ type ModelClient interface {
 
 // NewClient 根据配置创建客户端
 func NewClient(config types.Input, logger *logger.Logger) (ModelClient, error) {
-	switch config.Protocol {
-	case "openai":
+	switch config.NormalizedProtocol() {
+	case types.ProtocolOpenAICompletions, types.ProtocolOpenAIResponses:
 		client := NewOpenAIClient(config)
 		client.SetLogger(logger)
 		return client, nil
-	case "anthropic":
+	case types.ProtocolAnthropicMessages:
 		client := NewAnthropicClient(config)
 		client.SetLogger(logger)
 		return client, nil

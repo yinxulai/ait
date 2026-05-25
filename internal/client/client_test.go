@@ -9,40 +9,72 @@ import (
 
 func TestNewClient(t *testing.T) {
 	tests := []struct {
-		name      string
-		config    types.Input
-		wantError bool
+		name             string
+		config           types.Input
+		wantError        bool
+		expectedProtocol string
+		expectedEndpoint string
 	}{
 		{
-			name: "valid openai client",
+			name: "valid openai completions client",
+			config: types.Input{
+				Protocol:    types.ProtocolOpenAICompletions,
+				EndpointURL: "https://api.openai.com/v1/chat/completions",
+				ApiKey:      "test-key",
+				Model:       "gpt-4.1-mini",
+				Timeout:     30 * time.Second,
+			},
+			wantError:        false,
+			expectedProtocol: types.ProtocolOpenAICompletions,
+			expectedEndpoint: "https://api.openai.com/v1/chat/completions",
+		},
+		{
+			name: "valid openai responses client",
+			config: types.Input{
+				Protocol:    types.ProtocolOpenAIResponses,
+				EndpointURL: "https://api.openai.com/v1/responses",
+				ApiKey:      "test-key",
+				Model:       "gpt-4.1-mini",
+				Timeout:     30 * time.Second,
+			},
+			wantError:        false,
+			expectedProtocol: types.ProtocolOpenAIResponses,
+			expectedEndpoint: "https://api.openai.com/v1/responses",
+		},
+		{
+			name: "valid anthropic messages client",
+			config: types.Input{
+				Protocol:    types.ProtocolAnthropicMessages,
+				EndpointURL: "https://api.anthropic.com/v1/messages",
+				ApiKey:      "test-key",
+				Model:       "claude-3-7-sonnet-latest",
+				Timeout:     30 * time.Second,
+			},
+			wantError:        false,
+			expectedProtocol: types.ProtocolAnthropicMessages,
+			expectedEndpoint: "https://api.anthropic.com/v1/messages",
+		},
+		{
+			name: "legacy provider maps to explicit protocol and endpoint",
 			config: types.Input{
 				Protocol: "openai",
 				BaseUrl:  "https://api.openai.com",
 				ApiKey:   "test-key",
-				Model:    "gpt-3.5-turbo",
+				Model:    "gpt-4.1-mini",
 				Timeout:  30 * time.Second,
 			},
-			wantError: false,
-		},
-		{
-			name: "valid anthropic client",
-			config: types.Input{
-				Protocol: "anthropic",
-				BaseUrl:  "https://api.anthropic.com",
-				ApiKey:   "test-key",
-				Model:    "claude-3-sonnet-20240229",
-				Timeout:  30 * time.Second,
-			},
-			wantError: false,
+			wantError:        false,
+			expectedProtocol: types.ProtocolOpenAICompletions,
+			expectedEndpoint: "https://api.openai.com/v1/chat/completions",
 		},
 		{
 			name: "invalid provider",
 			config: types.Input{
-				Protocol: "invalid",
-				BaseUrl:  "https://api.test.com",
-				ApiKey:   "test-key",
-				Model:    "test-model",
-				Timeout:  30 * time.Second,
+				Protocol:    "invalid",
+				EndpointURL: "https://api.test.com/v1/anything",
+				ApiKey:      "test-key",
+				Model:       "test-model",
+				Timeout:     30 * time.Second,
 			},
 			wantError: true,
 		},
@@ -69,12 +101,23 @@ func TestNewClient(t *testing.T) {
 				return
 			}
 
-			if client.GetProtocol() != tt.config.Protocol {
-				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.config.Protocol)
+			if client.GetProtocol() != tt.expectedProtocol {
+				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.expectedProtocol)
 			}
 
 			if client.GetModel() != tt.config.Model {
 				t.Errorf("NewClient().GetModel() = %v, want %v", client.GetModel(), tt.config.Model)
+			}
+
+			switch typed := client.(type) {
+			case *OpenAIClient:
+				if typed.endpointURL != tt.expectedEndpoint {
+					t.Errorf("NewClient() endpointURL = %v, want %v", typed.endpointURL, tt.expectedEndpoint)
+				}
+			case *AnthropicClient:
+				if typed.EndpointURL != tt.expectedEndpoint {
+					t.Errorf("NewClient() endpointURL = %v, want %v", typed.EndpointURL, tt.expectedEndpoint)
+				}
 			}
 		})
 	}
@@ -82,40 +125,43 @@ func TestNewClient(t *testing.T) {
 
 func TestNewClientWithTimeout(t *testing.T) {
 	tests := []struct {
-		name      string
-		config    types.Input
-		wantError bool
+		name             string
+		config           types.Input
+		wantError        bool
+		expectedProtocol string
 	}{
 		{
-			name: "valid openai client with timeout",
+			name: "valid openai completions client with timeout",
 			config: types.Input{
-				Protocol: "openai",
-				BaseUrl:  "https://api.openai.com",
-				ApiKey:   "test-key",
-				Model:    "gpt-3.5-turbo",
-				Timeout:  10 * time.Second,
+				Protocol:    types.ProtocolOpenAICompletions,
+				EndpointURL: "https://api.openai.com/v1/chat/completions",
+				ApiKey:      "test-key",
+				Model:       "gpt-4.1-mini",
+				Timeout:     10 * time.Second,
 			},
-			wantError: false,
+			wantError:        false,
+			expectedProtocol: types.ProtocolOpenAICompletions,
 		},
 		{
 			name: "valid anthropic client with timeout",
 			config: types.Input{
-				Protocol: "anthropic",
-				BaseUrl:  "https://api.anthropic.com",
-				ApiKey:   "test-key",
-				Model:    "claude-3-sonnet",
-				Timeout:  30 * time.Second,
+				Protocol:    types.ProtocolAnthropicMessages,
+				EndpointURL: "https://api.anthropic.com/v1/messages",
+				ApiKey:      "test-key",
+				Model:       "claude-3-sonnet",
+				Timeout:     30 * time.Second,
 			},
-			wantError: false,
+			wantError:        false,
+			expectedProtocol: types.ProtocolAnthropicMessages,
 		},
 		{
 			name: "invalid provider with timeout",
 			config: types.Input{
-				Protocol: "invalid",
-				BaseUrl:  "https://api.test.com",
-				ApiKey:   "test-key",
-				Model:    "test-model",
-				Timeout:  5 * time.Second,
+				Protocol:    "invalid",
+				EndpointURL: "https://api.test.com/v1/anything",
+				ApiKey:      "test-key",
+				Model:       "test-model",
+				Timeout:     5 * time.Second,
 			},
 			wantError: true,
 		},
@@ -142,8 +188,8 @@ func TestNewClientWithTimeout(t *testing.T) {
 				return
 			}
 
-			if client.GetProtocol() != tt.config.Protocol {
-				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.config.Protocol)
+			if client.GetProtocol() != tt.expectedProtocol {
+				t.Errorf("NewClient().GetProtocol() = %v, want %v", client.GetProtocol(), tt.expectedProtocol)
 			}
 
 			if client.GetModel() != tt.config.Model {
