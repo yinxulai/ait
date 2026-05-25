@@ -355,7 +355,7 @@ func (c *AnthropicClient) doRequest(reqBodyBytes []byte, stream bool) (*Response
 			RequestBody:      string(reqBodyBytes),
 			ResponseBody:     responseBody,
 			ErrorMessage:     errorMessage,
-		}, fmt.Errorf(errorMessage)
+		}, fmt.Errorf("%s", errorMessage)
 	}
 
 	if stream {

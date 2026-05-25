@@ -92,6 +92,11 @@ func (m *MockClient) ResetCallCount() {
 	atomic.StoreInt64(&m.callCount, 0)
 }
 
+// RawRequest 使用原始 JSON 请求体发送请求（mock 实现）
+func (m *MockClient) RawRequest(rawBody string) (*client.ResponseMetrics, error) {
+	return m.Request("", rawBody, false)
+}
+
 // SetLogger 设置日志记录器
 func (m *MockClient) SetLogger(logger *logger.Logger) {
 	// MockClient 不需要实际的日志记录器，所以这里是空实现
@@ -1545,4 +1550,8 @@ func (m *MockClientWithErrorMetrics) GetModel() string {
 
 func (m *MockClientWithErrorMetrics) SetLogger(logger *logger.Logger) {
 	// Mock实现，不需要实际功能
+}
+
+func (m *MockClientWithErrorMetrics) RawRequest(rawBody string) (*client.ResponseMetrics, error) {
+	return m.Request("", rawBody, false)
 }

@@ -23,7 +23,7 @@ func TestPageLayoutAssembleRendersSharedChrome(t *testing.T) {
 	if len(lines) < 6 {
 		t.Fatalf("expected shared chrome to add header/hotkeys lines, got %d lines", len(lines))
 	}
-	if !strings.Contains(rendered, "AIT") || !strings.Contains(rendered, "任务中心") {
+	if (!strings.Contains(rendered, "AIT") && !strings.Contains(rendered, "████")) || !strings.Contains(rendered, "任务中心") {
 		t.Fatalf("expected header brand/title in output: %q", rendered)
 	}
 	if !strings.Contains(rendered, "创建任务、运行压测") {

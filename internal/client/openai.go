@@ -567,7 +567,7 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 				RequestBody:      string(jsonData),
 				ResponseBody:     responseBody,
 				ErrorMessage:     errorMessage,
-			}, fmt.Errorf(errorMessage)
+			}, fmt.Errorf("%s", errorMessage)
 		}
 
 		if c.Provider == types.ProtocolOpenAIResponses {
@@ -726,7 +726,7 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 				RequestBody:      string(jsonData),
 				ResponseBody:     string(responseData),
 				ErrorMessage:     errorMessage,
-			}, fmt.Errorf(errorMessage)
+			}, fmt.Errorf("%s", errorMessage)
 		}
 
 		responseData, err := io.ReadAll(resp.Body)
