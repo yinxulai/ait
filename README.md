@@ -3,13 +3,15 @@
 [![test](https://github.com/yinxulai/ait/actions/workflows/test.yaml/badge.svg)](https://github.com/yinxulai/ait/actions/workflows/test.yaml)
 [![codecov](https://codecov.io/gh/yinxulai/ait/graph/badge.svg?token=WO1ZIWNGJ8)](https://codecov.io/gh/yinxulai/ait)
 
-一个强大的 CLI 工具，用于批量测试符合 OpenAI 协议和 Anthropic 协议的 AI 模型性能指标。支持 TTFT（首字节时间）、TPS（吞吐量）、网络延迟等关键性能指标的测量，提供多模型对比测试和详细的性能报告生成功能。
+一个强大的 CLI 工具，用于批量测试符合 OpenAI 协议和 Anthropic 协议的 AI 模型性能指标。当前版本仅提供 `ait` 命令，不再发布独立的 `tpg` 二进制。新版默认启动交互式终端任务中心（TUI），可在界面内创建、运行和管理测试任务；也支持带参数直接执行单次测试任务。支持 TTFT（首字节时间）、TPS（吞吐量）、网络延迟等关键性能指标的测量，提供多模型对比测试和详细的性能报告生成功能。
 
 ## ✨ 功能特性
 
 - 🚀 **多协议支持**: 支持 OpenAI 和 Anthropic 协议
 - 🎯 **多模型测试**: 支持同时测试多个模型，用逗号分割模型名称
 - 🤖 **智能协议推断**: 根据环境变量自动推断协议类型，简化使用
+- 🖥️ **交互式终端 TUI**: `ait` 不带参数启动任务中心，可在终端内创建、运行和管理测试任务；带参数时仍支持直接执行单次任务
+- 🧠 **内置 Prompt 输入方案**: 支持 `--prompt-length`、`--prompt-file`、`--prompt` 以及管道输入，直接在 `ait` 内生成和加载测试内容
 - 📊 **实时进度条**: 测试过程可视化显示，支持多模型总进度
 - 🎨 **彩色输出**: 美观的终端界面
 - 📋 **表格化结果**: 清晰的结果展示，支持单模型和多模型对比
@@ -101,6 +103,13 @@ go build -o bin/ait ./cmd/ait/
 ```
 
 ## 🚀 快速开始
+
+### 启动交互式任务中心
+
+```bash
+# 直接运行 ait，进入交互式终端任务中心
+ait
+```
 
 ### 查看版本信息
 
@@ -481,122 +490,17 @@ ait --models=gemini-2.5-pro,gemini-2.5-flash,gemini-2.0-flash --count=5 --report
 ait --models=claude-3.7-sonnet,claude-3.5-haiku --count=5 --report
 ```
 
-## 🧰 Prompt 生成助手 tpg
+## 🧰 最新版本说明
 
-`tpg`（Test Prompt Generator）是随项目提供的辅助工具，用于批量生成高质量、语言多样的 Prompt 文件，搭配 `ait` 做大规模压测尤为省心。
+当前版本仅提供 `ait` 命令，不再发布独立的 `tpg` 二进制。
 
-- 🧠 **内置多语言语料**：覆盖中英文及多语种，轻松模拟全球业务场景
-- 📄 **文本文件输出**：生成 `.txt` 格式的 prompt 文件，便于集成各种测试流程
-- 🧩 **模板占位符**：`{{content}}`、`{{index}}`、`{{timestamp}}` 等，方便拼装上下文
+`ait` 本身已支持多种 prompt 输入方式：
 
-### 安装 tpg
+- `--prompt-length`：自动生成指定长度的测试 prompt
+- `--prompt-file`：读取本地 prompt 文件进行批量测试
+- `--prompt`：直接传入单条 prompt，或通过管道输入多行内容
 
-#### tpg Linux/macOS 一键安装脚本
-
-```bash
-curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-tpg.sh | bash
-```
-
-> 脚本会自动识别操作系统（Linux/macOS）和架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-tpg.sh -o install-tpg.sh && INSTALL_DIR=$HOME/.local/bin bash install-tpg.sh`。
-
-#### 手动下载安装
-
-从 [Releases 页面](https://github.com/yinxulai/ait/releases) 下载适合您平台的 tpg 二进制文件：
-
-```bash
-# Linux (x64)
-wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-amd64
-chmod +x tpg-linux-amd64
-sudo mv tpg-linux-amd64 /usr/local/bin/tpg
-
-# Linux (ARM64)
-wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-arm64
-chmod +x tpg-linux-arm64
-sudo mv tpg-linux-arm64 /usr/local/bin/tpg
-
-# Linux (ARM)
-wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-arm
-chmod +x tpg-linux-arm
-sudo mv tpg-linux-arm /usr/local/bin/tpg
-
-# Linux (386)
-wget https://github.com/yinxulai/ait/releases/latest/download/tpg-linux-386
-chmod +x tpg-linux-386
-sudo mv tpg-linux-386 /usr/local/bin/tpg
-
-# macOS (Intel)
-wget https://github.com/yinxulai/ait/releases/latest/download/tpg-darwin-amd64
-chmod +x tpg-darwin-amd64
-sudo mv tpg-darwin-amd64 /usr/local/bin/tpg
-
-# macOS (Apple Silicon)
-wget https://github.com/yinxulai/ait/releases/latest/download/tpg-darwin-arm64
-chmod +x tpg-darwin-arm64
-sudo mv tpg-darwin-arm64 /usr/local/bin/tpg
-
-# Windows (x64) - PowerShell
-Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/tpg-windows-amd64.exe" -OutFile "tpg.exe"
-# 将 tpg.exe 移动到您的 PATH 中
-
-# Windows (ARM64) - PowerShell
-Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/tpg-windows-arm64.exe" -OutFile "tpg.exe"
-# 将 tpg.exe 移动到您的 PATH 中
-
-# Windows (386) - PowerShell
-Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/tpg-windows-386.exe" -OutFile "tpg.exe"
-# 将 tpg.exe 移动到您的 PATH 中
-```
-
-#### 从源码编译
-
-```bash
-# 克隆项目
-git clone https://github.com/yinxulai/ait.git
-cd ait
-
-# 编译 tpg
-make build
-
-# 或者直接用 go build
-go build -o bin/tpg ./cmd/tpg/
-```
-
-### tpg 使用示例
-
-```bash
-# 生成 100 条 500 字左右的 Prompt，并按照模板写入 prompts/think
-tpg \
-  -count=100 \
-  -length=500 \
-  -output=prompts/think \
-  -template="帮我生成 400 词左右的内容摘要: {{content}}"
-
-# 搭配 ait 做批量压测
-ait \
-  --models=deepseek-v3-1-terminus,gemini-2.5-pro \
-  --prompt-file="prompts/think/*.txt" \
-  --count=500 \
-  --concurrency=50 \
-  --report
-```
-
-### tpg 参数说明
-
-| 参数 | 描述 | 默认值 |
-| :--- | :--- | :--- |
-| `-count` | 生成的 prompt 数量 | `10` |
-| `-length` | 每个 prompt 的近似长度（字符数） | `50` |
-| `-output` | 输出目录 | `prompts` |
-| `-template` | 模板字符串，支持占位符 | 无 |
-| `-help` | 显示帮助信息 | - |
-
-### 模板占位符
-
-- `{{content}}` - 生成的 prompt 内容
-- `{{index}}` - prompt 序号（从 1 开始）  
-- `{{timestamp}}` - 当前时间戳（RFC3339 格式）
-
-> 更多详细用法可运行 `tpg -help` 查看。
+若需要更复杂的 prompt 批量生成，可使用自定义脚本或第三方生成工具，再将生成结果传给 `ait`。
 
 ## 🔧 开发和贡献
 

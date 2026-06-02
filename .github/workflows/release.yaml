@@ -65,8 +65,8 @@ jobs:
           GOARCH: ${{ matrix.goarch }}
         run: |
           mkdir -p dist
-          # 构建 ait 和 tpg 两个命令
-          for binary in ait tpg; do
+          # 构建 ait 命令
+          for binary in ait; do
             echo "构建 $binary for ${{ matrix.goos }}/${{ matrix.goarch }}..."
             go build \
               -ldflags "-w -s \
@@ -102,7 +102,7 @@ jobs:
       - name: 准备发布文件
         run: |
           mkdir -p release-files
-          find dist -type f \( -name "ait-*" -o -name "tpg-*" \) | xargs -I {} cp {} release-files/
+          find dist -type f -name "ait-*" | xargs -I {} cp {} release-files/
           ls -la release-files/
 
       - name: 上传到发布页面
