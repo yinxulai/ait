@@ -303,7 +303,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	type histRow struct {
 		statusText  string
 		statusIsOk  bool
-		statusMut bool
+		statusMut   bool
 		statusIsMut bool
 		time        string
 		mode        string
@@ -325,12 +325,12 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 		rowData[0] = histRow{
 			statusText: "●",
 			statusIsOk: true,
-			time:       rs.StartedAt.Format("2006-01-02 15:04"),
+			time:       fmt.Sprintf("%s %s", rs.StartedAt.Format("2006-01-02 15:04"), i18n.T(i18n.KRunning)),
 			mode:       modeShort,
 			rate:       rateStr,
 			dur:        "─",
 			ttft:       "─",
-			tps:        fmt.Sprintf("%d/%d %s", rs.DoneReqs, rs.TotalReqs, i18n.T(i18n.KRunning)),
+			tps:        fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs),
 			rpm:        "─",
 			tpm:        "─",
 		}
@@ -382,15 +382,15 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	h4 := i18n.T(i18n.KSuccessRate)
 	h5 := i18n.T(i18n.KElapsed)
 	colWidths := []int{
-		4,                       // 状态图标
-		0,                       // 时间=flex
-		maxInt(7, hw(h3)),       // 模式
-		maxInt(8, hw(h4)),       // 成功率
-		maxInt(7, hw(h5)),       // 耗时
-		maxInt(7, hw("TTFT")),   // TTFT
-		maxInt(7, hw("TPS")),    // TPS
-		maxInt(6, hw("RPM")),    // RPM
-		maxInt(6, hw("TPM")),    // TPM
+		4,                      // 状态图标
+		0,                      // 时间=flex
+		maxInt(9, hw(h3)),      // 模式
+		maxInt(10, hw(h4)),     // 成功率
+		maxInt(10, hw(h5)),     // 耗时
+		maxInt(10, hw("TTFT")), // TTFT
+		maxInt(10, hw("TPS")),  // TPS
+		maxInt(8, hw("RPM")),   // RPM
+		maxInt(8, hw("TPM")),   // TPM
 	}
 	sel := s.HistorySel
 	tableH := tableMaxH - len(rightTitle)

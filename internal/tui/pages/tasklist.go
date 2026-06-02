@@ -5,9 +5,9 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	lgtable "charm.land/lipgloss/v2/table"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
@@ -144,7 +144,7 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 
 // RenderTaskList 渲染任务列表页。
 
-//	╚══════════════════════════════╝
+// ╚══════════════════════════════╝
 func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 	if TooSmall(width, height) {
 		return renderTooSmall(st, width, height)
@@ -201,18 +201,18 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	// ── 预计算每行数据（供 StyleFunc 闭包引用）──
 	type taskRowData struct {
-		name        string
-		mode        string
-		isTurbo     bool
-		proto       string
-		lastRun     string
-		isRunning   bool
-		rate        string
-		cache       string
-		ttft        string
-		tps         string
-		rpm         string
-		tpm         string
+		name      string
+		mode      string
+		isTurbo   bool
+		proto     string
+		lastRun   string
+		isRunning bool
+		rate      string
+		cache     string
+		ttft      string
+		tps       string
+		rpm       string
+		tpm       string
 	}
 
 	sel := s.Selected
@@ -310,16 +310,16 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	h6 := i18n.T(i18n.KColAvgTTFT)
 	h7 := i18n.T(i18n.KColAvgTPS)
 	colWidths := []int{
-		0,                       // 任务名称=flex
-		maxInt(8, hw(h1)),       // 模式
-		maxInt(22, hw(h2)),      // 协议（数据可能较长）
-		maxInt(12, hw(h3)),      // 上次运行
-		maxInt(8, hw(h4)),       // 成功率
-		maxInt(10, hw(h5)),      // 缓存命中
-		maxInt(10, hw(h6)),      // TTFT均值
-		maxInt(10, hw(h7)),      // TPS均值
-		maxInt(8, hw("RPM")),    // RPM
-		maxInt(8, hw("TPM")),    // TPM
+		0,                     // 任务名称=flex
+		maxInt(10, hw(h1)),    // 模式
+		maxInt(28, hw(h2)),    // 协议（数据可能较长）
+		maxInt(14, hw(h3)),    // 上次运行
+		maxInt(10, hw(h4)),    // 成功率
+		maxInt(12, hw(h5)),    // 缓存命中
+		maxInt(12, hw(h6)),    // TTFT均值
+		maxInt(12, hw(h7)),    // TPS均值
+		maxInt(10, hw("RPM")), // RPM
+		maxInt(10, hw("TPM")), // TPM
 	}
 	t := lgtable.New().
 		Headers(i18n.T(i18n.KTaskName), h1, h2, h3, h4, h5, h6, h7, "RPM", "TPM").
