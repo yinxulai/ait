@@ -24,30 +24,31 @@ var (
 
 // Styles 汇聚所有 TUI 样式，由 NewStyles() 初始化。
 type Styles struct {
-	Panel       lipgloss.Style
-	Header      lipgloss.Style
-	HeaderInfo  lipgloss.Style
+	Panel            lipgloss.Style
+	Header           lipgloss.Style
+	HeaderInfo       lipgloss.Style
 	HotkeysSecondary lipgloss.Style
 	HotkeysPrimary   lipgloss.Style
 	PanelHead        lipgloss.Style
-	SectionHead lipgloss.Style
-	TableHead   lipgloss.Style
-	TableRow    lipgloss.Style
-	TableRowSel lipgloss.Style
-	Label       lipgloss.Style
-	Value       lipgloss.Style
-	Muted       lipgloss.Style
-	Ok          lipgloss.Style
-	ErrStyle    lipgloss.Style
-	Key         lipgloss.Style
-	MetricVal   lipgloss.Style
-	FieldActive lipgloss.Style
-	FieldIdle   lipgloss.Style
-	Cursor      lipgloss.Style
-	TagTurbo    lipgloss.Style
-	TagStd      lipgloss.Style
-	BtnPrimary  lipgloss.Style
-	Divider     lipgloss.Style
+	SectionHead      lipgloss.Style
+	TableHead        lipgloss.Style
+	TableRow         lipgloss.Style
+	TableRowSel      lipgloss.Style
+	Label            lipgloss.Style
+	Value            lipgloss.Style
+	Muted            lipgloss.Style
+	Ok               lipgloss.Style
+	ErrStyle         lipgloss.Style
+	Key              lipgloss.Style
+	MetricVal        lipgloss.Style
+	FieldActive      lipgloss.Style
+	FieldIdle        lipgloss.Style
+	Cursor           lipgloss.Style
+	TagTurbo         lipgloss.Style
+	TagStd           lipgloss.Style
+	BtnPrimary       lipgloss.Style
+	Divider          lipgloss.Style
+	AppBorder        lipgloss.Style
 }
 
 // NewStyles 创建并返回默认样式集合。
@@ -137,5 +138,9 @@ func NewStyles() Styles {
 		Panel: lipgloss.NewStyle().
 			Border(lipgloss.NormalBorder()).
 			BorderForeground(colorDivider),
+		AppBorder: lipgloss.NewStyle().
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(colorPink).
+			BorderTop(true).BorderBottom(true).BorderLeft(true).BorderRight(true),
 	}
 }

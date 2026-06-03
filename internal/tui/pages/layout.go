@@ -19,6 +19,11 @@ const (
 
 	// panelBorderV 是单个面板的上下边框行数之和。
 	panelBorderV = 2
+
+	// appBorderV 是应用外层边框的上下行数之和。
+	appBorderV = 2
+	// appBorderH 是应用外层边框的左右列数之和。
+	appBorderH = 2
 )
 
 // ── PageLayout ────────────────────────────────────────────────────────────────
@@ -86,9 +91,14 @@ func (l PageLayout) Frame(totalW, totalH int) PageFrame {
 	if totalW < 1 {
 		totalW = 1
 	}
+	// 需要扣除应用外层边框占用的空间
+	contentW := totalW - appBorderH
+	if contentW < 1 {
+		contentW = 1
+	}
 	return PageFrame{
-		OuterWidth:  totalW,
-		InnerWidth:  totalW,
+		OuterWidth:  contentW,
+		InnerWidth:  contentW,
 		InnerHeight: l.ContentHeight(totalH),
 	}
 }
@@ -145,10 +155,10 @@ func (f PanelFrame) Split(leftPercent, minLeftOuter int) (PanelFrame, PanelFrame
 	return NewPanelFrame(leftOuter), NewPanelFrame(rightOuter)
 }
 
-// ContentHeight 返回页面主内容区的可用行数（总高度 - chrome 行数）。
+// ContentHeight 返回页面主内容区的可用行数（总高度 - chrome 行数 - 应用边框行数）。
 // 外层不再有边框，故不扣除 panelBorderV。
 func (l PageLayout) ContentHeight(totalH int) int {
-	h := totalH - l.ChromeHeight()
+	h := totalH - l.ChromeHeight() - appBorderV
 	if h < 2 {
 		h = 2
 	}
@@ -199,12 +209,14 @@ func joinVerticalBlocks(blocks ...string) string {
 	return strings.Join(visible, "\n")
 }
 
-// Assemble 拼装完整页面输出：header + content + hotkeys。
+// Assemble 拼装完整页面输出：header + content + hotkeys，最外层包裹应用边框。
 func (l PageLayout) Assemble(content string, st Styles, width int) string {
-	header := renderHeader(st, width, l.HeaderTitle, l.HeaderSubtitle, l.HeaderMeta, l.HeaderInfoLeft, l.HeaderInfoRight)
-	hotkeys := renderHotkeys(st, width, l.Hotkeys)
+	header := renderHeader(st, width-appBorderH, l.HeaderTitle, l.HeaderSubtitle, l.HeaderMeta, l.HeaderInfoLeft, l.HeaderInfoRight)
+	hotkeys := renderHotkeys(st, width-appBorderH, l.Hotkeys)
 
-	return strings.Join([]string{header, content, hotkeys}, "\n")
+	inner := strings.Join([]string{header, content, hotkeys}, "\n")
+	// 包裹应用外层边框
+	return st.AppBorder.Width(width).Render(inner)
 }
 
 // ── 最小尺寸保护 ──────────────────────────────────────────────────────────────

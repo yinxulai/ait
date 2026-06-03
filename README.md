@@ -28,59 +28,29 @@
 
 ### 方式一：下载预编译二进制文件（推荐）
 
-从 [Releases 页面](https://github.com/yinxulai/ait/releases) 下载适合您平台的预编译二进制文件：
+从 [Releases 页面](https://github.com/yinxulai/ait/releases) 下载适合您平台的预编译二进制文件。
 
-#### Linux/macOS 一键安装脚本（自动识别架构）
+#### Linux/macOS 一键安装脚本
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh | bash
 ```
 
-> 脚本会自动识别操作系统（Linux/macOS）和架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可先下载脚本再执行：`curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh -o install-ait.sh && INSTALL_DIR=$HOME/.local/bin bash install-ait.sh`。
+> 脚本会自动识别操作系统（Linux/macOS）和架构（`x86_64`, `aarch64`, `armv7l`, `i386`），下载最新版本并安装到 `/usr/local/bin`。如需自定义安装目录，可使用 `INSTALL_DIR` 环境变量：
+> ```bash
+> curl -fsSL https://raw.githubusercontent.com/yinxulai/ait/main/scripts/install-ait.sh -o install-ait.sh
+> INSTALL_DIR=$HOME/.local/bin bash install-ait.sh
+> ```
 
-```bash
-# Linux (x64)
-wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-amd64
-chmod +x ait-linux-amd64
-sudo mv ait-linux-amd64 /usr/local/bin/ait
+#### Windows 安装
 
-# Linux (ARM64)
-wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-arm64
-chmod +x ait-linux-arm64
-sudo mv ait-linux-arm64 /usr/local/bin/ait
-
-# Linux (ARM)
-wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-arm
-chmod +x ait-linux-arm
-sudo mv ait-linux-arm /usr/local/bin/ait
-
-# Linux (386)
-wget https://github.com/yinxulai/ait/releases/latest/download/ait-linux-386
-chmod +x ait-linux-386
-sudo mv ait-linux-386 /usr/local/bin/ait
-
-# macOS (Intel)
-wget https://github.com/yinxulai/ait/releases/latest/download/ait-darwin-amd64
-chmod +x ait-darwin-amd64
-sudo mv ait-darwin-amd64 /usr/local/bin/ait
-
-# macOS (Apple Silicon)
-wget https://github.com/yinxulai/ait/releases/latest/download/ait-darwin-arm64
-chmod +x ait-darwin-arm64
-sudo mv ait-darwin-arm64 /usr/local/bin/ait
-
-# Windows (x64) - PowerShell
+```powershell
+# PowerShell - 下载最新版本（x64）
 Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/ait-windows-amd64.exe" -OutFile "ait.exe"
-# 将 ait.exe 移动到您的 PATH 中
-
-# Windows (ARM64) - PowerShell
-Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/ait-windows-arm64.exe" -OutFile "ait.exe"
-# 将 ait.exe 移动到您的 PATH 中
-
-# Windows (386) - PowerShell
-Invoke-WebRequest -Uri "https://github.com/yinxulai/ait/releases/latest/download/ait-windows-386.exe" -OutFile "ait.exe"
-# 将 ait.exe 移动到您的 PATH 中
+# 将 ait.exe 移动到您的 PATH 中（例如 C:\Windows\System32）
 ```
+
+> 其他架构（ARM64、386）请访问 [Releases 页面](https://github.com/yinxulai/ait/releases) 选择对应的版本下载。
 
 ### 方式二：从源码编译
 
