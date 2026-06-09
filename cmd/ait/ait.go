@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"flag"
 	"fmt"
 	"os"
@@ -22,8 +23,8 @@ var (
 func main() {
 	// ── flags ────────────────────────────────────────────────────────────────
 	versionFlag := flag.Bool("version", false, "显示版本信息")
-	mcpFlag     := flag.Bool("mcp", false, "启用 MCP 模式")
-	langFlag    := flag.String("lang", "", "界面语言：zh 或 en")
+	mcpFlag := flag.Bool("mcp", false, "启用 MCP 模式")
+	langFlag := flag.String("lang", "", "界面语言：zh 或 en")
 	flag.Parse()
 
 	// ── 版本输出 ──────────────────────────────────────────────────────────────
@@ -51,7 +52,7 @@ func main() {
 	}
 
 	if routeByMCPFlag(*mcpFlag) == "mcp" {
-		if err := mcp.New(srv).Run(os.Stdin, os.Stdout); err != nil {
+		if err := mcp.New(srv).Run(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP 启动失败: %v\n", err)
 			os.Exit(1)
 		}
