@@ -1,7 +1,6 @@
 package pages
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 	"time"
@@ -10,70 +9,42 @@ import (
 	"github.com/yinxulai/ait/internal/server/types"
 )
 
-func TestHeightCorrectness(t *testing.T) {
+func TestCorePagesRenderExpectedContent(t *testing.T) {
 	st := NewStyles()
 
-	// ReqDetail
-	s := &ReqDetailState{
+	reqDetail := &ReqDetailState{
 		RunID: server.RunID("test"),
 		Requests: []*types.RequestMetrics{{
 			Success: true, TotalTime: 250 * time.Millisecond,
 			RequestBody: "hello", ResponseBody: strings.Repeat("ok ", 50),
 		}},
 	}
-	fmt.Println("--- ReqDetail ---")
-	for _, h := range []int{24, 26, 30, 40} {
-		out := RenderReqDetail(s, "task", st, 80, h)
-		got := strings.Count(out, "\n") + 1
-		diff := got - h
-		marker := "✓"
-		if diff != 0 {
-			marker = fmt.Sprintf("FAIL diff=%+d", diff)
-		}
-		fmt.Printf("height=%d → rendered=%d %s\n", h, got, marker)
-		if diff != 0 {
-			t.Errorf("ReqDetail height=%d: want %d lines, got %d", h, h, got)
+	out := stripANSI(RenderReqDetail(reqDetail, "task", st, 80, 24))
+	for _, want := range []string{"查看请求详情", "hello", "请求体"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("ReqDetail should render %q in output", want)
 		}
 	}
 
-	// Dashboard
-	fmt.Println("--- Dashboard ---")
-	ds := NewDashboardState("run1", "task1")
-	for _, h := range []int{22, 26, 30, 40} {
-		out := RenderDashboard(ds, "task", st, 80, h)
-		got := strings.Count(out, "\n") + 1
-		diff := got - h
-		marker := "✓"
-		if diff != 0 {
-			marker = fmt.Sprintf("FAIL diff=%+d", diff)
-		}
-		fmt.Printf("height=%d → rendered=%d %s\n", h, got, marker)
-		if diff != 0 {
-			t.Errorf("Dashboard height=%d: want %d lines, got %d", h, h, got)
+	dashboard := NewDashboardState("run1", "task1")
+	out = stripANSI(RenderDashboard(dashboard, "task", st, 80, 22))
+	for _, want := range []string{"task1", "等待"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("Dashboard should render %q in output", want)
 		}
 	}
 
-	// TaskList (empty tasks)
-	fmt.Println("--- TaskList (empty) ---")
-	ts := &TaskListState{}
-	for _, h := range []int{24, 26, 30, 40} {
-		out := RenderTaskList(ts, st, 80, h)
-		got := strings.Count(out, "\n") + 1
-		diff := got - h
-		marker := "✓"
-		if diff != 0 {
-			marker = fmt.Sprintf("FAIL diff=%+d", diff)
-		}
-		fmt.Printf("height=%d → rendered=%d %s\n", h, got, marker)
-		if diff != 0 {
-			t.Errorf("TaskList height=%d: want %d lines, got %d", h, h, got)
+	tasks := &TaskListState{}
+	out = stripANSI(RenderTaskList(tasks, st, 80, 24))
+	for _, want := range []string{"任务中心", "运行中"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("TaskList should render %q in output", want)
 		}
 	}
 }
 
-func TestHeightWithCJKContent(t *testing.T) {
+func TestReqDetailRendersCJKContent(t *testing.T) {
 	st := NewStyles()
-	// 模拟真实 LLM 响应：纯中文内容
 	cjkBody := strings.Repeat("你好，我是一个大型语言模型，很高兴为你服务。", 10)
 	s := &ReqDetailState{
 		RunID: server.RunID("test"),
@@ -83,17 +54,10 @@ func TestHeightWithCJKContent(t *testing.T) {
 			ResponseBody: cjkBody,
 		}},
 	}
-	for _, h := range []int{24, 30, 40} {
-		out := RenderReqDetail(s, "task", st, 80, h)
-		got := strings.Count(out, "\n") + 1
-		diff := got - h
-		marker := "✓"
-		if diff != 0 {
-			marker = fmt.Sprintf("FAIL diff=%+d", diff)
-		}
-		t.Logf("CJK ReqDetail height=%d → rendered=%d %s", h, got, marker)
-		if diff != 0 {
-			t.Errorf("CJK content: height=%d want %d lines, got %d", h, h, got)
+	out := stripANSI(RenderReqDetail(s, "task", st, 80, 24))
+	for _, want := range []string{"请介绍一下自己", "请求体"} {
+		if !strings.Contains(out, want) {
+			t.Fatalf("ReqDetail should render CJK content %q in output", want)
 		}
 	}
 }

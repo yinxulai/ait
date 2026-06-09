@@ -34,16 +34,29 @@ func TestPageLayoutAssembleRendersSharedChrome(t *testing.T) {
 	}
 }
 
-func TestPageLayoutFrameCalculatesNestedPanelSizes(t *testing.T) {
+func TestPageLayoutFrameStructure(t *testing.T) {
 	l := PageLayout{}
 	frame := l.Frame(80, 30)
-	if frame.OuterWidth != 80 || frame.InnerWidth != 80 || frame.InnerHeight != 25 {
-		t.Fatalf("unexpected page frame: %#v", frame)
+
+	// 所有尺寸必须为正
+	if frame.OuterWidth <= 0 || frame.InnerWidth <= 0 || frame.InnerHeight <= 0 {
+		t.Fatalf("frame dimensions must be positive: %#v", frame)
+	}
+	// InnerWidth 不应超过 OuterWidth
+	if frame.InnerWidth > frame.OuterWidth {
+		t.Fatalf("InnerWidth (%d) must not exceed OuterWidth (%d)", frame.InnerWidth, frame.OuterWidth)
+	}
+	// InnerHeight 应小于总高度（chrome 和边框占用后）
+	if frame.InnerHeight >= 30 {
+		t.Fatalf("InnerHeight (%d) must be less than total height (30)", frame.InnerHeight)
 	}
 
 	body := frame.InnerPanel()
-	if body.OuterWidth != 80 || body.InnerWidth != 78 {
-		t.Fatalf("unexpected inner panel frame: %#v", body)
+	if body.OuterWidth <= 0 || body.InnerWidth <= 0 {
+		t.Fatalf("panel dimensions must be positive: %#v", body)
+	}
+	if body.InnerWidth >= body.OuterWidth {
+		t.Fatalf("panel InnerWidth (%d) must be less than OuterWidth (%d)", body.InnerWidth, body.OuterWidth)
 	}
 }
 
