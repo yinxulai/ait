@@ -5,6 +5,8 @@
 
 一个强大的 CLI 工具，用于批量测试符合 OpenAI 协议和 Anthropic 协议的 AI 模型性能指标。默认启动交互式终端任务中心（TUI），也可通过 MCP 协议供 AI 客户端调用。
 
+![snapshot](snapshot/snapsho.png)
+
 ## ✨ 功能特性
 
 - 🚀 **多协议支持**: 支持 OpenAI 和 Anthropic 协议
