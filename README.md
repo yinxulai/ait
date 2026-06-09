@@ -81,6 +81,22 @@ go build -o bin/ait ./cmd/ait/
 ait
 ```
 
+### 以 MCP 服务方式运行（供 AI 调用）
+
+AIT 通过 `--mcp` 启动 MCP 服务，可将现有任务能力（创建任务、启动运行、查询状态）通过 MCP `tools` 暴露给 AI 客户端。
+
+```bash
+# 通过 stdio 启动 MCP server（供支持 MCP 的客户端接入）
+ait --mcp
+```
+
+当前内置工具：
+
+- `ait.list_tasks`
+- `ait.create_task`
+- `ait.start_run`
+- `ait.get_run_state`
+
 ### 查看版本信息
 
 ```bash
@@ -93,51 +109,18 @@ ait --version
 # Build Time: 2025-12-08_10:30:15
 ```
 
-### OpenAI 协议测试
+### 运行模式
 
 ```bash
-# 使用 --model 测试单个模型
-ait --protocol=openai --baseUrl=https://api.openai.com/v1 --apiKey=sk-your-api-key --model=gpt-3.5-turbo --concurrency=3 --count=10 --report
+# 默认：交互式任务中心（TUI）
+ait
 
-# 或使用 --models（支持多个模型）
-ait --protocol=openai --baseUrl=https://api.openai.com/v1 --apiKey=sk-your-api-key --models=gpt-3.5-turbo --concurrency=3 --count=10 --report
-
-# 使用环境变量可以省略 protocol 参数（会自动推断）
-export OPENAI_API_KEY="sk-your-api-key"
-export OPENAI_BASE_URL="https://api.openai.com/v1"
-ait --models=gpt-3.5-turbo --concurrency=3 --count=10 --report
+# MCP 模式（供 AI 客户端通过 stdio 调用）
+ait --mcp
 ```
 
-### Anthropic 协议测试
-
-```bash
-ait --protocol=anthropic --baseUrl=https://api.anthropic.com --apiKey=sk-ant-your-api-key --models=claude-3-haiku-20240307 --concurrency=2 --count=5 --report
-
-# 使用环境变量可以省略 protocol 参数（会自动推断）
-export ANTHROPIC_API_KEY="sk-ant-your-api-key"
-export ANTHROPIC_BASE_URL="https://api.anthropic.com"
-ait --models=claude-3-haiku-20240307 --concurrency=2 --count=5 --report
-```
-
-### 多模型比较测试
-
-```bash
-# 同时测试多个 OpenAI 模型
-ait --protocol=openai --baseUrl=https://api.openai.com/v1 --apiKey=sk-your-api-key --models="gpt-3.5-turbo,gpt-4,gpt-4-turbo" --concurrency=3 --count=10 --report
-
-# 测试最新的 Claude 和 Gemini 模型（使用环境变量）
-export OPENAI_API_KEY="sk-your-key"
-ait --models=claude-4.1-opus,claude-4.0-sonnet,claude-3.5-haiku,gemini-2.5-pro,gemini-2.0-flash --concurrency=3 --count=5 --report
-
-# 多模型测试会为每个模型生成独立的 JSON 和 CSV 报告
-# 同时还会生成一个综合比较的 CSV 报告方便对比分析
-```
-
-### 本地模型测试（如 Ollama）
-
-```bash
-ait --protocol=openai --baseUrl=http://localhost:11434/v1 --apiKey=dummy --models=llama2 --concurrency=1 --count=3
-```
+> 注意：AIT 已不再提供“通过 --model/--models 等参数直接执行任务”的命令行模式。
+> 测试任务请在 TUI 中创建，或通过 MCP 工具 `ait.create_task` 创建。
 
 ## 🔧 环境变量支持
 
@@ -149,12 +132,8 @@ ait --protocol=openai --baseUrl=http://localhost:11434/v1 --apiKey=dummy --model
 export OPENAI_API_KEY="sk-your-api-key"
 export OPENAI_BASE_URL="https://api.openai.com/v1"
 
-# 简化使用，protocol 会自动推断为 openai
-# 使用 --model 测试单个模型
-ait --model=gpt-3.5-turbo --count=10 --report
-
-# 使用 --models 测试多个模型
-ait --models=gpt-3.5-turbo,gpt-4 --count=10 --report
+# 在 TUI 创建任务时可复用这些环境变量
+ait
 ```
 
 ### Anthropic 协议
@@ -163,8 +142,8 @@ ait --models=gpt-3.5-turbo,gpt-4 --count=10 --report
 export ANTHROPIC_API_KEY="sk-ant-your-api-key"
 export ANTHROPIC_BASE_URL="https://api.anthropic.com"
 
-# 简化使用，protocol 会自动推断为 anthropic
-ait --models=claude-3-haiku-20240307 --count=5 --report
+# 在 TUI 创建任务时可复用这些环境变量
+ait
 ```
 
 ## 📝 管道输入和文件支持

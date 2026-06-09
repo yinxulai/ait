@@ -4,14 +4,12 @@ import (
 	"flag"
 	"fmt"
 	"os"
-	"strings"
-	"time"
 
-	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/tui"
-	"github.com/yinxulai/ait/internal/types"
 	"github.com/yinxulai/ait/internal/config"
 	"github.com/yinxulai/ait/internal/i18n"
+	"github.com/yinxulai/ait/internal/mcp"
+	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/tui"
 )
 
 // 版本信息，通过 ldflags 在构建时注入。
@@ -24,20 +22,7 @@ var (
 func main() {
 	// ── flags ────────────────────────────────────────────────────────────────
 	versionFlag := flag.Bool("version", false, "显示版本信息")
-	baseURL     := flag.String("baseUrl", "", "服务基础地址（可选，留空使用协议默认地址）")
-	apiKey      := flag.String("apiKey", "", "API 密钥")
-	model       := flag.String("model", "", "模型名称（单个模型，与 -models 二选一）")
-	models      := flag.String("models", "", "模型名称列表，逗号分隔，可批量创建任务（如 gpt-4,gpt-4o,gpt-3.5-turbo）")
-	protocol    := flag.String("protocol", "", "协议类型: openai / anthropic")
-	promptText  := flag.String("prompt", "", "Prompt 文本（可选）")
-	promptFile  := flag.String("prompt-file", "", "从文件读取 Prompt")
-	promptLen   := flag.Int("prompt-length", 0, "生成指定长度的测试 Prompt（字符数）")
-	stream      := flag.Bool("stream", true, "是否开启流式输出")
-	thinking    := flag.Bool("thinking", false, "是否开启 Thinking 模式")
-	concurrency := flag.Int("concurrency", 10, "并发数")
-	count       := flag.Int("count", 100, "请求总数")
-	timeout     := flag.Int("timeout", 300, "请求超时时间（秒）")
-	turboFlag   := flag.Bool("turbo", false, "是否启用 Turbo 并发探测模式")
+	mcpFlag     := flag.Bool("mcp", false, "启用 MCP 模式")
 	langFlag    := flag.String("lang", "", "界面语言：zh 或 en")
 	flag.Parse()
 
@@ -65,64 +50,14 @@ func main() {
 		i18n.SetLang(i18n.EN)
 	}
 
-	// ── 若提供了足够参数则预建任务并自动启动 ────────────────────────────────────
-	// 合并 --model 和 --models，去重，保持顺序
-	var modelList []string
-	seen := map[string]bool{}
-	for _, m := range append(strings.Split(*models, ","), *model) {
-		m = strings.TrimSpace(m)
-		if m != "" && !seen[m] {
-			seen[m] = true
-			modelList = append(modelList, m)
-		}
-	}
-
-	if len(modelList) > 0 {
-		finalProtocol, finalBaseURL, finalAPIKey := resolveConfig(*protocol, *baseURL, *apiKey)
-		if finalAPIKey == "" {
-			fmt.Fprintln(os.Stderr, "错误: 缺少 API Key（-apiKey 或环境变量）")
+	if routeByMCPFlag(*mcpFlag) == "mcp" {
+		if err := mcp.New(srv).Run(os.Stdin, os.Stdout); err != nil {
+			fmt.Fprintf(os.Stderr, "MCP 启动失败: %v\n", err)
 			os.Exit(1)
 		}
-
-		for _, m := range modelList {
-			inp := types.Input{
-				Protocol:    finalProtocol,
-				BaseUrl:     finalBaseURL,
-				ApiKey:      finalAPIKey,
-				Model:       m,
-				Stream:      *stream,
-				Thinking:    *thinking,
-				Concurrency: *concurrency,
-				Count:       *count,
-				Turbo:       *turboFlag,
-				Timeout:     time.Duration(*timeout) * time.Second,
-			}
-
-			// Prompt 配置
-			switch {
-			case *promptLen > 0:
-				inp.PromptMode = "generated"
-				inp.PromptLength = *promptLen
-			case *promptFile != "":
-				inp.PromptMode = "file"
-				inp.PromptFile = *promptFile
-			case *promptText != "":
-				inp.PromptMode = "text"
-				inp.PromptText = *promptText
-			default:
-				inp.PromptMode = "text"
-				inp.PromptText = "你好，介绍一下你自己。"
-			}
-
-			taskName := fmt.Sprintf("%s@%s", m, strings.TrimRight(finalBaseURL, "/"))
-			if _, err := srv.CreateTask(server.TaskConfig{Name: taskName, Input: inp}); err != nil {
-				fmt.Fprintf(os.Stderr, "创建任务失败 [%s]: %v\n", m, err)
-				os.Exit(1)
-			}
-		}
+		return
 	}
 
-	// ── 启动 TUI ──────────────────────────────────────────────────────────────
 	tui.SetVersion(Version)
 	if err := tui.Run(srv); err != nil {
 		fmt.Fprintf(os.Stderr, "TUI 启动失败: %v\n", err)
@@ -130,32 +65,9 @@ func main() {
 	}
 }
 
-// resolveConfig 合并命令行参数与环境变量。
-func resolveConfig(protocol, baseURL, apiKey string) (string, string, string) {
-	if protocol == "" {
-		if os.Getenv("OPENAI_API_KEY") != "" || os.Getenv("OPENAI_BASE_URL") != "" {
-			protocol = "openai"
-		} else if os.Getenv("ANTHROPIC_API_KEY") != "" || os.Getenv("ANTHROPIC_BASE_URL") != "" {
-			protocol = "anthropic"
-		} else {
-			protocol = "openai"
-		}
+func routeByMCPFlag(enabled bool) string {
+	if enabled {
+		return "mcp"
 	}
-	if baseURL == "" {
-		switch protocol {
-		case "anthropic":
-			baseURL = os.Getenv("ANTHROPIC_BASE_URL")
-		default:
-			baseURL = os.Getenv("OPENAI_BASE_URL")
-		}
-	}
-	if apiKey == "" {
-		switch protocol {
-		case "anthropic":
-			apiKey = os.Getenv("ANTHROPIC_API_KEY")
-		default:
-			apiKey = os.Getenv("OPENAI_API_KEY")
-		}
-	}
-	return protocol, baseURL, apiKey
+	return "tui"
 }
