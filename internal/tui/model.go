@@ -6,11 +6,11 @@ import (
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
-	"github.com/yinxulai/ait/internal/config"
 	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/server/config"
+	"github.com/yinxulai/ait/internal/server/types"
 	"github.com/yinxulai/ait/internal/tui/pages"
-	"github.com/yinxulai/ait/internal/types"
 )
 
 // ─── 视图状态 ─────────────────────────────────────────────────────────────────
@@ -42,14 +42,14 @@ type Model struct {
 	err    error
 
 	// 页面局部状态（由 pages 包管理）
-	taskList    *pages.TaskListState
-	detail     *pages.TaskDetailState
-	wizard     *pages.WizardState
-	dash       *pages.DashboardState
-	turboDash  *pages.TurboDashState
-	reqDetail  *pages.ReqDetailState
-	proxyConf  *pages.ProxyConfigState
-	help       *pages.HelpState
+	taskList  *pages.TaskListState
+	detail    *pages.TaskDetailState
+	wizard    *pages.WizardState
+	dash      *pages.DashboardState
+	turboDash *pages.TurboDashState
+	reqDetail *pages.ReqDetailState
+	proxyConf *pages.ProxyConfigState
+	help      *pages.HelpState
 }
 
 // NewModel 创建 Model。srv 不能为 nil。

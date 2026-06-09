@@ -1,0 +1,61 @@
+package report
+
+import (
+	"fmt"
+
+	"github.com/yinxulai/ait/internal/server/types"
+)
+
+// ReportRenderer 报告渲染器接口
+type ReportRenderer interface {
+	Render(data []types.ReportData) (string, error)
+	GetFormat() string
+}
+
+// ReportManager 统一的报告管理器
+type ReportManager struct {
+	renderers map[string]ReportRenderer
+}
+
+// NewReportManager 创建新的报告管理器
+func NewReportManager() *ReportManager {
+	manager := &ReportManager{
+		renderers: make(map[string]ReportRenderer),
+	}
+
+	// 注册默认的渲染器
+	manager.RegisterRenderer("json", &JSONRenderer{})
+	manager.RegisterRenderer("csv", &CSVRenderer{})
+
+	return manager
+}
+
+// RegisterRenderer 注册渲染器
+func (rm *ReportManager) RegisterRenderer(format string, renderer ReportRenderer) {
+	rm.renderers[format] = renderer
+}
+
+// GenerateReports 生成报告文件
+func (rm *ReportManager) GenerateReports(data []types.ReportData, formats []string) ([]string, error) {
+	if len(data) == 0 {
+		return nil, fmt.Errorf("no data to generate reports")
+	}
+
+	var filePaths []string
+
+	for _, format := range formats {
+		renderer, exists := rm.renderers[format]
+		if !exists {
+			return nil, fmt.Errorf("unsupported format: %s", format)
+		}
+
+		filePath, err := renderer.Render(data)
+		if err != nil {
+			return nil, fmt.Errorf("failed to render %s: %v", format, err)
+		}
+
+		filePaths = append(filePaths, filePath)
+	}
+
+	return filePaths, nil
+}

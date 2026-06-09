@@ -3,37 +3,45 @@ package tui
 import (
 	"testing"
 
-	"github.com/yinxulai/ait/internal/config"
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/server/config"
+	"github.com/yinxulai/ait/internal/server/types"
 	"github.com/yinxulai/ait/internal/tui/pages"
-	"github.com/yinxulai/ait/internal/types"
 )
 
 // stubServer 是 server.Server 的测试桩，所有方法都返回零值。
 type stubServer struct{}
 
-func (s *stubServer) ListTasks() ([]types.TaskOverview, error)                            { return nil, nil }
-func (s *stubServer) GetTask(id string) (types.TaskDefinition, error)                     { return types.TaskDefinition{}, nil }
-func (s *stubServer) CreateTask(cfg server.TaskConfig) (types.TaskDefinition, error)       { return types.TaskDefinition{}, nil }
+func (s *stubServer) ListTasks() ([]types.TaskOverview, error) { return nil, nil }
+func (s *stubServer) GetTask(id string) (types.TaskDefinition, error) {
+	return types.TaskDefinition{}, nil
+}
+func (s *stubServer) CreateTask(cfg server.TaskConfig) (types.TaskDefinition, error) {
+	return types.TaskDefinition{}, nil
+}
 func (s *stubServer) UpdateTask(id string, cfg server.TaskConfig) (types.TaskDefinition, error) {
 	return types.TaskDefinition{}, nil
 }
-func (s *stubServer) DeleteTask(id string) error                                            { return nil }
-func (s *stubServer) CopyTask(id string) (types.TaskDefinition, error)                    { return types.TaskDefinition{}, nil }
-func (s *stubServer) StartRun(taskID string) (server.RunID, error)                        { return "", nil }
-func (s *stubServer) StopRun(runID server.RunID) error                                     { return nil }
-func (s *stubServer) GetRunState(runID server.RunID) (*server.RunState, bool)              { return nil, false }
+func (s *stubServer) DeleteTask(id string) error { return nil }
+func (s *stubServer) CopyTask(id string) (types.TaskDefinition, error) {
+	return types.TaskDefinition{}, nil
+}
+func (s *stubServer) StartRun(taskID string) (server.RunID, error)            { return "", nil }
+func (s *stubServer) StopRun(runID server.RunID) error                        { return nil }
+func (s *stubServer) GetRunState(runID server.RunID) (*server.RunState, bool) { return nil, false }
 func (s *stubServer) Subscribe(runID server.RunID) (<-chan server.Event, server.CancelFunc) {
 	ch := make(chan server.Event)
 	close(ch)
 	return ch, func() {}
 }
-func (s *stubServer) GetHistory(taskID string, limit int) ([]types.TaskRunSummary, error) { return nil, nil }
+func (s *stubServer) GetHistory(taskID string, limit int) ([]types.TaskRunSummary, error) {
+	return nil, nil
+}
 func (s *stubServer) GenerateReport(runID server.RunID, fmt server.ReportFormat) (string, error) {
 	return "", nil
 }
-func (s *stubServer) GetConfig() (*config.Config, error)  { return &config.Config{}, nil }
-func (s *stubServer) SetProxyURL(proxyURL string) error   { return nil }
+func (s *stubServer) GetConfig() (*config.Config, error) { return &config.Config{}, nil }
+func (s *stubServer) SetProxyURL(proxyURL string) error  { return nil }
 
 // ─── NewModel ─────────────────────────────────────────────────────────────────
 

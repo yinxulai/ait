@@ -7,28 +7,28 @@ import (
 	"sync/atomic"
 	"time"
 
-	"github.com/yinxulai/ait/internal/client"
-	"github.com/yinxulai/ait/internal/config"
-	"github.com/yinxulai/ait/internal/report"
-	"github.com/yinxulai/ait/internal/runner"
-	"github.com/yinxulai/ait/internal/store"
-	"github.com/yinxulai/ait/internal/task"
-	"github.com/yinxulai/ait/internal/turbo"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/client"
+	"github.com/yinxulai/ait/internal/server/config"
+	"github.com/yinxulai/ait/internal/server/report"
+	"github.com/yinxulai/ait/internal/server/runner"
+	"github.com/yinxulai/ait/internal/server/store"
+	"github.com/yinxulai/ait/internal/server/task"
+	"github.com/yinxulai/ait/internal/server/turbo"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // activeRun 持有一次正在执行的运行的全部运行时状态。
 type activeRun struct {
 	mu          sync.RWMutex
 	state       *RunState
-	rnr         *runner.Runner  // standard 模式使用
-	turboEngine *turbo.Engine   // turbo 模式使用
+	rnr         *runner.Runner // standard 模式使用
+	turboEngine *turbo.Engine  // turbo 模式使用
 	// 用于计算实时均值
-	tpsSum       float64
-	ttftSum      time.Duration
-	cacheSum     float64
-	tokenSum     int64   // 累计成功请求的输出 Token 数，用于计算 TPM
-	doneCount    int // 与 state.DoneReqs 保持同步，方便不加锁时计算
+	tpsSum    float64
+	ttftSum   time.Duration
+	cacheSum  float64
+	tokenSum  int64 // 累计成功请求的输出 Token 数，用于计算 TPM
+	doneCount int   // 与 state.DoneReqs 保持同步，方便不加锁时计算
 }
 
 // callbackLevelRunner 包装 runner.Runner，在每次请求完成时调用回调，
@@ -151,17 +151,17 @@ func buildRunStateFromStoredRun(run *store.StoredRun, requests []types.RequestMe
 
 	summary := run.Summary(requests)
 	state := &RunState{
-		RunID:     RunID(run.Metadata.RunID),
-		TaskID:    run.Metadata.TaskID,
-		Status:    RunStatus(run.Metadata.Status),
-		Mode:      run.Metadata.Mode,
-		StartedAt: run.Metadata.StartedAt,
-		Requests:  requestPointers(requests),
-		AvgTTFT:   summary.AvgTTFT,
-		AvgTPS:    summary.AvgTPS,
-		SuccessRate: summary.SuccessRate,
+		RunID:        RunID(run.Metadata.RunID),
+		TaskID:       run.Metadata.TaskID,
+		Status:       RunStatus(run.Metadata.Status),
+		Mode:         run.Metadata.Mode,
+		StartedAt:    run.Metadata.StartedAt,
+		Requests:     requestPointers(requests),
+		AvgTTFT:      summary.AvgTTFT,
+		AvgTPS:       summary.AvgTPS,
+		SuccessRate:  summary.SuccessRate,
 		CacheHitRate: summary.CacheHitRate,
-		ErrorMsg:  summary.ErrorSummary,
+		ErrorMsg:     summary.ErrorSummary,
 		CurrentLevel: summary.MaxStableConcurrency,
 	}
 	if run.Metadata.FinishedAt != nil {

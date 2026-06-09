@@ -5,7 +5,7 @@ import (
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 func TestTaskDetailHistoryEntries_SkipsActiveRunDuplicate(t *testing.T) {

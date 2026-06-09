@@ -12,7 +12,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // Prompt 模式常量
@@ -326,7 +326,7 @@ func step1Fields() []fieldDef {
 				}
 				return types.DefaultEndpointURL(wz.Protocol)
 			},
-			set:    func(wz *WizardState, v string) { wz.EndpointURL = v },
+			set: func(wz *WizardState, v string) { wz.EndpointURL = v },
 		},
 		{
 			kind: fieldText, label: i18n.T(i18n.KWzAPIKey),

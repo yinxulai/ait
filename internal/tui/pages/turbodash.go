@@ -4,12 +4,12 @@ import (
 	"fmt"
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	lgtable "charm.land/lipgloss/v2/table"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // TurboDashState Turbo 模式仪表盘页状态。

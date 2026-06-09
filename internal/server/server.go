@@ -3,9 +3,9 @@ package server
 import (
 	"sync"
 
-	"github.com/yinxulai/ait/internal/config"
-	"github.com/yinxulai/ait/internal/store"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/config"
+	"github.com/yinxulai/ait/internal/server/store"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // Server 是业务逻辑层的统一入口，TUI 层通过此接口与业务交互。

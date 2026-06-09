@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 
-	"github.com/yinxulai/ait/internal/config"
 	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/mcp"
 	"github.com/yinxulai/ait/internal/server"
+	"github.com/yinxulai/ait/internal/server/config"
 	"github.com/yinxulai/ait/internal/tui"
 )
 

@@ -3,7 +3,7 @@ package server
 import (
 	"time"
 
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // RunID 唯一标识一次运行（全局唯一，格式 run_<unix_nano>）。
@@ -40,10 +40,10 @@ const (
 // RunState 一次运行的完整快照，由 GetRunState 返回。
 // 字段为只读快照，不持有锁，TUI 层可安全读取。
 type RunState struct {
-	RunID   RunID
-	TaskID  string
-	Status  RunStatus
-	Mode    string // "standard" | "turbo"
+	RunID      RunID
+	TaskID     string
+	Status     RunStatus
+	Mode       string // "standard" | "turbo"
 	StartedAt  time.Time
 	FinishedAt *time.Time
 
@@ -68,7 +68,7 @@ type RunState struct {
 	Requests []*types.RequestMetrics
 
 	// Turbo 专用
-	TurboConfig  types.TurboConfig        // 规范化后的 Turbo 配置（运行开始时填充）
+	TurboConfig  types.TurboConfig // 规范化后的 Turbo 配置（运行开始时填充）
 	Levels       []types.TurboLevelResult
 	CurrentLevel int
 

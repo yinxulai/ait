@@ -3,15 +3,15 @@ package pages
 import (
 	"strings"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/i18n"
 )
 
 // HelpState 帮助页状态。
 type HelpState struct {
-	ScrollY  int
-	BackNav  NavAction // 按 b/Esc 时的返回目标
+	ScrollY int
+	BackNav NavAction // 按 b/Esc 时的返回目标
 }
 
 // NewHelpState 创建帮助页状态。

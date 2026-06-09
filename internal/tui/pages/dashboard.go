@@ -5,19 +5,19 @@ import (
 	"strings"
 	"time"
 
-	tea "github.com/charmbracelet/bubbletea"
 	"charm.land/lipgloss/v2"
 	lgtable "charm.land/lipgloss/v2/table"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // DashboardState 标准模式运行仪表盘页状态。
 type DashboardState struct {
 	RunID    server.RunID
 	TaskID   string
-	EventCh  <-chan server.Event   // nil = 已后台或已结束
+	EventCh  <-chan server.Event // nil = 已后台或已结束
 	CancelFn server.CancelFunc
 	RunState *server.RunState
 	ReqSel   int       // 选中请求索引（-1 = 无选中）
@@ -304,16 +304,16 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 
 	// ── 预计算每行数据（按展示顺序，最新在前）──
 	type reqRow struct {
-		success  bool
-		errMsg   string
-		id       string
-		status   string
-		total    string
-		ttft     string
-		cache    string
-		ptok     string
-		ctok     string
-		tps      string
+		success bool
+		errMsg  string
+		id      string
+		status  string
+		total   string
+		ttft    string
+		cache   string
+		ptok    string
+		ctok    string
+		tps     string
 	}
 	reqs := rs.Requests
 	reqRows := make([]reqRow, len(reqs))

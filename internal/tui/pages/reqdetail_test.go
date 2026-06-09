@@ -6,7 +6,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 func TestRenderReqDetailKeepsSameHeightForSuccessAndFailure(t *testing.T) {

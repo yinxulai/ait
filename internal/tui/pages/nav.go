@@ -6,7 +6,7 @@ package pages
 import (
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // NavTarget 导航目标枚举。
@@ -32,8 +32,8 @@ type NavAction struct {
 	TaskID   string
 	RunID    server.RunID
 	ReqIndex int
-	EditTask *types.TaskDefinition  // 向导编辑模式时非空；nil 表示新建
-	Summary  *types.TaskRunSummary  // NavRunDetail 时，磁盘文件缺失的回退数据
+	EditTask *types.TaskDefinition // 向导编辑模式时非空；nil 表示新建
+	Summary  *types.TaskRunSummary // NavRunDetail 时，磁盘文件缺失的回退数据
 }
 
 // Client 定义 pages 包对外依赖的操作集合。

@@ -2,7 +2,7 @@ package tui
 
 import (
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // TasksLoadedMsg 任务列表加载完成（初始化或刷新后）。

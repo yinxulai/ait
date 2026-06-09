@@ -3,10 +3,10 @@ package pages
 import (
 	"strings"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"charm.land/lipgloss/v2"
 	"github.com/yinxulai/ait/internal/i18n"
 )
 

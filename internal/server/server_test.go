@@ -8,9 +8,9 @@ import (
 	"testing"
 	"time"
 
-	"github.com/yinxulai/ait/internal/client"
-	"github.com/yinxulai/ait/internal/store"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/client"
+	"github.com/yinxulai/ait/internal/server/store"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // ── test helpers ──────────────────────────────────────────────────────────────

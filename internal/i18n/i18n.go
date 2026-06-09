@@ -120,9 +120,9 @@ const (
 	KStandardMode
 	KTurboMonitor
 	KTurboModeMeta
-	KSuccessRateFmt    // "成功率 %.1f%%"
-	KTurboCurLevelFmt  // "当前级别实时指标 [并发 = %d]"
-	KTurboDashSuffix   // "  %d/%d  并发 %d  进度 %s 级"
+	KSuccessRateFmt   // "成功率 %.1f%%"
+	KTurboCurLevelFmt // "当前级别实时指标 [并发 = %d]"
+	KTurboDashSuffix  // "  %d/%d  并发 %d  进度 %s 级"
 
 	// ─── Layout ──────────────────────────────────────────────────────────────
 	KWindowTooSmall
@@ -131,16 +131,16 @@ const (
 	KScrollMore
 	KTerminalLabel
 	KInProgress
-	KNoHotkeys      // "当前页暂无快捷操作"
+	KNoHotkeys // "当前页暂无快捷操作"
 
 	// ─── Page subtitles ───────────────────────────────────────────────────────
-	KStdMonitorTitle     // "标准运行监控"
-	KStdMonitorSubtitle  // "实时查看运行进度、吞吐和单请求明细"
-	KTurboSubtitle       // "观察并发爬坡过程、级别指标与稳定区间"
-	KTaskListSubtitle    // "创建任务、运行压测、查看执行记录与导出报告"
-	KTaskDetailSubtitle  // "查看任务配置、当前运行状态与历史记录"
-	KReqDetailSubtitle   // "查看单次请求的耗时、网络阶段和完整报文"
-	KConcFmt             // "并发%d"
+	KStdMonitorTitle    // "标准运行监控"
+	KStdMonitorSubtitle // "实时查看运行进度、吞吐和单请求明细"
+	KTurboSubtitle      // "观察并发爬坡过程、级别指标与稳定区间"
+	KTaskListSubtitle   // "创建任务、运行压测、查看执行记录与导出报告"
+	KTaskDetailSubtitle // "查看任务配置、当前运行状态与历史记录"
+	KReqDetailSubtitle  // "查看单次请求的耗时、网络阶段和完整报文"
+	KConcFmt            // "并发%d"
 
 	// ─── TaskDetail / ReqDetail fields ───────────────────────────────────────
 	KProtocol
@@ -316,7 +316,7 @@ const (
 	KWzPromptConfig
 	KWzSelectModeHint
 	KWzTurboModeLabel
-	KWzStepFmt     // "步骤 %d/3"
+	KWzStepFmt // "步骤 %d/3"
 	KWzStep1Label
 	KWzStep2Label
 	KWzStep3Label
@@ -342,13 +342,13 @@ const (
 	KWzPromptLabelShort
 	KWzRAWBody
 	KWzFileSummary
-	KWzGeneratedFmt     // "生成 %d 字符"
-	KWzPromptContent    // field label for prompt content input
-	KWzNoConfirmItems   // "暂无确认项"
-	KWzConfirmRange     // "确认项 %d-%d/%d"
-	KWzConfirmTotal     // "共 %d 项待确认"
-	KWzNoFields         // "暂无配置项"
-	KWzFieldProgress    // "当前字段 %d/%d"
+	KWzGeneratedFmt   // "生成 %d 字符"
+	KWzPromptContent  // field label for prompt content input
+	KWzNoConfirmItems // "暂无确认项"
+	KWzConfirmRange   // "确认项 %d-%d/%d"
+	KWzConfirmTotal   // "共 %d 项待确认"
+	KWzNoFields       // "暂无配置项"
+	KWzFieldProgress  // "当前字段 %d/%d"
 
 	// ─── Misc ────────────────────────────────────────────────────────────────
 	KEnabled
@@ -457,13 +457,13 @@ var translations = [2]map[Key]string{
 		KTurboDashSuffix:  "  %d/%d  并发 %d  进度 %s 级",
 
 		// Layout
-		KWindowTooSmall: "窗口过小 ↔ 请放大终端",
-		KWaitingData:    "等待数据...",
-		KNotRecorded:    "(未记录)",
-		KScrollMore:     "↑↓ 滚动查看完整内容",
-		KTerminalLabel:  "终端",
-		KInProgress:     "进行中",
-		KNoHotkeys:      "当前页暂无快捷操作",
+		KWindowTooSmall:     "窗口过小 ↔ 请放大终端",
+		KWaitingData:        "等待数据...",
+		KNotRecorded:        "(未记录)",
+		KScrollMore:         "↑↓ 滚动查看完整内容",
+		KTerminalLabel:      "终端",
+		KInProgress:         "进行中",
+		KNoHotkeys:          "当前页暂无快捷操作",
 		KStdMonitorTitle:    "标准运行监控",
 		KStdMonitorSubtitle: "实时查看运行进度、吸吐和单请求明细",
 		KTurboSubtitle:      "观察并发爬坡过程、级别指标与稳定区间",
@@ -507,14 +507,14 @@ var translations = [2]map[Key]string{
 		KColOutput:      "输出",
 
 		// TaskList
-		KTaskName:     "任务名称",
-		KTaskID:       "任务 ID",
-		KLastRun:      "上次运行",
-		KIrreversible: "此操作不可恢复，任务的历史运行记录将一并删除。",
-		KNoTasks:      "暂无任务  按 [a] 新建第一个任务",
-		KRunHistory:   "历史运行记录",
-		KTaskCenter:   "任务中心",
-		KNoRunHistory: "暂无运行历史",
+		KTaskName:            "任务名称",
+		KTaskID:              "任务 ID",
+		KLastRun:             "上次运行",
+		KIrreversible:        "此操作不可恢复，任务的历史运行记录将一并删除。",
+		KNoTasks:             "暂无任务  按 [a] 新建第一个任务",
+		KRunHistory:          "历史运行记录",
+		KTaskCenter:          "任务中心",
+		KNoRunHistory:        "暂无运行历史",
 		KConfirmDeletePrompt: "确认删除任务？",
 
 		// Proxy
@@ -540,12 +540,12 @@ var translations = [2]map[Key]string{
 		KHelpSecDashboard:  "快捷键 — 运行仪表盘",
 		KHelpSecExport:     "报告导出",
 
-		KHelpTermTask:     "任务 (Task)",
-		KHelpDescTask:     "一组压测配置的集合，包含目标接口、模型、并发数、请求数等参数。任务可多次运行，每次运行独立记录结果。",
-		KHelpTermRun:      "运行 (Run)",
-		KHelpDescRun:      "任务的一次具体执行。每次运行产生独立的指标数据和请求记录，可导出为 JSON/CSV 报告。",
-		KHelpTermStandard: "标准模式",
-		KHelpDescStandard: "以固定并发数执行所有请求，适合衡量稳定负载下的接口性能。",
+		KHelpTermTask:      "任务 (Task)",
+		KHelpDescTask:      "一组压测配置的集合，包含目标接口、模型、并发数、请求数等参数。任务可多次运行，每次运行独立记录结果。",
+		KHelpTermRun:       "运行 (Run)",
+		KHelpDescRun:       "任务的一次具体执行。每次运行产生独立的指标数据和请求记录，可导出为 JSON/CSV 报告。",
+		KHelpTermStandard:  "标准模式",
+		KHelpDescStandard:  "以固定并发数执行所有请求，适合衡量稳定负载下的接口性能。",
 		KHelpTermTurboMode: "Turbo 模式",
 		KHelpDescTurboMode: "自动从低并发逐步爬坡，找出接口在保持成功率要求下能承受的最大稳定并发数。",
 
@@ -558,10 +558,10 @@ var translations = [2]map[Key]string{
 		KHelpTermAvgTTFT: "均值TTFT",
 		KHelpDescAvgTTFT: "本次运行中所有请求的 TTFT 均值。",
 
-		KHelpTermSuccessRate: "成功率",
-		KHelpDescSuccessRate: "成功完成的请求数占总请求数的百分比。失败包括超时、HTTP 错误、模型返回错误等。",
-		KHelpTermCacheHit:    "缓存命中",
-		KHelpDescCacheHit:    "请求中使用了 KV 缓存（Prompt Cache）的比例。命中缓存可显著降低 TTFT 和推理成本。该指标为二值统计：单次请求若有任何 Token 命中缓存则计为命中。",
+		KHelpTermSuccessRate:      "成功率",
+		KHelpDescSuccessRate:      "成功完成的请求数占总请求数的百分比。失败包括超时、HTTP 错误、模型返回错误等。",
+		KHelpTermCacheHit:         "缓存命中",
+		KHelpDescCacheHit:         "请求中使用了 KV 缓存（Prompt Cache）的比例。命中缓存可显著降低 TTFT 和推理成本。该指标为二值统计：单次请求若有任何 Token 命中缓存则计为命中。",
 		KHelpTermConcurrencyTurbo: "并发（Turbo）",
 		KHelpDescConcurrencyTurbo: "Turbo 模式下找到的最大稳定并发数，即在满足最低成功率要求的前提下能同时维持的请求数。",
 
@@ -613,16 +613,16 @@ var translations = [2]map[Key]string{
 		KHelpTermDeleteTask2:   "d",
 		KHelpDescDeleteTask2:   "删除任务。",
 
-		KHelpTermSelectReq:     "↑↓ / j k",
-		KHelpDescSelectReq:     "选择请求条目。",
-		KHelpTermViewReq:       "Enter",
-		KHelpDescViewReq:       "查看选中请求的详情（耗时、Token、响应体等）。",
-		KHelpTermStopDash:      "s",
-		KHelpDescStopDash:      "停止正在运行的任务。",
+		KHelpTermSelectReq:      "↑↓ / j k",
+		KHelpDescSelectReq:      "选择请求条目。",
+		KHelpTermViewReq:        "Enter",
+		KHelpDescViewReq:        "查看选中请求的详情（耗时、Token、响应体等）。",
+		KHelpTermStopDash:       "s",
+		KHelpDescStopDash:       "停止正在运行的任务。",
 		KHelpTermGenerateReport: "r",
 		KHelpDescGenerateReport: "生成 JSON 报告（运行结束后可用）。",
-		KHelpTermBackDash:      "b / Esc",
-		KHelpDescBackDash:      "返回任务详情页。",
+		KHelpTermBackDash:       "b / Esc",
+		KHelpDescBackDash:       "返回任务详情页。",
 
 		KHelpTermJSONReport: "JSON 报告",
 		KHelpDescJSONReport: "完整记录每次请求的所有指标、请求/响应体，适合程序化分析。",
@@ -630,64 +630,64 @@ var translations = [2]map[Key]string{
 		KHelpDescCSVReport:  "表格形式的汇总数据，可直接在电子表格中打开。报告默认保存在当前工作目录。",
 
 		// Wizard fields
-		KWzTaskName:        "任务名称",
-		KWzProtocol:        "协议类型",
-		KWzEndpoint:        "接口地址",
-		KWzAPIKey:          "API 密钥",
-		KWzTestModel:       "测试模型",
-		KWzTestMode:        "测试模式",
-		KWzTurboMode:       "Turbo 模式",
-		KWzStandardMode:    "标准模式",
-		KWzConcurrency:     "并发数",
-		KWzTotalRequests:   "请求总数",
-		KWzTimeoutSecs:     "超时(秒)",
-		KWzInitConc:        "初始并发",
-		KWzMaxConc:         "最大并发",
-		KWzStepSize:        "步进值",
-		KWzLevelReqs:       "每级请求数",
-		KWzMinSuccessRate:  "最低成功率",
-		KWzStreamMode:      "流式模式",
-		KWzInputMode:       "输入方式",
-		KWzInputDirect:     "直接输入",
-		KWzInputFile:       "文件",
-		KWzInputGenerated:  "按长度生成",
-		KWzInputRaw:        "RAW 请求体",
-		KWzPromptConfig:    "Prompt 配置",
-		KWzSelectModeHint:  "选择压测模式，并补全并发与 Prompt 参数。",
-		KWzTurboModeLabel:  "Turbo 模式",
-		KWzStepFmt:         "步骤 %d/3",
-		KWzStep1Label:      "1 基本信息",
-		KWzStep2Label:      "2 测试参数",
-		KWzStep3Label:      "3 确认保存",
-		KWzStep1Desc:       "配置任务名称、模型协议和连接信息。",
-		KWzStep2Desc:       "选择压测模式，并补全并发与 Prompt 参数。",
-		KWzStep3Desc:       "保存前快速检查关键配置。",
-		KWzUntitled:        "未命名任务",
-		KWzNotFilled:       "未填写",
-		KWzExecParams:      "执行参数",
-		KWzConcurrencyRamp: "并发爬坡",
-		KWzStopCondition:   "停止条件",
-		KWzTimeoutLabel:    "超时",
-		KWzContentSummary:  "内容摘要",
-		KWzBodyBytes:       "Body 字节数",
-		KWzSaveLocation:    "保存位置",
-		KWzPromptSection:   "Prompt",
-		KWzHintDirect:      "直接粘贴或输入 Prompt 文本，所有请求共享同一段内容",
-		KWzHintFile:        "从文件读取 Prompt，支持通配符匹配多个文件（请求按文件轮换）",
-		KWzHintRaw:         "粘贴完整的 HTTP 请求 JSON Body，将跳过参数组装直接发送",
-		KWzHintCacheToken:  "提示：大多数服务需要 ≥ 1024 tokens 才能命中缓存",
-		KWzHintRawBody:     "提示：粘贴 API 请求的完整 JSON Body，将直接作为 HTTP 请求体发送",
-		KWzJSONBody:        "JSON Body",
+		KWzTaskName:         "任务名称",
+		KWzProtocol:         "协议类型",
+		KWzEndpoint:         "接口地址",
+		KWzAPIKey:           "API 密钥",
+		KWzTestModel:        "测试模型",
+		KWzTestMode:         "测试模式",
+		KWzTurboMode:        "Turbo 模式",
+		KWzStandardMode:     "标准模式",
+		KWzConcurrency:      "并发数",
+		KWzTotalRequests:    "请求总数",
+		KWzTimeoutSecs:      "超时(秒)",
+		KWzInitConc:         "初始并发",
+		KWzMaxConc:          "最大并发",
+		KWzStepSize:         "步进值",
+		KWzLevelReqs:        "每级请求数",
+		KWzMinSuccessRate:   "最低成功率",
+		KWzStreamMode:       "流式模式",
+		KWzInputMode:        "输入方式",
+		KWzInputDirect:      "直接输入",
+		KWzInputFile:        "文件",
+		KWzInputGenerated:   "按长度生成",
+		KWzInputRaw:         "RAW 请求体",
+		KWzPromptConfig:     "Prompt 配置",
+		KWzSelectModeHint:   "选择压测模式，并补全并发与 Prompt 参数。",
+		KWzTurboModeLabel:   "Turbo 模式",
+		KWzStepFmt:          "步骤 %d/3",
+		KWzStep1Label:       "1 基本信息",
+		KWzStep2Label:       "2 测试参数",
+		KWzStep3Label:       "3 确认保存",
+		KWzStep1Desc:        "配置任务名称、模型协议和连接信息。",
+		KWzStep2Desc:        "选择压测模式，并补全并发与 Prompt 参数。",
+		KWzStep3Desc:        "保存前快速检查关键配置。",
+		KWzUntitled:         "未命名任务",
+		KWzNotFilled:        "未填写",
+		KWzExecParams:       "执行参数",
+		KWzConcurrencyRamp:  "并发爬坡",
+		KWzStopCondition:    "停止条件",
+		KWzTimeoutLabel:     "超时",
+		KWzContentSummary:   "内容摘要",
+		KWzBodyBytes:        "Body 字节数",
+		KWzSaveLocation:     "保存位置",
+		KWzPromptSection:    "Prompt",
+		KWzHintDirect:       "直接粘贴或输入 Prompt 文本，所有请求共享同一段内容",
+		KWzHintFile:         "从文件读取 Prompt，支持通配符匹配多个文件（请求按文件轮换）",
+		KWzHintRaw:          "粘贴完整的 HTTP 请求 JSON Body，将跳过参数组装直接发送",
+		KWzHintCacheToken:   "提示：大多数服务需要 ≥ 1024 tokens 才能命中缓存",
+		KWzHintRawBody:      "提示：粘贴 API 请求的完整 JSON Body，将直接作为 HTTP 请求体发送",
+		KWzJSONBody:         "JSON Body",
 		KWzPromptLabelShort: "Prompt",
-		KWzRAWBody:         "RAW 请求体",
-		KWzFileSummary:     "文件",
-		KWzGeneratedFmt:    "生成 %d 字符",
-		KWzPromptContent:   "内容",
-		KWzNoConfirmItems:  "暂无确认项",
-		KWzConfirmRange:    "确认项 %d-%d/%d",
-		KWzConfirmTotal:    "共 %d 项待确认",
-		KWzNoFields:        "暂无配置项",
-		KWzFieldProgress:   "当前字段 %d/%d",
+		KWzRAWBody:          "RAW 请求体",
+		KWzFileSummary:      "文件",
+		KWzGeneratedFmt:     "生成 %d 字符",
+		KWzPromptContent:    "内容",
+		KWzNoConfirmItems:   "暂无确认项",
+		KWzConfirmRange:     "确认项 %d-%d/%d",
+		KWzConfirmTotal:     "共 %d 项待确认",
+		KWzNoFields:         "暂无配置项",
+		KWzFieldProgress:    "当前字段 %d/%d",
 
 		// Misc
 		KEnabled:        "开启",
@@ -794,13 +794,13 @@ var translations = [2]map[Key]string{
 		KTurboDashSuffix:  "  %d/%d  Level %d  Progress %s",
 
 		// Layout
-		KWindowTooSmall: "Terminal too small ↔ please resize",
-		KWaitingData:    "Waiting for data...",
-		KNotRecorded:    "(not recorded)",
-		KScrollMore:     "↑↓ scroll to view full content",
-		KTerminalLabel:  "Terminal",
-		KInProgress:     "In Progress",
-		KNoHotkeys:      "No shortcuts on this page",
+		KWindowTooSmall:     "Terminal too small ↔ please resize",
+		KWaitingData:        "Waiting for data...",
+		KNotRecorded:        "(not recorded)",
+		KScrollMore:         "↑↓ scroll to view full content",
+		KTerminalLabel:      "Terminal",
+		KInProgress:         "In Progress",
+		KNoHotkeys:          "No shortcuts on this page",
 		KStdMonitorTitle:    "Standard Run Monitor",
 		KStdMonitorSubtitle: "Live view of run progress, throughput and per-request details",
 		KTurboSubtitle:      "Observe concurrency ramp, level metrics and stable range",
@@ -844,14 +844,14 @@ var translations = [2]map[Key]string{
 		KColOutput:      "Output",
 
 		// TaskList
-		KTaskName:     "Task Name",
-		KTaskID:       "Task ID",
-		KLastRun:      "Last Run",
-		KIrreversible: "This action is irreversible. All run history will also be deleted.",
-		KNoTasks:      "No tasks · Press [a] to create the first task",
-		KRunHistory:   "Run History",
-		KTaskCenter:   "Tasks",
-		KNoRunHistory: "No run history",
+		KTaskName:            "Task Name",
+		KTaskID:              "Task ID",
+		KLastRun:             "Last Run",
+		KIrreversible:        "This action is irreversible. All run history will also be deleted.",
+		KNoTasks:             "No tasks · Press [a] to create the first task",
+		KRunHistory:          "Run History",
+		KTaskCenter:          "Tasks",
+		KNoRunHistory:        "No run history",
 		KConfirmDeletePrompt: "Delete this task?",
 
 		// Proxy
@@ -877,12 +877,12 @@ var translations = [2]map[Key]string{
 		KHelpSecDashboard:  "Hotkeys — Dashboard",
 		KHelpSecExport:     "Report Export",
 
-		KHelpTermTask:     "Task",
-		KHelpDescTask:     "A set of load test configurations including target endpoint, model, concurrency, and request count. A task can be run multiple times, each run recorded independently.",
-		KHelpTermRun:      "Run",
-		KHelpDescRun:      "A single execution of a task. Each run produces independent metric data and request records, exportable as JSON/CSV reports.",
-		KHelpTermStandard: "Standard Mode",
-		KHelpDescStandard: "Executes all requests at a fixed concurrency level, ideal for measuring interface performance under steady load.",
+		KHelpTermTask:      "Task",
+		KHelpDescTask:      "A set of load test configurations including target endpoint, model, concurrency, and request count. A task can be run multiple times, each run recorded independently.",
+		KHelpTermRun:       "Run",
+		KHelpDescRun:       "A single execution of a task. Each run produces independent metric data and request records, exportable as JSON/CSV reports.",
+		KHelpTermStandard:  "Standard Mode",
+		KHelpDescStandard:  "Executes all requests at a fixed concurrency level, ideal for measuring interface performance under steady load.",
 		KHelpTermTurboMode: "Turbo Mode",
 		KHelpDescTurboMode: "Automatically ramps up concurrency to find the maximum stable concurrency the interface can sustain while meeting the success rate requirement.",
 
@@ -895,10 +895,10 @@ var translations = [2]map[Key]string{
 		KHelpTermAvgTTFT: "Avg TTFT",
 		KHelpDescAvgTTFT: "Mean TTFT across all requests in this run.",
 
-		KHelpTermSuccessRate: "Success Rate",
-		KHelpDescSuccessRate: "Percentage of requests that completed successfully. Failures include timeouts, HTTP errors, and model errors.",
-		KHelpTermCacheHit:    "Cache Hit",
-		KHelpDescCacheHit:    "Ratio of requests that used KV cache (Prompt Cache). Cache hits significantly reduce TTFT and inference cost. Binary metric: a request counts as a hit if any tokens were served from cache.",
+		KHelpTermSuccessRate:      "Success Rate",
+		KHelpDescSuccessRate:      "Percentage of requests that completed successfully. Failures include timeouts, HTTP errors, and model errors.",
+		KHelpTermCacheHit:         "Cache Hit",
+		KHelpDescCacheHit:         "Ratio of requests that used KV cache (Prompt Cache). Cache hits significantly reduce TTFT and inference cost. Binary metric: a request counts as a hit if any tokens were served from cache.",
 		KHelpTermConcurrencyTurbo: "Concurrency (Turbo)",
 		KHelpDescConcurrencyTurbo: "Maximum stable concurrency found by Turbo mode — the number of simultaneous requests sustainable while meeting the minimum success rate.",
 
@@ -950,16 +950,16 @@ var translations = [2]map[Key]string{
 		KHelpTermDeleteTask2:   "d",
 		KHelpDescDeleteTask2:   "Delete the task.",
 
-		KHelpTermSelectReq:     "↑↓ / j k",
-		KHelpDescSelectReq:     "Select a request entry.",
-		KHelpTermViewReq:       "Enter",
-		KHelpDescViewReq:       "View request details (latency, tokens, response body, etc.).",
-		KHelpTermStopDash:      "s",
-		KHelpDescStopDash:      "Stop the running task.",
+		KHelpTermSelectReq:      "↑↓ / j k",
+		KHelpDescSelectReq:      "Select a request entry.",
+		KHelpTermViewReq:        "Enter",
+		KHelpDescViewReq:        "View request details (latency, tokens, response body, etc.).",
+		KHelpTermStopDash:       "s",
+		KHelpDescStopDash:       "Stop the running task.",
 		KHelpTermGenerateReport: "r",
 		KHelpDescGenerateReport: "Generate a JSON report (available after run completes).",
-		KHelpTermBackDash:      "b / Esc",
-		KHelpDescBackDash:      "Return to task detail page.",
+		KHelpTermBackDash:       "b / Esc",
+		KHelpDescBackDash:       "Return to task detail page.",
 
 		KHelpTermJSONReport: "JSON Report",
 		KHelpDescJSONReport: "Complete record of all metrics, request/response bodies for each request. Suitable for programmatic analysis.",
@@ -967,64 +967,64 @@ var translations = [2]map[Key]string{
 		KHelpDescCSVReport:  "Summary data in tabular form, openable directly in spreadsheets. Reports are saved in the current working directory by default.",
 
 		// Wizard fields
-		KWzTaskName:        "Task Name",
-		KWzProtocol:        "Protocol",
-		KWzEndpoint:        "Endpoint URL",
-		KWzAPIKey:          "API Key",
-		KWzTestModel:       "Model",
-		KWzTestMode:        "Test Mode",
-		KWzTurboMode:       "Turbo Mode",
-		KWzStandardMode:    "Standard Mode",
-		KWzConcurrency:     "Concurrency",
-		KWzTotalRequests:   "Total Requests",
-		KWzTimeoutSecs:     "Timeout (s)",
-		KWzInitConc:        "Init Concurrency",
-		KWzMaxConc:         "Max Concurrency",
-		KWzStepSize:        "Step Size",
-		KWzLevelReqs:       "Requests/Level",
-		KWzMinSuccessRate:  "Min Success Rate",
-		KWzStreamMode:      "Stream Mode",
-		KWzInputMode:       "Input Mode",
-		KWzInputDirect:     "Direct Input",
-		KWzInputFile:       "File",
-		KWzInputGenerated:  "Generated",
-		KWzInputRaw:        "RAW Body",
-		KWzPromptConfig:    "Prompt Config",
-		KWzSelectModeHint:  "Select load test mode, then fill in concurrency and Prompt parameters.",
-		KWzTurboModeLabel:  "Turbo Mode",
-		KWzStepFmt:         "Step %d/3",
-		KWzStep1Label:      "1 Basic Info",
-		KWzStep2Label:      "2 Parameters",
-		KWzStep3Label:      "3 Confirm",
-		KWzStep1Desc:       "Configure task name, protocol, and connection info.",
-		KWzStep2Desc:       "Choose test mode and fill in concurrency and prompt parameters.",
-		KWzStep3Desc:       "Quick review before saving.",
-		KWzUntitled:        "Untitled Task",
-		KWzNotFilled:       "(empty)",
-		KWzExecParams:      "Execution Parameters",
-		KWzConcurrencyRamp: "Concurrency Ramp",
-		KWzStopCondition:   "Stop Condition",
-		KWzTimeoutLabel:    "Timeout",
-		KWzContentSummary:  "Content Summary",
-		KWzBodyBytes:       "Body Bytes",
-		KWzSaveLocation:    "Save Location",
-		KWzPromptSection:   "Prompt",
-		KWzHintDirect:      "Paste or type Prompt text directly. All requests share the same content.",
-		KWzHintFile:        "Read Prompt from file(s). Supports glob patterns; requests rotate through matching files.",
-		KWzHintRaw:         "Paste a complete HTTP request JSON body. Parameter assembly is skipped and the body is sent as-is.",
-		KWzHintCacheToken:  "Tip: most services require ≥ 1024 tokens to trigger cache hits.",
-		KWzHintRawBody:     "Tip: paste the full JSON body of an API request. It will be sent directly as the HTTP request body.",
-		KWzJSONBody:        "JSON Body",
+		KWzTaskName:         "Task Name",
+		KWzProtocol:         "Protocol",
+		KWzEndpoint:         "Endpoint URL",
+		KWzAPIKey:           "API Key",
+		KWzTestModel:        "Model",
+		KWzTestMode:         "Test Mode",
+		KWzTurboMode:        "Turbo Mode",
+		KWzStandardMode:     "Standard Mode",
+		KWzConcurrency:      "Concurrency",
+		KWzTotalRequests:    "Total Requests",
+		KWzTimeoutSecs:      "Timeout (s)",
+		KWzInitConc:         "Init Concurrency",
+		KWzMaxConc:          "Max Concurrency",
+		KWzStepSize:         "Step Size",
+		KWzLevelReqs:        "Requests/Level",
+		KWzMinSuccessRate:   "Min Success Rate",
+		KWzStreamMode:       "Stream Mode",
+		KWzInputMode:        "Input Mode",
+		KWzInputDirect:      "Direct Input",
+		KWzInputFile:        "File",
+		KWzInputGenerated:   "Generated",
+		KWzInputRaw:         "RAW Body",
+		KWzPromptConfig:     "Prompt Config",
+		KWzSelectModeHint:   "Select load test mode, then fill in concurrency and Prompt parameters.",
+		KWzTurboModeLabel:   "Turbo Mode",
+		KWzStepFmt:          "Step %d/3",
+		KWzStep1Label:       "1 Basic Info",
+		KWzStep2Label:       "2 Parameters",
+		KWzStep3Label:       "3 Confirm",
+		KWzStep1Desc:        "Configure task name, protocol, and connection info.",
+		KWzStep2Desc:        "Choose test mode and fill in concurrency and prompt parameters.",
+		KWzStep3Desc:        "Quick review before saving.",
+		KWzUntitled:         "Untitled Task",
+		KWzNotFilled:        "(empty)",
+		KWzExecParams:       "Execution Parameters",
+		KWzConcurrencyRamp:  "Concurrency Ramp",
+		KWzStopCondition:    "Stop Condition",
+		KWzTimeoutLabel:     "Timeout",
+		KWzContentSummary:   "Content Summary",
+		KWzBodyBytes:        "Body Bytes",
+		KWzSaveLocation:     "Save Location",
+		KWzPromptSection:    "Prompt",
+		KWzHintDirect:       "Paste or type Prompt text directly. All requests share the same content.",
+		KWzHintFile:         "Read Prompt from file(s). Supports glob patterns; requests rotate through matching files.",
+		KWzHintRaw:          "Paste a complete HTTP request JSON body. Parameter assembly is skipped and the body is sent as-is.",
+		KWzHintCacheToken:   "Tip: most services require ≥ 1024 tokens to trigger cache hits.",
+		KWzHintRawBody:      "Tip: paste the full JSON body of an API request. It will be sent directly as the HTTP request body.",
+		KWzJSONBody:         "JSON Body",
 		KWzPromptLabelShort: "Prompt",
-		KWzRAWBody:         "RAW Body",
-		KWzFileSummary:     "File",
-		KWzGeneratedFmt:    "%d chars",
-		KWzPromptContent:   "Content",
-		KWzNoConfirmItems:  "No confirm items",
-		KWzConfirmRange:    "Items %d-%d/%d",
-		KWzConfirmTotal:    "%d items to confirm",
-		KWzNoFields:        "No fields",
-		KWzFieldProgress:   "Field %d/%d",
+		KWzRAWBody:          "RAW Body",
+		KWzFileSummary:      "File",
+		KWzGeneratedFmt:     "%d chars",
+		KWzPromptContent:    "Content",
+		KWzNoConfirmItems:   "No confirm items",
+		KWzConfirmRange:     "Items %d-%d/%d",
+		KWzConfirmTotal:     "%d items to confirm",
+		KWzNoFields:         "No fields",
+		KWzFieldProgress:    "Field %d/%d",
 
 		// Misc
 		KEnabled:        "On",

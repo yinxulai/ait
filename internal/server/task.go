@@ -4,9 +4,9 @@ import (
 	"errors"
 	"fmt"
 
-	"github.com/yinxulai/ait/internal/config"
-	storepkg "github.com/yinxulai/ait/internal/store"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/config"
+	storepkg "github.com/yinxulai/ait/internal/server/store"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 // ListTasks 返回所有任务（最近更新排在前面）。

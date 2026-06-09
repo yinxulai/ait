@@ -234,7 +234,7 @@ func renderHeader(st Styles, width int, title, subtitle, meta string, infoLeft, 
 	// ── Line 2: [art row 1] │ subtitle                    [version badge] ──────
 	verBadge := lipgloss.NewStyle().
 		Background(colorPurple).Foreground(colorWhite).Padding(0, 1).
-		Render("v" + AppVersion) + " "
+		Render("v"+AppVersion) + " "
 	var left2 string
 	if wideEnough {
 		subSeg := ""

@@ -7,7 +7,7 @@ import (
 	"time"
 
 	"github.com/yinxulai/ait/internal/server"
-	"github.com/yinxulai/ait/internal/types"
+	"github.com/yinxulai/ait/internal/server/types"
 )
 
 func TestHeightCorrectness(t *testing.T) {
@@ -27,9 +27,13 @@ func TestHeightCorrectness(t *testing.T) {
 		got := strings.Count(out, "\n") + 1
 		diff := got - h
 		marker := "✓"
-		if diff != 0 { marker = fmt.Sprintf("FAIL diff=%+d", diff) }
+		if diff != 0 {
+			marker = fmt.Sprintf("FAIL diff=%+d", diff)
+		}
 		fmt.Printf("height=%d → rendered=%d %s\n", h, got, marker)
-		if diff != 0 { t.Errorf("ReqDetail height=%d: want %d lines, got %d", h, h, got) }
+		if diff != 0 {
+			t.Errorf("ReqDetail height=%d: want %d lines, got %d", h, h, got)
+		}
 	}
 
 	// Dashboard
@@ -40,9 +44,13 @@ func TestHeightCorrectness(t *testing.T) {
 		got := strings.Count(out, "\n") + 1
 		diff := got - h
 		marker := "✓"
-		if diff != 0 { marker = fmt.Sprintf("FAIL diff=%+d", diff) }
+		if diff != 0 {
+			marker = fmt.Sprintf("FAIL diff=%+d", diff)
+		}
 		fmt.Printf("height=%d → rendered=%d %s\n", h, got, marker)
-		if diff != 0 { t.Errorf("Dashboard height=%d: want %d lines, got %d", h, h, got) }
+		if diff != 0 {
+			t.Errorf("Dashboard height=%d: want %d lines, got %d", h, h, got)
+		}
 	}
 
 	// TaskList (empty tasks)
@@ -53,9 +61,13 @@ func TestHeightCorrectness(t *testing.T) {
 		got := strings.Count(out, "\n") + 1
 		diff := got - h
 		marker := "✓"
-		if diff != 0 { marker = fmt.Sprintf("FAIL diff=%+d", diff) }
+		if diff != 0 {
+			marker = fmt.Sprintf("FAIL diff=%+d", diff)
+		}
 		fmt.Printf("height=%d → rendered=%d %s\n", h, got, marker)
-		if diff != 0 { t.Errorf("TaskList height=%d: want %d lines, got %d", h, h, got) }
+		if diff != 0 {
+			t.Errorf("TaskList height=%d: want %d lines, got %d", h, h, got)
+		}
 	}
 }
 
@@ -76,8 +88,12 @@ func TestHeightWithCJKContent(t *testing.T) {
 		got := strings.Count(out, "\n") + 1
 		diff := got - h
 		marker := "✓"
-		if diff != 0 { marker = fmt.Sprintf("FAIL diff=%+d", diff) }
+		if diff != 0 {
+			marker = fmt.Sprintf("FAIL diff=%+d", diff)
+		}
 		t.Logf("CJK ReqDetail height=%d → rendered=%d %s", h, got, marker)
-		if diff != 0 { t.Errorf("CJK content: height=%d want %d lines, got %d", h, h, got) }
+		if diff != 0 {
+			t.Errorf("CJK content: height=%d want %d lines, got %d", h, h, got)
+		}
 	}
 }
