@@ -92,8 +92,10 @@ func (c *Client) StartRunCmd(taskID string) tea.Cmd {
 // StopRunCmd 异步停止运行（fire-and-forget，忽略错误）。
 func (c *Client) StopRunCmd(runID server.RunID) tea.Cmd {
 	return func() tea.Msg {
-		_ = c.srv.StopRun(runID)
-		return nil
+		if err := c.srv.StopRun(runID); err != nil {
+			return ErrorMsg{Err: fmt.Errorf("停止运行失败: %w", err)}
+		}
+		return RunStopRequestedMsg{RunID: runID}
 	}
 }
 

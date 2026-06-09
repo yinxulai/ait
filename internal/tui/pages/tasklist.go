@@ -406,7 +406,7 @@ func buildTaskListConfirmContent(s *TaskListState, st Styles, width, maxH int) s
 		return strings.Repeat("\n", maxH-1)
 	}
 	lines = append(lines, "")
-	lines = append(lines, st.ErrStyle.Render("  "+i18n.T(i18n.KConfirmDeletePrompt)))
+	lines = append(lines, st.ErrStyle.Render("  "+fmt.Sprintf("%s %s", i18n.T(i18n.KConfirmDeletePrompt), truncate(task.Name, maxInt(8, width-24)))))
 	lines = append(lines, "")
 	lines = append(lines, "  "+st.Label.Render(i18n.T(i18n.KTaskName))+"  "+st.Value.Render(truncate(task.Name, maxInt(8, width-14))))
 	lines = append(lines, "  "+st.Label.Render(i18n.T(i18n.KTaskID))+"  "+st.Muted.Render(task.ID))

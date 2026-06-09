@@ -295,6 +295,7 @@ func (c *AnthropicClient) doRequest(reqBodyBytes []byte, stream bool) (*Response
 	t0 := time.Now()
 	resp, err := c.httpClient.Do(req)
 	if err != nil {
+		errorMessage := EnhanceErrorMessage(fmt.Sprintf("Network error: %s", err.Error()))
 		// 记录网络错误日志
 		if c.logger != nil && c.logger.IsEnabled() {
 			c.logger.Error(c.Model, "Network error occurred", err)
@@ -309,7 +310,7 @@ func (c *AnthropicClient) doRequest(reqBodyBytes []byte, stream bool) (*Response
 			TargetIP:         targetIP,
 			CompletionTokens: 0,
 			RequestBody:      string(reqBodyBytes),
-			ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
+			ErrorMessage:     errorMessage,
 		}, err
 	}
 	defer resp.Body.Close()
@@ -343,6 +344,7 @@ func (c *AnthropicClient) doRequest(reqBodyBytes []byte, stream bool) (*Response
 			errorMessage = fmt.Sprintf("[%s] %s", 
 				errorResp.Error.Type, errorResp.Error.Message)
 		}
+		errorMessage = EnhanceErrorMessage(errorMessage)
 		
 		return &ResponseMetrics{
 			TimeToFirstToken: 0,

@@ -168,6 +168,11 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.status = ""
 		return m, firstCmd
 
+	// ── 停止请求已发送 ──
+	case RunStopRequestedMsg:
+		m.status = "已发送停止信号，等待当前请求收尾"
+		return m, nil
+
 	// ── Server 事件（来自运行中订阅） ──
 	case ServerEventMsg:
 		return m.handleServerEvent(msg)

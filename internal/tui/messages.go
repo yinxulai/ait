@@ -33,6 +33,11 @@ type RunStartedMsg struct {
 	TaskID string
 }
 
+// RunStopRequestedMsg 停止运行请求已发送。
+type RunStopRequestedMsg struct {
+	RunID server.RunID
+}
+
 // ServerEventMsg 封装从 server.Subscribe 获取的事件，由 waitEventCmd 产生。
 type ServerEventMsg struct {
 	Event server.Event

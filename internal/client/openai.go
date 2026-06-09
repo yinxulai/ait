@@ -508,6 +508,7 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 		// 流式请求
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			errorMessage := EnhanceErrorMessage(fmt.Sprintf("Network error: %s", err.Error()))
 			// 记录网络错误日志
 			if c.logger != nil && c.logger.IsEnabled() {
 				c.logger.Error(c.Model, "Network error occurred", err)
@@ -522,7 +523,7 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 				TargetIP:         targetIP,
 				CompletionTokens: 0,
 				RequestBody:      string(jsonData),
-				ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
+				ErrorMessage:     errorMessage,
 			}, err
 		}
 		defer resp.Body.Close()
@@ -555,6 +556,7 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 				errorMessage = fmt.Sprintf("[%s] %s",
 					errorResp.Error.Type, errorResp.Error.Message)
 			}
+			errorMessage = EnhanceErrorMessage(errorMessage)
 
 			return &ResponseMetrics{
 				TimeToFirstToken: 0,
@@ -689,6 +691,7 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 		// 非流式请求
 		resp, err := c.httpClient.Do(req)
 		if err != nil {
+			errorMessage := EnhanceErrorMessage(fmt.Sprintf("Network error: %s", err.Error()))
 			// 网络错误（如地址错误、连接失败等）
 			return &ResponseMetrics{
 				TimeToFirstToken: 0,
@@ -697,7 +700,9 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 				ConnectTime:      connectTime,
 				TLSHandshakeTime: tlsTime,
 				TargetIP:         targetIP,
-				CompletionTokens: 0,			RequestBody:      string(jsonData),				ErrorMessage:     fmt.Sprintf("Network error: %s", err.Error()),
+				CompletionTokens: 0,
+				RequestBody:      string(jsonData),
+				ErrorMessage:     errorMessage,
 			}, err
 		}
 		defer resp.Body.Close()
@@ -714,6 +719,7 @@ func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics
 				errorMessage = fmt.Sprintf("[%s] %s",
 					errorResp.Error.Type, errorResp.Error.Message)
 			}
+			errorMessage = EnhanceErrorMessage(errorMessage)
 
 			return &ResponseMetrics{
 				TimeToFirstToken: 0,

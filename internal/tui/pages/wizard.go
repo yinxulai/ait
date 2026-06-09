@@ -6,10 +6,10 @@ import (
 	"strings"
 	"time"
 
+	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
-	"charm.land/lipgloss/v2"
 	"github.com/yinxulai/ait/internal/i18n"
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/types"
@@ -308,8 +308,8 @@ func step1Fields() []fieldDef {
 					idx = (idx - 1 + len(protocols)) % len(protocols)
 				}
 				wz.Protocol = protocols[idx]
-				// 清空 endpoint，使其跟随协议默认值
-				wz.EndpointURL = ""
+				// 协议变化后直接填入默认 endpoint，避免用户看到空值。
+				wz.EndpointURL = types.DefaultEndpointURL(wz.Protocol)
 			},
 		},
 		{
@@ -320,7 +320,12 @@ func step1Fields() []fieldDef {
 				}
 				return types.DefaultEndpointURL(wz.Protocol)
 			},
-			getRaw: func(wz *WizardState) string { return wz.EndpointURL },
+			getRaw: func(wz *WizardState) string {
+				if strings.TrimSpace(wz.EndpointURL) != "" {
+					return wz.EndpointURL
+				}
+				return types.DefaultEndpointURL(wz.Protocol)
+			},
 			set:    func(wz *WizardState, v string) { wz.EndpointURL = v },
 		},
 		{
