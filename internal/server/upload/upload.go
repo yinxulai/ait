@@ -149,13 +149,13 @@ func (u *Uploader) convertResponseMetricsToUploadItem(taskID string, metrics *cl
 }
 
 // UploadReport 上传单个测试报告
-func (u *Uploader) UploadReport(taskId string, metrics *client.ResponseMetrics, input types.Input) error {
+func (u *Uploader) UploadReport(taskID string, metrics *client.ResponseMetrics, input types.Input) error {
 	if !u.isValidURL(u.baseURL) || u.authToken == "null" {
 		return nil
 	}
 
 	// 转换数据格式
-	uploadItem := u.convertResponseMetricsToUploadItem(taskId, metrics, input)
+	uploadItem := u.convertResponseMetricsToUploadItem(taskID, metrics, input)
 	uploadItems := []ReportUploadItem{uploadItem} // API需要数组格式
 
 	// 序列化为JSON

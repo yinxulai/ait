@@ -94,8 +94,8 @@ ait --mcp
 
 - `ait.list_tasks`
 - `ait.create_task`
-- `ait.start_run`
-- `ait.get_run_state`
+- `ait.run_task`
+- `ait.get_task_state`
 
 ### 查看版本信息
 

@@ -109,7 +109,7 @@ func TestTaskViewStore_ListIncludesLatestRun(t *testing.T) {
 
 	olderFinishedAt := time.Now().Add(-2 * time.Minute)
 	newerFinishedAt := time.Now().Add(-time.Minute)
-	if err := runs.SaveFinal(RunMetadata{
+	if err := runs.SaveFinalRun(RunMetadata{
 		RunID:      "run-older",
 		TaskID:     taskWithRun.ID,
 		Mode:       "standard",
@@ -117,9 +117,9 @@ func TestTaskViewStore_ListIncludesLatestRun(t *testing.T) {
 		StartedAt:  olderFinishedAt.Add(-time.Second),
 		FinishedAt: &olderFinishedAt,
 	}, RunResult{}); err != nil {
-		t.Fatalf("SaveFinal(older): %v", err)
+		t.Fatalf("SaveFinalRun(older): %v", err)
 	}
-	if err := runs.SaveFinal(RunMetadata{
+	if err := runs.SaveFinalRun(RunMetadata{
 		RunID:      "run-newer",
 		TaskID:     taskWithRun.ID,
 		Mode:       "standard",
@@ -127,7 +127,7 @@ func TestTaskViewStore_ListIncludesLatestRun(t *testing.T) {
 		StartedAt:  newerFinishedAt.Add(-time.Second),
 		FinishedAt: &newerFinishedAt,
 	}, RunResult{}); err != nil {
-		t.Fatalf("SaveFinal(newer): %v", err)
+		t.Fatalf("SaveFinalRun(newer): %v", err)
 	}
 
 	overviews, err := views.List()

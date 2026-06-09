@@ -133,7 +133,7 @@ func HandleDashboardKey(d *DashboardState, msg tea.KeyMsg, client Client) (*Dash
 
 	case "r":
 		if d.RunState != nil && !d.IsRunning() {
-			return d, client.GenerateReportCmd(d.RunID, server.ReportFormatJSON), nav
+			return d, client.GenerateRunReportCmd(d.RunID, server.ReportFormatJSON), nav
 		}
 
 	case "?":

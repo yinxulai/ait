@@ -117,7 +117,7 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 				}
 				runID := strings.TrimSpace(historyEntries[histIdx].RunID)
 				if runID != "" {
-					return s, client.GenerateReportCmd(server.RunID(runID), server.ReportFormatJSON), nav
+					return s, client.GenerateRunReportCmd(server.RunID(runID), server.ReportFormatJSON), nav
 				}
 			}
 		}
@@ -127,7 +127,7 @@ func HandleTaskDetailKey(s *TaskDetailState, msg tea.KeyMsg, client Client) (*Ta
 		nav = NavAction{To: NavWizard, EditTask: &t}
 
 	case "y":
-		return s, client.CopyTaskCmd(s.Task.ID), nav
+		return s, client.DuplicateTaskCmd(s.Task.ID), nav
 
 	case "d":
 		return s, client.DeleteTaskCmd(s.Task.ID), nav
@@ -301,18 +301,17 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 
 	// ── 预计算每行数据──
 	type histRow struct {
-		statusText  string
-		statusIsOk  bool
-		statusMut   bool
-		statusIsMut bool
-		time        string
-		mode        string
-		rate        string
-		dur         string
-		ttft        string
-		tps         string
-		rpm         string
-		tpm         string
+		isRunning bool
+		isFailed  bool
+		isMuted   bool
+		time      string
+		mode      string
+		rate      string
+		dur       string
+		ttft      string
+		tps       string
+		rpm       string
+		tpm       string
 	}
 	rowData := make([]histRow, effectiveLen)
 	if hasActive {
@@ -323,16 +322,15 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			rateStr = fmt.Sprintf("%.1f%%", rs.SuccessRate)
 		}
 		rowData[0] = histRow{
-			statusText: "●",
-			statusIsOk: true,
-			time:       fmt.Sprintf("%s %s", rs.StartedAt.Format("2006-01-02 15:04"), i18n.T(i18n.KRunning)),
-			mode:       modeShort,
-			rate:       rateStr,
-			dur:        "─",
-			ttft:       "─",
-			tps:        fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs),
-			rpm:        "─",
-			tpm:        "─",
+			isRunning: true,
+			time:      "● " + rs.StartedAt.Format("2006-01-02 15:04"),
+			mode:      modeShort,
+			rate:      rateStr,
+			dur:       "─",
+			ttft:      "─",
+			tps:       "─",
+			rpm:       "─",
+			tpm:       "─",
 		}
 	}
 	for histIdx := 0; histIdx < len(historyEntries); histIdx++ {
@@ -341,48 +339,40 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			rowIdx++
 		}
 		run := historyEntries[histIdx]
-		statusText := "✗"
-		statusIsOk := false
-		statusMut := false
-		switch run.Status {
-		case string(server.RunStatusRunning):
-			statusText = "●"
-			statusIsOk = true
-		case string(server.RunStatusCompleted):
-			statusText = "✓"
-			statusIsOk = true
-		case string(server.RunStatusStopped):
-			statusText = "■"
-			statusMut = true
-		}
+		isRunning := run.Status == string(server.RunStatusRunning)
+		isFailed := run.Status == string(server.RunStatusFailed)
+		isMuted := run.Status == string(server.RunStatusStopped)
 		modeShort := modeShortLabel(run.Mode)
 		durText := "─"
 		if !run.FinishedAt.IsZero() {
 			durText = fmtDuration(run.FinishedAt.Sub(run.StartedAt))
 		}
+		timeText := run.StartedAt.Format("2006-01-02 15:04")
+		if isRunning {
+			timeText = "● " + timeText
+		}
 		rowData[rowIdx] = histRow{
-			statusText:  statusText,
-			statusIsOk:  statusIsOk,
-			statusIsMut: statusMut,
-			time:        run.StartedAt.Format("2006-01-02 15:04"),
-			mode:        modeShort,
-			rate:        fmt.Sprintf("%.1f%%", run.SuccessRate),
-			dur:         durText,
-			ttft:        fmtDuration(run.AvgTTFT),
-			tps:         fmt.Sprintf("%.1f", run.AvgTPS),
-			rpm:         fmt.Sprintf("%.0f", run.RPM),
-			tpm:         fmt.Sprintf("%.0f", run.TPM),
+			isRunning: isRunning,
+			isFailed:  isFailed,
+			isMuted:   isMuted,
+			time:      timeText,
+			mode:      modeShort,
+			rate:      fmt.Sprintf("%.1f%%", run.SuccessRate),
+			dur:       durText,
+			ttft:      fmtDuration(run.AvgTTFT),
+			tps:       fmt.Sprintf("%.1f", run.AvgTPS),
+			rpm:       fmt.Sprintf("%.0f", run.RPM),
+			tpm:       fmt.Sprintf("%.0f", run.TPM),
 		}
 	}
 
 	// colWidths: 0 = 弹性列，>0 = 固定总宽
-	// 动态列宽：取数据最小需求与表头显示宽+2的较大值，确保切换语言后不溢出
+	// 动态列宽：取数据最小需求与表头显示宽+2的较大值确保切换语言后不溢出
 	hw := func(s string) int { return lipgloss.Width(s) + 2 }
 	h3 := i18n.T(i18n.KMode)
 	h4 := i18n.T(i18n.KSuccessRate)
 	h5 := i18n.T(i18n.KElapsed)
 	colWidths := []int{
-		4,                      // 状态图标
 		0,                      // 时间=flex
 		maxInt(9, hw(h3)),      // 模式
 		maxInt(10, hw(h4)),     // 成功率
@@ -395,7 +385,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	sel := s.HistorySel
 	tableH := tableMaxH - len(rightTitle)
 	tbl := lgtable.New().
-		Headers("", i18n.T(i18n.KTime), h3, h4, h5, "TTFT", "TPS", "RPM", "TPM").
+		Headers(i18n.T(i18n.KTime), h3, h4, h5, "TTFT", "TPS", "RPM", "TPM").
 		Width(rightW).
 		Height(tableH).
 		YOffset(s.HistoryOff).
@@ -415,23 +405,24 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			if row == sel {
 				return aw(st.TableRowSel)
 			}
-			if col == 0 { // status icon
-				if r.statusIsOk {
-					return aw(st.Ok)
-				}
-				if r.statusIsMut {
-					return aw(st.Muted)
-				}
+			// 运行中/停止/失败行通过颜色区分，不额外显示状态列
+			if r.isRunning {
+				return aw(st.Ok)
+			}
+			if r.isFailed {
 				return aw(st.ErrStyle)
 			}
-			if col >= 3 { // rate, dur, ttft, tps, rpm, tpm
+			if r.isMuted {
+				return aw(st.Muted)
+			}
+			if col >= 2 { // rate, dur, ttft, tps, rpm, tpm
 				return aw(st.Value)
 			}
 			return aw(st.TableRow)
 		})
 
 	for _, r := range rowData {
-		tbl.Row(r.statusText, r.time, r.mode, r.rate, r.dur, r.ttft, r.tps, r.rpm, r.tpm)
+		tbl.Row(r.time, r.mode, r.rate, r.dur, r.ttft, r.tps, r.rpm, r.tpm)
 	}
 
 	tableStr := tbl.String()

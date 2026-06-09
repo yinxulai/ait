@@ -318,7 +318,7 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 				ar.mu.RLock()
 				snap := ar.snapshotState()
 				ar.mu.RUnlock()
-				s.bus.Publish(Event{RunID: runID, Kind: EventProgressTick, Payload: snap})
+				s.bus.publishRunEvent(Event{RunID: runID, Kind: EventProgressTick, Payload: snap})
 			case <-stopTick:
 				return
 			}
@@ -354,7 +354,7 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 		snap := ar.snapshotState()
 		ar.mu.Unlock()
 
-		s.bus.Publish(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
 	})
 
 	close(stopTick)
@@ -419,7 +419,7 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 				snap := ar.snapshotState()
 				ar.mu.Unlock()
 
-				s.bus.Publish(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
+				s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
 			},
 		}, nil
 	}
@@ -430,7 +430,7 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 		ar.state.Levels = append(ar.state.Levels, level)
 		snap := ar.snapshotState()
 		ar.mu.Unlock()
-		s.bus.Publish(Event{RunID: runID, Kind: EventLevelDone, Payload: snap})
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventLevelDone, Payload: snap})
 	})
 
 	ar.mu.Lock()
@@ -468,8 +468,8 @@ func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef typ
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
-	s.bus.CloseRun(runID)
+	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
+	s.bus.closeRunEvents(runID)
 	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
 		s.removeActiveRun(runID)
 	}
@@ -495,8 +495,8 @@ func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	s.bus.Publish(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
-	s.bus.CloseRun(runID)
+	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
+	s.bus.closeRunEvents(runID)
 	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
 		s.removeActiveRun(runID)
 	}
@@ -513,15 +513,15 @@ func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefin
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	s.bus.Publish(Event{RunID: runID, Kind: EventRunFailed, Payload: snap})
-	s.bus.CloseRun(runID)
+	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunFailed, Payload: snap})
+	s.bus.closeRunEvents(runID)
 	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
 		s.removeActiveRun(runID)
 	}
 }
 
 func (s *serverImpl) persistFinalRun(runStore *store.RunStore, taskDef types.TaskDefinition, snap *RunState) error {
-	return runStore.SaveFinal(buildStoredRunMetadata(taskDef, snap), buildStoredRunResult(snap))
+	return runStore.SaveFinalRun(buildStoredRunMetadata(taskDef, snap), buildStoredRunResult(snap))
 }
 
 func (s *serverImpl) removeActiveRun(runID RunID) {
@@ -580,19 +580,19 @@ func (s *serverImpl) GetRunState(runID RunID) (*RunState, bool) {
 	return buildRunStateFromStoredRun(run, requests), true
 }
 
-// Subscribe 订阅指定运行的事件流。
-func (s *serverImpl) Subscribe(runID RunID) (<-chan Event, CancelFunc) {
-	return s.bus.Subscribe(runID)
+// SubscribeRunEvents 订阅指定运行的事件流。
+func (s *serverImpl) SubscribeRunEvents(runID RunID) (<-chan Event, CancelFunc) {
+	return s.bus.subscribeRunEvents(runID)
 }
 
-// GetHistory 返回任务的历史运行摘要，最新在前。
-func (s *serverImpl) GetHistory(taskID string, limit int) ([]types.TaskRunSummary, error) {
+// ListTaskRunHistory 返回任务的历史运行摘要，最新在前。
+func (s *serverImpl) ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error) {
 	return s.runStore.ListSummariesByTask(taskID, limit)
 }
 
-// GenerateReport 为已完成的标准运行生成报告文件。
+// GenerateRunReport 为已完成的标准运行生成报告文件。
 // 先查内存中的 activeRuns，若不存在则从最终结果文件加载（支持跨 session 历史运行）。
-func (s *serverImpl) GenerateReport(runID RunID, format ReportFormat) (string, error) {
+func (s *serverImpl) GenerateRunReport(runID RunID, format ReportFormat) (string, error) {
 	s.mu.RLock()
 	ar, ok := s.activeRuns[runID]
 	runStore := s.runStore

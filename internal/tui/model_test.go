@@ -23,25 +23,25 @@ func (s *stubServer) UpdateTask(id string, cfg server.TaskConfig) (types.TaskDef
 	return types.TaskDefinition{}, nil
 }
 func (s *stubServer) DeleteTask(id string) error { return nil }
-func (s *stubServer) CopyTask(id string) (types.TaskDefinition, error) {
+func (s *stubServer) DuplicateTask(id string) (types.TaskDefinition, error) {
 	return types.TaskDefinition{}, nil
 }
 func (s *stubServer) StartRun(taskID string) (server.RunID, error)            { return "", nil }
 func (s *stubServer) StopRun(runID server.RunID) error                        { return nil }
 func (s *stubServer) GetRunState(runID server.RunID) (*server.RunState, bool) { return nil, false }
-func (s *stubServer) Subscribe(runID server.RunID) (<-chan server.Event, server.CancelFunc) {
+func (s *stubServer) SubscribeRunEvents(runID server.RunID) (<-chan server.Event, server.CancelFunc) {
 	ch := make(chan server.Event)
 	close(ch)
 	return ch, func() {}
 }
-func (s *stubServer) GetHistory(taskID string, limit int) ([]types.TaskRunSummary, error) {
+func (s *stubServer) ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error) {
 	return nil, nil
 }
-func (s *stubServer) GenerateReport(runID server.RunID, fmt server.ReportFormat) (string, error) {
+func (s *stubServer) GenerateRunReport(runID server.RunID, fmt server.ReportFormat) (string, error) {
 	return "", nil
 }
-func (s *stubServer) GetConfig() (*config.Config, error) { return &config.Config{}, nil }
-func (s *stubServer) SetProxyURL(proxyURL string) error  { return nil }
+func (s *stubServer) GetAppConfig() (*config.Config, error) { return &config.Config{}, nil }
+func (s *stubServer) UpdateProxyURL(proxyURL string) error  { return nil }
 
 // ─── NewModel ─────────────────────────────────────────────────────────────────
 

@@ -54,11 +54,11 @@ func makeTaskConfig(name string) TaskConfig {
 func TestEventBus_PublishDelivered(t *testing.T) {
 	bus := newEventBus()
 	rid := RunID("run_1")
-	ch, cancel := bus.Subscribe(rid)
+	ch, cancel := bus.subscribeRunEvents(rid)
 	defer cancel()
 
 	want := Event{RunID: rid, Kind: EventRequestDone}
-	bus.Publish(want)
+	bus.publishRunEvent(want)
 
 	select {
 	case got := <-ch:
@@ -76,13 +76,13 @@ func TestEventBus_MultipleSubscribers(t *testing.T) {
 	const n = 3
 	chs := make([]<-chan Event, n)
 	for i := range chs {
-		ch, cancel := bus.Subscribe(rid)
+		ch, cancel := bus.subscribeRunEvents(rid)
 		chs[i] = ch
 		defer cancel()
 	}
 
 	ev := Event{RunID: rid, Kind: EventRunComplete}
-	bus.Publish(ev)
+	bus.publishRunEvent(ev)
 
 	for i, ch := range chs {
 		select {
@@ -99,7 +99,7 @@ func TestEventBus_MultipleSubscribers(t *testing.T) {
 func TestEventBus_CancelClosesChannel(t *testing.T) {
 	bus := newEventBus()
 	rid := RunID("run_cancel")
-	ch, cancel := bus.Subscribe(rid)
+	ch, cancel := bus.subscribeRunEvents(rid)
 	cancel()
 
 	select {
@@ -112,19 +112,19 @@ func TestEventBus_CancelClosesChannel(t *testing.T) {
 	}
 }
 
-func TestEventBus_CloseRunClosesAllChannels(t *testing.T) {
+func TestEventBus_CloseRunEventsClosesAllChannels(t *testing.T) {
 	bus := newEventBus()
 	rid := RunID("run_close")
-	ch1, _ := bus.Subscribe(rid)
-	ch2, _ := bus.Subscribe(rid)
+	ch1, _ := bus.subscribeRunEvents(rid)
+	ch2, _ := bus.subscribeRunEvents(rid)
 
-	bus.CloseRun(rid)
+	bus.closeRunEvents(rid)
 
 	for i, ch := range []<-chan Event{ch1, ch2} {
 		select {
 		case _, ok := <-ch:
 			if ok {
-				t.Errorf("ch%d should be closed after CloseRun", i+1)
+				t.Errorf("ch%d should be closed after closeRunEvents", i+1)
 			}
 		case <-time.After(time.Second):
 			t.Errorf("ch%d: timeout waiting for close", i+1)
@@ -136,14 +136,14 @@ func TestEventBus_FullChannelDoesNotBlock(t *testing.T) {
 	bus := newEventBus()
 	rid := RunID("run_full")
 	// Subscribe but never drain the channel.
-	_, cancel := bus.Subscribe(rid)
+	_, cancel := bus.subscribeRunEvents(rid)
 	defer cancel()
 
 	done := make(chan struct{})
 	go func() {
 		// Publish more events than the channel capacity (64) to verify non-blocking.
 		for i := 0; i < 100; i++ {
-			bus.Publish(Event{RunID: rid, Kind: EventRequestDone})
+			bus.publishRunEvent(Event{RunID: rid, Kind: EventRequestDone})
 		}
 		close(done)
 	}()
@@ -157,12 +157,12 @@ func TestEventBus_FullChannelDoesNotBlock(t *testing.T) {
 
 func TestEventBus_EventsOnlyDeliveredToMatchingRunID(t *testing.T) {
 	bus := newEventBus()
-	ch1, cancel1 := bus.Subscribe(RunID("run_a"))
-	ch2, cancel2 := bus.Subscribe(RunID("run_b"))
+	ch1, cancel1 := bus.subscribeRunEvents(RunID("run_a"))
+	ch2, cancel2 := bus.subscribeRunEvents(RunID("run_b"))
 	defer cancel1()
 	defer cancel2()
 
-	bus.Publish(Event{RunID: "run_a", Kind: EventRequestDone})
+	bus.publishRunEvent(Event{RunID: "run_a", Kind: EventRequestDone})
 
 	select {
 	case <-ch1:
@@ -376,7 +376,7 @@ func TestGetRunState_LoadsCompletedRunFromDisk(t *testing.T) {
 	startedAt := time.Now().Add(-2 * time.Second).UTC().Truncate(time.Second)
 	finishedAt := time.Now().UTC().Truncate(time.Second)
 
-	if err := s.runStore.SaveFinal(store.RunMetadata{
+	if err := s.runStore.SaveFinalRun(store.RunMetadata{
 		RunID:      string(runID),
 		TaskID:     taskID,
 		Mode:       "standard",
@@ -389,7 +389,7 @@ func TestGetRunState_LoadsCompletedRunFromDisk(t *testing.T) {
 		ErrorSummary:   "",
 		StandardResult: &types.ReportData{TotalRequests: 4, AvgTPS: 18.5, AvgTTFT: 120 * time.Millisecond, SuccessRate: 25},
 	}); err != nil {
-		t.Fatalf("SaveFinal() returned unexpected error: %v", err)
+		t.Fatalf("SaveFinalRun() returned unexpected error: %v", err)
 	}
 	if err := s.runStore.AppendRequest(taskID, string(runID), types.RequestMetrics{
 		Index:            0,
@@ -575,15 +575,15 @@ func TestDeleteTask_RunningTaskRejected(t *testing.T) {
 	}
 }
 
-func TestCopyTask_CreatesNewTask(t *testing.T) {
+func TestDuplicateTask_CreatesNewTask(t *testing.T) {
 	s := newTestServer(t)
 	original, _ := s.CreateTask(makeTaskConfig("original"))
-	copied, err := s.CopyTask(original.ID)
+	copied, err := s.DuplicateTask(original.ID)
 	if err != nil {
-		t.Fatalf("CopyTask: %v", err)
+		t.Fatalf("DuplicateTask: %v", err)
 	}
 	if copied.ID == original.ID {
-		t.Error("copy should have a new ID")
+		t.Error("duplicate should have a new ID")
 	}
 	if copied.Name != "original (copy)" {
 		t.Errorf("Name: got %q, want %q", copied.Name, "original (copy)")
@@ -593,13 +593,13 @@ func TestCopyTask_CreatesNewTask(t *testing.T) {
 		t.Fatalf("ListTasks: %v", err)
 	}
 	if len(tasks) != 2 {
-		t.Errorf("expected 2 tasks after copy, got %d", len(tasks))
+		t.Errorf("expected 2 tasks after duplicate, got %d", len(tasks))
 	}
 }
 
-func TestCopyTask_NotFound(t *testing.T) {
+func TestDuplicateTask_NotFound(t *testing.T) {
 	s := newTestServer(t)
-	_, err := s.CopyTask("missing-id")
+	_, err := s.DuplicateTask("missing-id")
 	if err == nil {
 		t.Fatal("expected error for missing task")
 	}
@@ -670,24 +670,24 @@ func TestStopRun_ActiveRunNoRunner(t *testing.T) {
 	}
 }
 
-func TestGetHistory_EmptyForNewTask(t *testing.T) {
+func TestListTaskRunHistory_EmptyForNewTask(t *testing.T) {
 	s := newTestServer(t)
 	task, _ := s.CreateTask(makeTaskConfig("hist-task"))
-	history, err := s.GetHistory(task.ID, 0)
+	history, err := s.ListTaskRunHistory(task.ID, 0)
 	if err != nil {
-		t.Fatalf("GetHistory: %v", err)
+		t.Fatalf("ListTaskRunHistory: %v", err)
 	}
 	if len(history) != 0 {
 		t.Errorf("expected empty history, got %d entries", len(history))
 	}
 }
 
-func TestGetHistory_PersistsAfterRun(t *testing.T) {
+func TestListTaskRunHistory_PersistsAfterRun(t *testing.T) {
 	s := newTestServer(t)
 	task, _ := s.CreateTask(makeTaskConfig("persist-task"))
 
 	finishedAt := time.Now()
-	if err := s.runStore.SaveFinal(store.RunMetadata{
+	if err := s.runStore.SaveFinalRun(store.RunMetadata{
 		RunID:      "run_test",
 		TaskID:     task.ID,
 		Mode:       "standard",
@@ -695,12 +695,12 @@ func TestGetHistory_PersistsAfterRun(t *testing.T) {
 		StartedAt:  finishedAt.Add(-time.Second),
 		FinishedAt: &finishedAt,
 	}, store.RunResult{}); err != nil {
-		t.Fatalf("SaveFinal: %v", err)
+		t.Fatalf("SaveFinalRun: %v", err)
 	}
 
-	history, err := s.GetHistory(task.ID, 0)
+	history, err := s.ListTaskRunHistory(task.ID, 0)
 	if err != nil {
-		t.Fatalf("GetHistory: %v", err)
+		t.Fatalf("ListTaskRunHistory: %v", err)
 	}
 	if len(history) != 1 {
 		t.Fatalf("expected 1 history entry, got %d", len(history))
@@ -755,7 +755,7 @@ func TestStoredRun_DerivesLatestTaskSummary(t *testing.T) {
 	startedAt := time.Now().Add(-2 * time.Second)
 
 	finishedAt := time.Now()
-	if err := s.runStore.SaveFinal(store.RunMetadata{
+	if err := s.runStore.SaveFinalRun(store.RunMetadata{
 		RunID:      "run_same",
 		TaskID:     task.ID,
 		Mode:       "standard",
@@ -763,12 +763,12 @@ func TestStoredRun_DerivesLatestTaskSummary(t *testing.T) {
 		StartedAt:  startedAt,
 		FinishedAt: &finishedAt,
 	}, store.RunResult{}); err != nil {
-		t.Fatalf("SaveFinal: %v", err)
+		t.Fatalf("SaveFinalRun: %v", err)
 	}
 
-	history, err := s.GetHistory(task.ID, 0)
+	history, err := s.ListTaskRunHistory(task.ID, 0)
 	if err != nil {
-		t.Fatalf("GetHistory: %v", err)
+		t.Fatalf("ListTaskRunHistory: %v", err)
 	}
 	if len(history) != 1 {
 		t.Fatalf("expected 1 history entry after finalize, got %d", len(history))
@@ -792,42 +792,42 @@ func TestStoredRun_DerivesLatestTaskSummary(t *testing.T) {
 	}
 }
 
-func TestGetHistory_LimitRespected(t *testing.T) {
+func TestListTaskRunHistory_LimitRespected(t *testing.T) {
 	s := newTestServer(t)
 	task, _ := s.CreateTask(makeTaskConfig("limit-task"))
 
 	for i := 0; i < 5; i++ {
 		finishedAt := time.Now()
-		if err := s.runStore.SaveFinal(store.RunMetadata{
+		if err := s.runStore.SaveFinalRun(store.RunMetadata{
 			RunID:      "run_" + string(rune('0'+i)),
 			TaskID:     task.ID,
 			StartedAt:  finishedAt,
 			FinishedAt: &finishedAt,
 		}, store.RunResult{}); err != nil {
-			t.Fatalf("SaveFinal: %v", err)
+			t.Fatalf("SaveFinalRun: %v", err)
 		}
 	}
 
-	history, err := s.GetHistory(task.ID, 3)
+	history, err := s.ListTaskRunHistory(task.ID, 3)
 	if err != nil {
-		t.Fatalf("GetHistory: %v", err)
+		t.Fatalf("ListTaskRunHistory: %v", err)
 	}
 	if len(history) != 3 {
 		t.Errorf("expected 3 entries with limit=3, got %d", len(history))
 	}
 }
 
-// ── GenerateReport ────────────────────────────────────────────────────────────
+// ── GenerateRunReport ────────────────────────────────────────────────────────
 
-func TestGenerateReport_RunNotFound(t *testing.T) {
+func TestGenerateRunReport_RunNotFound(t *testing.T) {
 	s := newTestServer(t)
-	_, err := s.GenerateReport("run_missing", ReportFormatJSON)
+	_, err := s.GenerateRunReport("run_missing", ReportFormatJSON)
 	if err == nil {
 		t.Fatal("expected error for missing run")
 	}
 }
 
-func TestGenerateReport_StillRunning(t *testing.T) {
+func TestGenerateRunReport_StillRunning(t *testing.T) {
 	s := newTestServer(t)
 	runID := RunID("run_in_progress")
 	s.mu.Lock()
@@ -836,7 +836,7 @@ func TestGenerateReport_StillRunning(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	_, err := s.GenerateReport(runID, ReportFormatJSON)
+	_, err := s.GenerateRunReport(runID, ReportFormatJSON)
 	if err == nil {
 		t.Fatal("expected error for in-progress run")
 	}
@@ -845,7 +845,7 @@ func TestGenerateReport_StillRunning(t *testing.T) {
 	}
 }
 
-func TestGenerateReport_TurboNotSupported(t *testing.T) {
+func TestGenerateRunReport_TurboNotSupported(t *testing.T) {
 	s := newTestServer(t)
 	runID := RunID("run_turbo")
 	s.mu.Lock()
@@ -854,7 +854,7 @@ func TestGenerateReport_TurboNotSupported(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	_, err := s.GenerateReport(runID, ReportFormatJSON)
+	_, err := s.GenerateRunReport(runID, ReportFormatJSON)
 	if err == nil {
 		t.Fatal("expected error for turbo run")
 	}
@@ -863,7 +863,7 @@ func TestGenerateReport_TurboNotSupported(t *testing.T) {
 	}
 }
 
-func TestGenerateReport_NoResultData(t *testing.T) {
+func TestGenerateRunReport_NoResultData(t *testing.T) {
 	s := newTestServer(t)
 	runID := RunID("run_no_result")
 	s.mu.Lock()
@@ -872,22 +872,22 @@ func TestGenerateReport_NoResultData(t *testing.T) {
 	}
 	s.mu.Unlock()
 
-	_, err := s.GenerateReport(runID, ReportFormatJSON)
+	_, err := s.GenerateRunReport(runID, ReportFormatJSON)
 	if err == nil {
 		t.Fatal("expected error for run with no result data")
 	}
 }
 
-// ── Subscribe ─────────────────────────────────────────────────────────────────
+// ── SubscribeRunEvents ───────────────────────────────────────────────────────
 
-func TestSubscribe_DelegatesEventBus(t *testing.T) {
+func TestSubscribeRunEvents_DelegatesEventBus(t *testing.T) {
 	s := newTestServer(t)
 	runID := RunID("run_sub")
-	ch, cancel := s.Subscribe(runID)
+	ch, cancel := s.SubscribeRunEvents(runID)
 	defer cancel()
 
 	ev := Event{RunID: runID, Kind: EventRunComplete}
-	s.bus.Publish(ev)
+	s.bus.publishRunEvent(ev)
 
 	select {
 	case got := <-ch:
@@ -895,23 +895,23 @@ func TestSubscribe_DelegatesEventBus(t *testing.T) {
 			t.Fatalf("got %v, want %v", got, ev)
 		}
 	case <-time.After(time.Second):
-		t.Fatal("timeout waiting for event via Subscribe")
+		t.Fatal("timeout waiting for event via SubscribeRunEvents")
 	}
 }
 
-func TestSubscribe_ChannelClosedAfterCloseRun(t *testing.T) {
+func TestSubscribeRunEvents_ChannelClosedAfterCloseRunEvents(t *testing.T) {
 	s := newTestServer(t)
 	runID := RunID("run_lifecycle")
-	ch, _ := s.Subscribe(runID)
+	ch, _ := s.SubscribeRunEvents(runID)
 
-	s.bus.CloseRun(runID)
+	s.bus.closeRunEvents(runID)
 
 	select {
 	case _, ok := <-ch:
 		if ok {
-			t.Fatal("channel should be closed after CloseRun")
+			t.Fatal("channel should be closed after closeRunEvents")
 		}
 	case <-time.After(time.Second):
-		t.Fatal("timeout: channel not closed after CloseRun")
+		t.Fatal("timeout: channel not closed after closeRunEvents")
 	}
 }

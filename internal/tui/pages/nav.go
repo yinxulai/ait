@@ -44,17 +44,17 @@ type Client interface {
 	CreateTaskCmd(cfg server.TaskConfig, autoStart bool) tea.Cmd
 	UpdateTaskCmd(id string, cfg server.TaskConfig) tea.Cmd
 	DeleteTaskCmd(id string) tea.Cmd
-	CopyTaskCmd(id string) tea.Cmd
+	DuplicateTaskCmd(id string) tea.Cmd
 
 	// 运行管理
 	StartRunCmd(taskID string) tea.Cmd
 	StopRunCmd(runID server.RunID) tea.Cmd
 
 	// 历史 & 报告
-	LoadHistoryCmd(taskID string, limit int) tea.Cmd
+	LoadTaskRunHistoryCmd(taskID string, limit int) tea.Cmd
 	GetRunStateCmd(runID server.RunID) tea.Cmd
 	GetRunStateForHistoryCmd(runID server.RunID, summary *types.TaskRunSummary) tea.Cmd
-	GenerateReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd
+	GenerateRunReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd
 
 	// 全局配置
 	SaveProxyConfigCmd(proxyURL string) tea.Cmd

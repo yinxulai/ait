@@ -40,7 +40,7 @@ const (
 	KEdit
 	KDelete
 	KCopy
-	KCopyTask
+	KDuplicateTask
 	KProxyConfig
 	KStop
 	KSelectRecord
@@ -257,8 +257,8 @@ const (
 	KHelpDescEditTask
 	KHelpTermDeleteTask
 	KHelpDescDeleteTask
-	KHelpTermCopyTask
-	KHelpDescCopyTask
+	KHelpTermDuplicateTask
+	KHelpDescDuplicateTask
 	KHelpTermProxy
 	KHelpDescProxy
 	KHelpTermSelectHistory
@@ -271,8 +271,8 @@ const (
 	KHelpDescExport
 	KHelpTermEditConfig
 	KHelpDescEditConfig
-	KHelpTermCopyTask2
-	KHelpDescCopyTask2
+	KHelpTermDuplicateTask2
+	KHelpDescDuplicateTask2
 	KHelpTermDeleteTask2
 	KHelpDescDeleteTask2
 	KHelpTermSelectReq
@@ -372,7 +372,7 @@ var translations = [2]map[Key]string{
 		KEdit:              "编辑",
 		KDelete:            "删除",
 		KCopy:              "复制",
-		KCopyTask:          "复制任务",
+		KDuplicateTask:     "复制任务",
 		KProxyConfig:       "代理配置",
 		KStop:              "停止",
 		KSelectRecord:      "选择记录",
@@ -579,39 +579,39 @@ var translations = [2]map[Key]string{
 		KHelpTermLangToggle:   "F2",
 		KHelpDescLangToggle:   "切换界面语言（中文 / 英文）。",
 
-		KHelpTermSelectTask:  "↑↓ / j k",
-		KHelpDescSelectTask:  "选择任务。",
-		KHelpTermEnterDetail: "Enter",
-		KHelpDescEnterDetail: "进入任务详情页。",
-		KHelpTermRunTask:     "r",
-		KHelpDescRunTask:     "立即运行选中任务。",
-		KHelpTermStopTask:    "s",
-		KHelpDescStopTask:    "停止正在运行的任务（仅任务运行中可用）。",
-		KHelpTermNewTask:     "a",
-		KHelpDescNewTask:     "新建任务（打开向导）。",
-		KHelpTermEditTask:    "e",
-		KHelpDescEditTask:    "编辑选中任务配置。",
-		KHelpTermDeleteTask:  "d",
-		KHelpDescDeleteTask:  "删除选中任务（需确认）。",
-		KHelpTermCopyTask:    "y",
-		KHelpDescCopyTask:    "复制选中任务（生成副本）。",
-		KHelpTermProxy:       "p",
-		KHelpDescProxy:       "打开代理配置页。",
+		KHelpTermSelectTask:    "↑↓ / j k",
+		KHelpDescSelectTask:    "选择任务。",
+		KHelpTermEnterDetail:   "Enter",
+		KHelpDescEnterDetail:   "进入任务详情页。",
+		KHelpTermRunTask:       "r",
+		KHelpDescRunTask:       "立即运行选中任务。",
+		KHelpTermStopTask:      "s",
+		KHelpDescStopTask:      "停止正在运行的任务（仅任务运行中可用）。",
+		KHelpTermNewTask:       "a",
+		KHelpDescNewTask:       "新建任务（打开向导）。",
+		KHelpTermEditTask:      "e",
+		KHelpDescEditTask:      "编辑选中任务配置。",
+		KHelpTermDeleteTask:    "d",
+		KHelpDescDeleteTask:    "删除选中任务（需确认）。",
+		KHelpTermDuplicateTask: "y",
+		KHelpDescDuplicateTask: "复制选中任务（生成副本）。",
+		KHelpTermProxy:         "p",
+		KHelpDescProxy:         "打开代理配置页。",
 
-		KHelpTermSelectHistory: "↑↓ / j k",
-		KHelpDescSelectHistory: "在历史运行记录中选择条目。",
-		KHelpTermEnterDash:     "Enter",
-		KHelpDescEnterDash:     "查看选中运行的仪表盘；若任务正在运行，进入实时仪表盘。",
-		KHelpTermRunAgain:      "r",
-		KHelpDescRunAgain:      "再次运行该任务（无正在运行的实例时可用）。",
-		KHelpTermExport:        "g",
-		KHelpDescExport:        "将选中的历史运行导出为 JSON 报告。",
-		KHelpTermEditConfig:    "e",
-		KHelpDescEditConfig:    "编辑任务配置。",
-		KHelpTermCopyTask2:     "y",
-		KHelpDescCopyTask2:     "复制任务。",
-		KHelpTermDeleteTask2:   "d",
-		KHelpDescDeleteTask2:   "删除任务。",
+		KHelpTermSelectHistory:  "↑↓ / j k",
+		KHelpDescSelectHistory:  "在历史运行记录中选择条目。",
+		KHelpTermEnterDash:      "Enter",
+		KHelpDescEnterDash:      "查看选中运行的仪表盘；若任务正在运行，进入实时仪表盘。",
+		KHelpTermRunAgain:       "r",
+		KHelpDescRunAgain:       "再次运行该任务（无正在运行的实例时可用）。",
+		KHelpTermExport:         "g",
+		KHelpDescExport:         "将选中的历史运行导出为 JSON 报告。",
+		KHelpTermEditConfig:     "e",
+		KHelpDescEditConfig:     "编辑任务配置。",
+		KHelpTermDuplicateTask2: "y",
+		KHelpDescDuplicateTask2: "复制任务。",
+		KHelpTermDeleteTask2:    "d",
+		KHelpDescDeleteTask2:    "删除任务。",
 
 		KHelpTermSelectReq:      "↑↓ / j k",
 		KHelpDescSelectReq:      "选择请求条目。",
@@ -709,7 +709,7 @@ var translations = [2]map[Key]string{
 		KEdit:              "Edit",
 		KDelete:            "Delete",
 		KCopy:              "Copy",
-		KCopyTask:          "Copy Task",
+		KDuplicateTask:     "Copy Task",
 		KProxyConfig:       "Proxy Config",
 		KStop:              "Stop",
 		KSelectRecord:      "Select Record",
@@ -916,39 +916,39 @@ var translations = [2]map[Key]string{
 		KHelpTermLangToggle:   "F2",
 		KHelpDescLangToggle:   "Switch UI language (ZH / EN).",
 
-		KHelpTermSelectTask:  "↑↓ / j k",
-		KHelpDescSelectTask:  "Select a task.",
-		KHelpTermEnterDetail: "Enter",
-		KHelpDescEnterDetail: "Enter task detail page.",
-		KHelpTermRunTask:     "r",
-		KHelpDescRunTask:     "Run the selected task immediately.",
-		KHelpTermStopTask:    "s",
-		KHelpDescStopTask:    "Stop the running task (only available while running).",
-		KHelpTermNewTask:     "a",
-		KHelpDescNewTask:     "Create a new task (opens wizard).",
-		KHelpTermEditTask:    "e",
-		KHelpDescEditTask:    "Edit the selected task configuration.",
-		KHelpTermDeleteTask:  "d",
-		KHelpDescDeleteTask:  "Delete the selected task (requires confirmation).",
-		KHelpTermCopyTask:    "y",
-		KHelpDescCopyTask:    "Copy the selected task (creates a duplicate).",
-		KHelpTermProxy:       "p",
-		KHelpDescProxy:       "Open proxy configuration page.",
+		KHelpTermSelectTask:    "↑↓ / j k",
+		KHelpDescSelectTask:    "Select a task.",
+		KHelpTermEnterDetail:   "Enter",
+		KHelpDescEnterDetail:   "Enter task detail page.",
+		KHelpTermRunTask:       "r",
+		KHelpDescRunTask:       "Run the selected task immediately.",
+		KHelpTermStopTask:      "s",
+		KHelpDescStopTask:      "Stop the running task (only available while running).",
+		KHelpTermNewTask:       "a",
+		KHelpDescNewTask:       "Create a new task (opens wizard).",
+		KHelpTermEditTask:      "e",
+		KHelpDescEditTask:      "Edit the selected task configuration.",
+		KHelpTermDeleteTask:    "d",
+		KHelpDescDeleteTask:    "Delete the selected task (requires confirmation).",
+		KHelpTermDuplicateTask: "y",
+		KHelpDescDuplicateTask: "Copy the selected task (creates a duplicate).",
+		KHelpTermProxy:         "p",
+		KHelpDescProxy:         "Open proxy configuration page.",
 
-		KHelpTermSelectHistory: "↑↓ / j k",
-		KHelpDescSelectHistory: "Select an entry in the run history.",
-		KHelpTermEnterDash:     "Enter",
-		KHelpDescEnterDash:     "View the dashboard for the selected run; enters live dashboard if the task is running.",
-		KHelpTermRunAgain:      "r",
-		KHelpDescRunAgain:      "Run the task again (available when no instance is running).",
-		KHelpTermExport:        "g",
-		KHelpDescExport:        "Export the selected run as a JSON report.",
-		KHelpTermEditConfig:    "e",
-		KHelpDescEditConfig:    "Edit the task configuration.",
-		KHelpTermCopyTask2:     "y",
-		KHelpDescCopyTask2:     "Copy the task.",
-		KHelpTermDeleteTask2:   "d",
-		KHelpDescDeleteTask2:   "Delete the task.",
+		KHelpTermSelectHistory:  "↑↓ / j k",
+		KHelpDescSelectHistory:  "Select an entry in the run history.",
+		KHelpTermEnterDash:      "Enter",
+		KHelpDescEnterDash:      "View the dashboard for the selected run; enters live dashboard if the task is running.",
+		KHelpTermRunAgain:       "r",
+		KHelpDescRunAgain:       "Run the task again (available when no instance is running).",
+		KHelpTermExport:         "g",
+		KHelpDescExport:         "Export the selected run as a JSON report.",
+		KHelpTermEditConfig:     "e",
+		KHelpDescEditConfig:     "Edit the task configuration.",
+		KHelpTermDuplicateTask2: "y",
+		KHelpDescDuplicateTask2: "Copy the task.",
+		KHelpTermDeleteTask2:    "d",
+		KHelpDescDeleteTask2:    "Delete the task.",
 
 		KHelpTermSelectReq:      "↑↓ / j k",
 		KHelpDescSelectReq:      "Select a request entry.",

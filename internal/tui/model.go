@@ -146,7 +146,7 @@ func (m *Model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	// ── 运行启动 ──
 	case RunStartedMsg:
-		ch, cancel, firstCmd := m.client.SubscribeCmd(msg.RunID)
+		ch, cancel, firstCmd := m.client.SubscribeRunEventsCmd(msg.RunID)
 		taskMode := m.getTaskMode(msg.TaskID)
 		backNav := pages.NavAction{To: pages.NavTaskDetail, TaskID: msg.TaskID}
 		if taskMode == "turbo" {
@@ -379,7 +379,7 @@ func (m *Model) handleNav(nav pages.NavAction) tea.Cmd {
 		}
 		m.view = viewTaskDetail
 		if m.detail != nil {
-			return m.client.LoadHistoryCmd(m.detail.Task.ID, 10)
+			return m.client.LoadTaskRunHistoryCmd(m.detail.Task.ID, 10)
 		}
 		return nil
 
@@ -517,7 +517,7 @@ func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 		// 在后台刷新任务列表和历史，不自动跳转页面；用户可按 b/Esc 返回
 		return m, tea.Batch(
 			m.client.LoadTasksCmd(),
-			m.client.LoadHistoryCmd(taskID, 10),
+			m.client.LoadTaskRunHistoryCmd(taskID, 10),
 		)
 
 	case server.EventRunFailed:
@@ -544,7 +544,7 @@ func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 		// 在后台刷新任务列表和历史，不自动跳转页面；用户可按 b/Esc 返回
 		return m, tea.Batch(
 			m.client.LoadTasksCmd(),
-			m.client.LoadHistoryCmd(taskID, 10),
+			m.client.LoadTaskRunHistoryCmd(taskID, 10),
 		)
 	}
 

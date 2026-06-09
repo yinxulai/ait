@@ -156,28 +156,24 @@ Server 层对外暴露一个统一的 Go 接口，TUI 和 Web UI 只依赖该接
 // TUI、Web UI 等所有前端仅依赖此接口，不直接依赖 runner/task 等底层包。
 type Server interface {
     // 任务管理
-    ListTasks() ([]types.Task, error)
-    GetTask(id string) (*types.Task, error)
-    CreateTask(cfg types.TaskConfig) (*types.Task, error)
-    UpdateTask(id string, cfg types.TaskConfig) error
+    ListTasks() ([]types.TaskOverview, error)
+    GetTask(id string) (types.TaskDefinition, error)
+    CreateTask(cfg TaskConfig) (types.TaskDefinition, error)
+    UpdateTask(id string, cfg TaskConfig) (types.TaskDefinition, error)
     DeleteTask(id string) error
-    CopyTask(id string) (*types.Task, error)
+    DuplicateTask(id string) (types.TaskDefinition, error)
 
     // 运行管理
     StartRun(taskID string) (RunID, error)
     StopRun(runID RunID) error
-    GetRunState(runID RunID) (*RunState, error)
+    GetRunState(runID RunID) (*RunState, bool)
+    SubscribeRunEvents(runID RunID) (<-chan Event, CancelFunc)
+    ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error)
+    GenerateRunReport(runID RunID, format ReportFormat) (string, error)
 
-    // 事件订阅（解耦 UI 刷新，替代直接回调）
-    // 返回事件 channel、取消订阅函数、错误
-    Subscribe(runID RunID) (<-chan Event, CancelFunc, error)
-
-    // 历史 & 报告
-    GetHistory(taskID string) ([]RunSummary, error)
-    GenerateReport(runID RunID, format ReportFormat) (path string, err error)
-
-    // 生命周期
-    Shutdown() error
+    // 应用配置
+    GetAppConfig() (*config.Config, error)
+    UpdateProxyURL(proxyURL string) error
 }
 
 // Event 是 Server 推送给订阅者的运行事件
@@ -216,11 +212,11 @@ cmd/
 
 internal/
   server/                   ← SERVICE LAYER（业务父模块）
-    server.go               ← Server 接口 + 实现 (New / Shutdown)
-    task.go                 ← 任务 CRUD 方法实现
-    run.go                  ← 运行启动 / 停止 / 状态管理
-    event.go                ← Event / EventKind / RunState 类型
-    types.go                ← RunID / RunSummary / ReportFormat 等 Server 层类型
+    server.go               ← Server 接口 + 构造函数
+    task_service.go         ← 任务管理 facade 方法实现
+    run_service.go          ← 运行管理 facade 方法实现
+    event_bus.go            ← 内部事件总线实现
+    types.go                ← RunID / RunState / Event / ReportFormat 等 Server 层类型
 
     runner/                 ← Server 子模块：标准压测执行
       runner.go             ← 并发请求执行（RunWithCallback / Stop）
@@ -273,9 +269,7 @@ internal/
       contextbar.go         ← Context Bar 组件（条件渲染）
 
   mcp/                      ← MCP CLIENT（客户端父模块）
-    server.go               ← MCP 协议适配；仅调用 server.Server 接口
-    tools/                  ← MCP 子模块：工具注册 / 参数定义（规模变大后拆分）
-    transport/              ← MCP 子模块：传输适配（如需扩展 stdio 之外传输）
+    server.go               ← MCP 协议适配与工具注册；仅调用 server.Server 接口
 
   webui/                    ← WEB CLIENT（未来客户端父模块）
     handler.go              ← HTTP / WebSocket / SSE 桥接
@@ -293,11 +287,11 @@ TUI Model (tea.Update)      server.Server            底层执行模块
     │       └─ server.StartRun(taskID)
     │               └─ 创建 RunState
     │               └─ go runner.RunWithCallback(cb)  ─→  runner/
-    │               └─ cb 内部: eventBus.Publish(Event{RequestDone})
+    │               └─ cb 内部: eventBus.publishRunEvent(Event{RequestDone})
     │               └─ 返回 runID
     │
-    ├─ client.SubscribeCmd(runID) → tea.Cmd
-    │       └─ server.Subscribe(runID) → eventCh
+    ├─ client.SubscribeRunEventsCmd(runID) → tea.Cmd
+    │       └─ server.SubscribeRunEvents(runID) → eventCh
     │       └─ tea.Cmd: 持续从 eventCh 读事件 → tea.Msg
     │
 [Event: RequestDone]
@@ -312,8 +306,8 @@ TUI Model (tea.Update)      server.Server            底层执行模块
     │ 任务列表中◉ 标记：定时 server.GetRunState(runID) 轮询刷新进度
 
 [用户重新进入仪表盘]
-    ├─ server.GetRunState(runID)  ← 恢复当前快照（已完成请求列表）
-    └─ server.Subscribe(runID)   ← 重新订阅，接收后续事件
+    ├─ server.GetRunState(runID)       ← 恢复当前快照（已完成请求列表）
+    └─ server.SubscribeRunEvents(runID) ← 重新订阅，接收后续事件
 ```
 
 ### 3.6 Web UI 接入路径（未来）
@@ -324,7 +318,7 @@ TUI Model (tea.Update)      server.Server            底层执行模块
 // internal/webui/handler.go  （示意）
 func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
     runID, _ := h.server.StartRun(r.PathValue("taskID"))
-    eventCh, cancel, _ := h.server.Subscribe(runID)
+    eventCh, cancel := h.server.SubscribeRunEvents(runID)
     defer cancel()
     // 通过 SSE 或 WebSocket 将 Event 推给浏览器
     for event := range eventCh {
@@ -1308,7 +1302,7 @@ func (s *TaskStore) Delete(taskID string) error
 // internal/store/history.go
 
 func AppendRun(taskID string, run types.TaskRunSummary) error
-func LoadHistory(taskID string, limit int) ([]types.TaskRunSummary, error)
+func ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error)
 ```
 
 ---
@@ -1330,9 +1324,10 @@ func LoadHistory(taskID string, limit int) ([]types.TaskRunSummary, error)
 - [ ] `internal/config/config.go`：`~/.ait/config.json` 全局配置（复用 `store.JSONStore`）
 - [ ] `internal/runner/runner.go`：增加 `Stop()` + 稳定 `RunWithCallback`
 - [ ] `internal/server/server.go`：定义 `Server` 接口 + `New()` 构造函数
-- [ ] `internal/server/task.go`：实现任务 CRUD 方法（调用 task.Store）
-- [ ] `internal/server/run.go`：实现 `StartRun / StopRun / GetRunState`（调用 runner）
-- [ ] `internal/server/event.go`：`Event / EventKind / RunState / RunID` 类型 + 内部 eventBus
+- [ ] `internal/server/task_service.go`：实现任务管理 facade 方法（调用 task.Store）
+- [ ] `internal/server/run_service.go`：实现 `StartRun / StopRun / GetRunState`（调用 runner）
+- [ ] `internal/server/event_bus.go`：实现内部 eventBus
+- [ ] `internal/server/types.go`：定义 `Event / EventKind / RunState / RunID` 等 Server 层类型
 - [ ] Server 单元测试：任务 CRUD、运行状态机、事件分发
 
 **Step 2：TUI Client（依赖 Server 接口完成后）**
@@ -1361,7 +1356,7 @@ func LoadHistory(taskID string, limit int) ([]types.TaskRunSummary, error)
 - [ ] `internal/turbo/engine.go`：爬坡调度（`Run / Stop`）
 - [ ] `internal/turbo/strategy.go`：步进 & 终止策略
 - [ ] `internal/turbo/types.go`：`TurboResult / LevelResult`
-- [ ] `internal/server/run.go`：扩展 `StartRun` 支持 Turbo 模式（发布 `EventLevelDone`）
+- [ ] `internal/server/run_service.go`：扩展 `StartRun` 支持 Turbo 模式（发布 `EventLevelDone`）
 - [ ] `internal/tui/pages/turbodash.go`：Turbo 仪表盘页（级别列表 + 当前级别指标）
 - [ ] `internal/tui/pages/taskdetail.go`：扩展支持 Turbo 运行结果展开（爬坡表格 + ASCII 曲线）
 - [ ] `internal/report/turbo_renderer.go`：Turbo CSV/JSON 报告渲染

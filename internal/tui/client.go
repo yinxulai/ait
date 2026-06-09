@@ -65,10 +65,10 @@ func (c *Client) DeleteTaskCmd(id string) tea.Cmd {
 	}
 }
 
-// CopyTaskCmd 异步复制任务。
-func (c *Client) CopyTaskCmd(id string) tea.Cmd {
+// DuplicateTaskCmd 异步复制任务。
+func (c *Client) DuplicateTaskCmd(id string) tea.Cmd {
 	return func() tea.Msg {
-		task, err := c.srv.CopyTask(id)
+		task, err := c.srv.DuplicateTask(id)
 		if err != nil {
 			return ErrorMsg{Err: fmt.Errorf("复制任务失败: %w", err)}
 		}
@@ -99,11 +99,11 @@ func (c *Client) StopRunCmd(runID server.RunID) tea.Cmd {
 	}
 }
 
-// SubscribeCmd 订阅 runID 的事件流，返回用于首次等待的 Cmd 和 CancelFunc。
+// SubscribeRunEventsCmd 订阅 runID 的事件流，返回用于首次等待的 Cmd 和 CancelFunc。
 // 调用方应将 ch 存储在 dashboardState 中，每次收到 ServerEventMsg 后
 // 再次调用 WaitEventCmd(ch) 继续监听。
-func (c *Client) SubscribeCmd(runID server.RunID) (<-chan server.Event, server.CancelFunc, tea.Cmd) {
-	ch, cancel := c.srv.Subscribe(runID)
+func (c *Client) SubscribeRunEventsCmd(runID server.RunID) (<-chan server.Event, server.CancelFunc, tea.Cmd) {
+	ch, cancel := c.srv.SubscribeRunEvents(runID)
 	return ch, cancel, WaitEventCmd(ch)
 }
 
@@ -121,10 +121,10 @@ func WaitEventCmd(ch <-chan server.Event) tea.Cmd {
 
 // ─── 历史 & 报告 ──────────────────────────────────────────────────────────────
 
-// LoadHistoryCmd 异步加载指定任务的运行历史，limit<=0 表示不限条数。
-func (c *Client) LoadHistoryCmd(taskID string, limit int) tea.Cmd {
+// LoadTaskRunHistoryCmd 异步加载指定任务的运行历史，limit<=0 表示不限条数。
+func (c *Client) LoadTaskRunHistoryCmd(taskID string, limit int) tea.Cmd {
 	return func() tea.Msg {
-		history, err := c.srv.GetHistory(taskID, limit)
+		history, err := c.srv.ListTaskRunHistory(taskID, limit)
 		if err != nil {
 			return ErrorMsg{Err: fmt.Errorf("加载历史失败: %w", err)}
 		}
@@ -190,10 +190,10 @@ func summaryToRunState(s *types.TaskRunSummary) *server.RunState {
 	}
 }
 
-// GenerateReportCmd 异步生成报告文件。
-func (c *Client) GenerateReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd {
+// GenerateRunReportCmd 异步生成报告文件。
+func (c *Client) GenerateRunReportCmd(runID server.RunID, format server.ReportFormat) tea.Cmd {
 	return func() tea.Msg {
-		path, err := c.srv.GenerateReport(runID, format)
+		path, err := c.srv.GenerateRunReport(runID, format)
 		if err != nil {
 			return ErrorMsg{Err: fmt.Errorf("生成报告失败: %w", err)}
 		}
@@ -206,7 +206,7 @@ func (c *Client) GenerateReportCmd(runID server.RunID, format server.ReportForma
 // LoadProxyConfigCmd 异步加载全局代理配置。
 func (c *Client) LoadProxyConfigCmd() tea.Cmd {
 	return func() tea.Msg {
-		cfg, err := c.srv.GetConfig()
+		cfg, err := c.srv.GetAppConfig()
 		if err != nil {
 			return ErrorMsg{Err: fmt.Errorf("加载配置失败: %w", err)}
 		}
@@ -217,7 +217,7 @@ func (c *Client) LoadProxyConfigCmd() tea.Cmd {
 // SaveProxyConfigCmd 异步保存全局代理配置。
 func (c *Client) SaveProxyConfigCmd(proxyURL string) tea.Cmd {
 	return func() tea.Msg {
-		if err := c.srv.SetProxyURL(proxyURL); err != nil {
+		if err := c.srv.UpdateProxyURL(proxyURL); err != nil {
 			return ErrorMsg{Err: fmt.Errorf("保存代理配置失败: %w", err)}
 		}
 		return ProxyConfigSavedMsg{ProxyURL: proxyURL}

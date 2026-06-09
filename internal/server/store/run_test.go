@@ -24,8 +24,8 @@ func TestRunStore_MetadataOmitsPathIdentifiers(t *testing.T) {
 		StartedAt:  finishedAt.Add(-time.Second),
 		FinishedAt: &finishedAt,
 	}
-	if err := store.SaveFinal(meta, RunResult{}); err != nil {
-		t.Fatalf("SaveFinal: %v", err)
+	if err := store.SaveFinalRun(meta, RunResult{}); err != nil {
+		t.Fatalf("SaveFinalRun: %v", err)
 	}
 
 	raw, err := os.ReadFile(store.MetadataPath(meta.TaskID, meta.RunID))
@@ -53,7 +53,7 @@ func TestRunStore_ResultOmitsDerivedSummaryFields(t *testing.T) {
 	store := NewRunStore(t.TempDir())
 	finishedAt := time.Now().UTC().Truncate(time.Second)
 
-	if err := store.SaveFinal(RunMetadata{
+	if err := store.SaveFinalRun(RunMetadata{
 		RunID:      "run-2",
 		TaskID:     "task-2",
 		Mode:       "standard",
@@ -69,7 +69,7 @@ func TestRunStore_ResultOmitsDerivedSummaryFields(t *testing.T) {
 			AvgTTFT:       100 * time.Millisecond,
 		},
 	}); err != nil {
-		t.Fatalf("SaveFinal: %v", err)
+		t.Fatalf("SaveFinalRun: %v", err)
 	}
 
 	raw, err := os.ReadFile(store.ResultPath("task-2", "run-2"))

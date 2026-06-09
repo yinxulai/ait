@@ -4,6 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"os"
 	"strings"
 	"time"
 
@@ -33,7 +34,18 @@ func New(svc server.Server) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	return s.sdk.Run(ctx, &mcpsdk.StdioTransport{})
+	fmt.Fprintf(os.Stderr, "AIT MCP server starting on stdio; tools=%s\n", strings.Join(toolNames(), ", "))
+	err := s.sdk.Run(ctx, &mcpsdk.StdioTransport{})
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "AIT MCP server stopped with error: %v\n", err)
+		return err
+	}
+	fmt.Fprintln(os.Stderr, "AIT MCP server stopped")
+	return nil
+}
+
+func toolNames() []string {
+	return []string{"ait.list_tasks", "ait.create_task", "ait.run_task", "ait.get_task_state"}
 }
 
 func (s *Server) registerTools() {
@@ -44,18 +56,18 @@ func (s *Server) registerTools() {
 
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
 		Name:        "ait.create_task",
-		Description: "Create an AIT task (inherits internal/server task creation capability)",
+		Description: "Create an AIT task",
 	}, s.createTask)
 
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
-		Name:        "ait.start_run",
-		Description: "Start run for a task",
-	}, s.startRun)
+		Name:        "ait.run_task",
+		Description: "Run an AIT task",
+	}, s.runTask)
 
 	mcpsdk.AddTool(s.sdk, &mcpsdk.Tool{
-		Name:        "ait.get_run_state",
-		Description: "Get current run state snapshot",
-	}, s.getRunState)
+		Name:        "ait.get_task_state",
+		Description: "Get the current state snapshot for a running or completed task",
+	}, s.getTaskState)
 }
 
 type listTasksArgs struct{}
@@ -77,12 +89,13 @@ type createTaskArgs struct {
 	PromptLength int    `json:"prompt_length,omitempty" jsonschema:"generated prompt length, minimum 1"`
 }
 
-type startRunArgs struct {
+type runTaskArgs struct {
 	TaskID string `json:"task_id" jsonschema:"task ID"`
 }
 
-type getRunStateArgs struct {
-	RunID string `json:"run_id" jsonschema:"run ID"`
+type getTaskStateArgs struct {
+	TaskID string `json:"task_id,omitempty" jsonschema:"task ID; when set, returns the task's current or latest state"`
+	RunID  string `json:"run_id,omitempty" jsonschema:"optional run ID returned by ait.run_task for exact lookup"`
 }
 
 func (s *Server) listTasks(_ context.Context, _ *mcpsdk.CallToolRequest, _ listTasksArgs) (*mcpsdk.CallToolResult, any, error) {
@@ -105,27 +118,53 @@ func (s *Server) createTask(_ context.Context, _ *mcpsdk.CallToolRequest, args c
 	return textResult(task)
 }
 
-func (s *Server) startRun(_ context.Context, _ *mcpsdk.CallToolRequest, args startRunArgs) (*mcpsdk.CallToolResult, any, error) {
+func (s *Server) runTask(_ context.Context, _ *mcpsdk.CallToolRequest, args runTaskArgs) (*mcpsdk.CallToolResult, any, error) {
 	if strings.TrimSpace(args.TaskID) == "" {
 		return nil, nil, fmt.Errorf("task_id is required")
 	}
 	runID, err := s.svc.StartRun(args.TaskID)
 	if err != nil {
-		return nil, nil, fmt.Errorf("start run failed: %w", err)
+		return nil, nil, fmt.Errorf("run task failed: %w", err)
 	}
 	return textResult(map[string]any{"run_id": runID})
 }
 
-func (s *Server) getRunState(_ context.Context, _ *mcpsdk.CallToolRequest, args getRunStateArgs) (*mcpsdk.CallToolResult, any, error) {
-	runID := server.RunID(args.RunID)
-	if strings.TrimSpace(string(runID)) == "" {
-		return nil, nil, fmt.Errorf("run_id is required")
+func (s *Server) getTaskState(_ context.Context, _ *mcpsdk.CallToolRequest, args getTaskStateArgs) (*mcpsdk.CallToolResult, any, error) {
+	runID := server.RunID(strings.TrimSpace(args.RunID))
+	if runID == "" {
+		var err error
+		runID, err = s.resolveTaskRunID(args.TaskID)
+		if err != nil {
+			return nil, nil, err
+		}
 	}
 	state, ok := s.svc.GetRunState(runID)
 	if !ok {
-		return nil, nil, fmt.Errorf("run not found: %s", runID)
+		return nil, nil, fmt.Errorf("task state not found for run_id %s", runID)
 	}
 	return textResult(state)
+}
+
+func (s *Server) resolveTaskRunID(taskID string) (server.RunID, error) {
+	taskID = strings.TrimSpace(taskID)
+	if taskID == "" {
+		return "", fmt.Errorf("task_id or run_id is required")
+	}
+
+	tasks, err := s.svc.ListTasks()
+	if err != nil {
+		return "", fmt.Errorf("list tasks failed: %w", err)
+	}
+	for _, task := range tasks {
+		if task.ID != taskID {
+			continue
+		}
+		if task.LatestRun == nil || strings.TrimSpace(task.LatestRun.RunID) == "" {
+			return "", fmt.Errorf("task has no run state: %s", taskID)
+		}
+		return server.RunID(task.LatestRun.RunID), nil
+	}
+	return "", fmt.Errorf("task not found: %s", taskID)
 }
 
 func buildTaskConfig(args createTaskArgs) (server.TaskConfig, error) {

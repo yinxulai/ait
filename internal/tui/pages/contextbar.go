@@ -57,7 +57,7 @@ func Hotkeys_TaskDetail_NoHistory() []HotkeyItem {
 	return []HotkeyItem{
 		HotkeyAction("r", i18n.T(i18n.KRun)),
 		HotkeyAction("e", i18n.T(i18n.KEdit)),
-		HotkeyAction("y", i18n.T(i18n.KCopyTask)),
+		HotkeyAction("y", i18n.T(i18n.KDuplicateTask)),
 		HotkeyAction("d", i18n.T(i18n.KDelete)),
 	}
 }
@@ -70,7 +70,7 @@ func Hotkeys_TaskDetail_HasHistory() []HotkeyItem {
 		HotkeyAction("r", i18n.T(i18n.KRunAgain)),
 		HotkeyAction("g", i18n.T(i18n.KExportJSONReport)),
 		HotkeyAction("e", i18n.T(i18n.KEdit)),
-		HotkeyAction("y", i18n.T(i18n.KCopyTask)),
+		HotkeyAction("y", i18n.T(i18n.KDuplicateTask)),
 		HotkeyAction("d", i18n.T(i18n.KDelete)),
 	}
 }
@@ -82,7 +82,7 @@ func Hotkeys_TaskDetail_Running() []HotkeyItem {
 		HotkeyAction("Enter", i18n.T(i18n.KGoToLiveDash)),
 		HotkeyAction("g", i18n.T(i18n.KExportHistoryJSON)),
 		HotkeyAction("e", i18n.T(i18n.KEdit)),
-		HotkeyAction("y", i18n.T(i18n.KCopyTask)),
+		HotkeyAction("y", i18n.T(i18n.KDuplicateTask)),
 	}
 }
 

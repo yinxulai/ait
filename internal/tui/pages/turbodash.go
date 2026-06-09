@@ -128,7 +128,7 @@ func HandleTurboDashKey(d *TurboDashState, msg tea.KeyMsg, client Client) (*Turb
 
 	case "r":
 		if d.RunState != nil && !d.IsRunning() {
-			return d, client.GenerateReportCmd(d.RunID, server.ReportFormatJSON), nav
+			return d, client.GenerateRunReportCmd(d.RunID, server.ReportFormatJSON), nav
 		}
 
 	case "?":

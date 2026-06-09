@@ -38,7 +38,7 @@ type RunStopRequestedMsg struct {
 	RunID server.RunID
 }
 
-// ServerEventMsg 封装从 server.Subscribe 获取的事件，由 waitEventCmd 产生。
+// ServerEventMsg 封装从 server.SubscribeRunEvents 获取的事件，由 WaitEventCmd 产生。
 type ServerEventMsg struct {
 	Event server.Event
 }

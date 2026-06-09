@@ -127,7 +127,7 @@ func (s *RunStore) LoadRequests(taskID, runID string) ([]types.RequestMetrics, e
 	return requests, nil
 }
 
-func (s *RunStore) SaveFinal(meta RunMetadata, result RunResult) error {
+func (s *RunStore) SaveFinalRun(meta RunMetadata, result RunResult) error {
 	if meta.TaskID == "" || meta.RunID == "" {
 		return fmt.Errorf("task id and run id are required")
 	}
@@ -240,7 +240,7 @@ func (s *RunStore) LatestByTask(taskID string) (*StoredRun, error) {
 	return &runs[0], nil
 }
 
-func (s *RunStore) DeleteTask(taskID string) error {
+func (s *RunStore) DeleteTaskRuns(taskID string) error {
 	return os.RemoveAll(s.TaskDir(taskID))
 }
 

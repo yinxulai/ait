@@ -105,7 +105,7 @@ func HandleTaskListKey(s *TaskListState, msg tea.KeyMsg, client Client) (*TaskLi
 
 	case "y":
 		if t, ok := s.CurrentTask(); ok {
-			return s, client.CopyTaskCmd(t.ID), nav
+			return s, client.DuplicateTaskCmd(t.ID), nav
 		}
 
 	case "d":
@@ -230,10 +230,13 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 
 		isRunning := hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning))
 		lastRunText := "─"
-		if isRunning {
-			lastRunText = i18n.T(i18n.KRunning)
-		} else if t.LatestRun != nil && !t.LatestRun.FinishedAt.IsZero() {
+		if t.LatestRun != nil && !t.LatestRun.FinishedAt.IsZero() {
 			lastRunText = fmtRelativeTime(t.LatestRun.FinishedAt)
+		}
+
+		displayName := t.Name
+		if isRunning {
+			displayName = "● " + displayName
 		}
 
 		rateText := "─"
@@ -283,7 +286,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		}
 
 		rowData[i] = taskRowData{
-			name:      t.Name,
+			name:      displayName,
 			mode:      modeText,
 			isTurbo:   isTurbo,
 			proto:     shortProtocol(t.Input.NormalizedProtocol()),
@@ -343,15 +346,17 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 				return aw(st.TableRowSel)
 			}
 			switch col {
+			case 0: // task name
+				if r.isRunning {
+					return aw(st.Ok.Bold(true))
+				}
+				return aw(st.TableRow)
 			case 1: // mode
 				if r.isTurbo {
 					return aw(lipgloss.NewStyle().Foreground(colorGold).Bold(true))
 				}
 				return aw(lipgloss.NewStyle().Foreground(colorPurple))
 			case 3: // lastRun
-				if r.isRunning {
-					return aw(st.Ok)
-				}
 				return aw(st.Muted)
 			case 4, 5, 6, 7, 8, 9: // rate, cache, ttft, tps, rpm, tpm
 				return aw(st.Value)

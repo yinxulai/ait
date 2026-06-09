@@ -71,11 +71,11 @@ func (s *serverImpl) DeleteTask(id string) error {
 	if err := s.taskStore.Delete(id); err != nil {
 		return err
 	}
-	return s.runStore.DeleteTask(id)
+	return s.runStore.DeleteTaskRuns(id)
 }
 
-// CopyTask 复制指定任务（ID 和时间戳重置，名称加 " (copy)" 后缀）。
-func (s *serverImpl) CopyTask(id string) (types.TaskDefinition, error) {
+// DuplicateTask 复制指定任务（ID 和时间戳重置，名称加 " (copy)" 后缀）。
+func (s *serverImpl) DuplicateTask(id string) (types.TaskDefinition, error) {
 	src, err := s.taskStore.Get(id)
 	if err != nil {
 		if errors.Is(err, storepkg.ErrTaskNotFound) {
@@ -89,7 +89,7 @@ func (s *serverImpl) CopyTask(id string) (types.TaskDefinition, error) {
 		Input: src.Input,
 	})
 	if err != nil {
-		return types.TaskDefinition{}, fmt.Errorf("copy task %q: %w", id, err)
+		return types.TaskDefinition{}, fmt.Errorf("duplicate task %q: %w", id, err)
 	}
 	return created, nil
 }
@@ -157,8 +157,8 @@ func (s *serverImpl) hasRunningTaskLocked(taskID string) bool {
 
 // ─── 全局配置 ─────────────────────────────────────────────────────────────────
 
-// GetConfig 返回当前全局配置。
-func (s *serverImpl) GetConfig() (*config.Config, error) {
+// GetAppConfig 返回当前全局配置。
+func (s *serverImpl) GetAppConfig() (*config.Config, error) {
 	cfg, err := config.Load()
 	if err != nil {
 		return &config.Config{}, nil // 文件不存在时返回空配置
@@ -166,8 +166,8 @@ func (s *serverImpl) GetConfig() (*config.Config, error) {
 	return cfg, nil
 }
 
-// SetProxyURL 更新并持久化全局代理 URL。
-func (s *serverImpl) SetProxyURL(proxyURL string) error {
+// UpdateProxyURL 更新并持久化全局代理 URL。
+func (s *serverImpl) UpdateProxyURL(proxyURL string) error {
 	cfg, err := config.Load()
 	if err != nil {
 		cfg = &config.Config{}

@@ -19,10 +19,10 @@ func newEventBus() *eventBus {
 	}
 }
 
-// Subscribe 注册对指定 RunID 的订阅，返回只读事件通道和取消函数。
+// subscribeRunEvents 注册对指定 RunID 的订阅，返回只读事件通道和取消函数。
 // 取消函数调用后通道被关闭，range 循环自然退出。
 // 通道容量为 64；若消费者处理过慢，后续事件将被丢弃（非阻塞发布）。
-func (b *eventBus) Subscribe(runID RunID) (<-chan Event, CancelFunc) {
+func (b *eventBus) subscribeRunEvents(runID RunID) (<-chan Event, CancelFunc) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -37,8 +37,8 @@ func (b *eventBus) Subscribe(runID RunID) (<-chan Event, CancelFunc) {
 	return sub.ch, cancel
 }
 
-// Publish 向该 RunID 的所有订阅者非阻塞地投递事件。
-func (b *eventBus) Publish(event Event) {
+// publishRunEvent 向该 RunID 的所有订阅者非阻塞地投递事件。
+func (b *eventBus) publishRunEvent(event Event) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -51,9 +51,9 @@ func (b *eventBus) Publish(event Event) {
 	}
 }
 
-// CloseRun 关闭该 RunID 下所有订阅通道并清理条目。
-// 必须在该 RunID 的最后一个 Publish 调用之后执行，以确保不丢失末尾事件。
-func (b *eventBus) CloseRun(runID RunID) {
+// closeRunEvents 关闭该 RunID 下所有订阅通道并清理条目。
+// 必须在该 RunID 的最后一个 publishRunEvent 调用之后执行，以确保不丢失末尾事件。
+func (b *eventBus) closeRunEvents(runID RunID) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
