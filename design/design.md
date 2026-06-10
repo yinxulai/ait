@@ -12,14 +12,21 @@
 3. [新架构设计](#3-新架构设计)
 4. [交互式 TUI 设计](#4-交互式-tui-设计)
 5. [Turbo 模式设计](#5-turbo-模式设计)
-6. [新增数据结构与接口](#6-新增数据结构与接口)
-7. [开发计划](#7-开发计划)
+6. [接口完整性测试模式设计](#6-接口完整性测试模式设计)
+7. [新增数据结构与接口](#7-新增数据结构与接口)
+8. [开发计划](#8-开发计划)
+
+相关设计：
+
+- [统一运行存储设计](storage.md)
+- [Turbo 模式功能设计](turbo.md)
+- [接口完整性测试功能设计](integrity.md)
 
 ---
 
 ## 1. 概述
 
-本文档描述 AIT 工具 v2.0 的三个核心功能迭代：
+本文档描述 AIT 工具 v2.0 的四个核心功能迭代：
 
 ### 1.1 交互式 TUI
 
@@ -39,7 +46,8 @@
 
 新增“任务”作为一等对象，用于保存和复用测试配置：
 
-- 每个任务只绑定一个模型，保存协议、完整接口地址、模型、Prompt、标准模式或 Turbo 参数
+- 每个任务只绑定一个模型，保存协议、完整接口地址、模型、Prompt、测试模式和对应模式参数
+- 测试模式统一为 `standard`、`turbo`、`integrity`
 - 协议值细化为 `openai-completions`、`openai-responses`、`anthropic-messages`
 - 首页以任务列表形式呈现，支持新建、编辑、删除、复制和直接运行
 - 任务详情页展示配置摘要和最近运行记录
@@ -55,6 +63,17 @@
 - 每个并发级别执行固定数量请求，采集该级别的完整指标
 - 当成功率或延迟超过阈值时判定服务出现降级，自动停止
 - 输出"并发爬坡曲线"报告，直观展示吞吐量、延迟与缓存命中率随并发变化的趋势
+
+### 1.4 接口完整性测试
+
+第三种测试模式，用于**验证上游服务接口是否符合目标协议和业务要求**：
+
+- 与标准模式、Turbo 模式并列，统一使用 `mode = "integrity"`
+- 通过内置 Suite 执行协议级 Case，验证响应结构、错误格式、流式行为、usage、关键字段和能力项
+- 每个 Case 通过声明式 Assertion 给出通过、警告或失败结论，不以性能指标作为主要目标
+- 自定义测试规则是第一版核心能力：用户可通过 `integrity.rule_files` 追加或覆盖内置断言
+- 首版自定义规则只支持声明式规则文件，不支持脚本和自定义请求编排
+- 底层运行记录必须尽可能保留服务端返回结构，便于后续继续扩展内容检查能力
 
 ---
 
@@ -130,8 +149,9 @@ main()
   │  执行层          │  │  持久化 & 工具层   │
   │  runner/        │  │  task/           │
   │  turbo/         │  │  config/         │
-  │  client/        │  │  report/         │
-  │  prompt/        │  │  logger/ ...     │
+  │  integrity/     │  │  report/         │
+  │  assertion/     │  │  logger/ ...     │
+  │  client/        │  │  prompt/         │
   └─────────────────┘  └──────────────────┘
 
    CLIENT LAYER（调用 Server 接口，不直接依赖下层）：
@@ -171,6 +191,11 @@ type Server interface {
     ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error)
     GenerateRunReport(runID RunID, format ReportFormat) (string, error)
 
+    // 完整性测试辅助能力
+    ListIntegritySuites() ([]types.IntegritySuiteOverview, error)
+    PreviewIntegritySuite(suiteID string, ruleFiles []string) (*types.IntegritySuitePreview, error)
+    ValidateRuleFile(path string) (*types.RuleFileValidationResult, error)
+
     // 应用配置
     GetAppConfig() (*config.Config, error)
     UpdateProxyURL(proxyURL string) error
@@ -179,8 +204,8 @@ type Server interface {
 // Event 是 Server 推送给订阅者的运行事件
 type Event struct {
     RunID   RunID
-    Kind    EventKind  // RequestDone | ProgressTick | LevelDone | RunComplete | RunFailed
-    Payload any        // *RequestMetrics | *ProgressSnapshot | *LevelResult | *RunResult
+    Kind    EventKind  // RequestDone | ProgressTick | LevelDone | IntegrityCaseDone | AssertionResult | RunComplete | RunFailed
+    Payload any        // *RequestMetrics | *ProgressSnapshot | *LevelResult | *IntegrityCaseResult | *AssertionResult | *RunResult
 }
 
 type CancelFunc func()
@@ -192,16 +217,17 @@ type CancelFunc func()
 |----|-----|------|
 | **入口层** | `cmd/ait` | flag 解析；创建 Server；按模式启动 TUI / MCP Client |
 | **Server 层** | `internal/server` | 暴露业务 API；编排本层子模块；管理运行状态；分发 Event |
-| **执行子模块** | `internal/server/runner` `internal/server/turbo` | 并发请求执行；回调推送指标；**不感知 UI** |
-| **协议子模块** | `internal/server/client` | OpenAI / Anthropic HTTP 客户端；不感知上层 |
+| **执行子模块** | `internal/server/runner` `internal/server/turbo` `internal/server/integrity` | 标准压测、并发爬坡、接口完整性测试执行；回调推送指标或 Case 结果；**不感知 UI** |
+| **断言子模块** | `internal/server/assertion` | 声明式规则文件加载、合并、编译、path 解析和断言求值；不发起请求 |
+| **协议子模块** | `internal/server/client` | OpenAI / Anthropic HTTP 客户端；尽可能保留服务端返回结构供完整性测试使用；不感知上层 |
 | **持久化子模块** | `internal/server/store` `internal/server/config` | `store` 是下一版唯一持久化实现；`config` 仅负责应用目录与路径解析 |
-| **渲染子模块** | `internal/server/report` | JSON / CSV / Turbo 报告渲染；纯函数，无副作用 |
+| **渲染子模块** | `internal/server/report` | JSON / CSV / Turbo / Integrity 报告渲染；纯函数，无副作用 |
 | **工具子模块** | `internal/server/prompt` `internal/server/network` `internal/server/logger` `internal/server/upload` | Server 内部公共工具，无 UI 依赖 |
 | **TUI Client** | `internal/tui` | BubbleTea 状态机；**只依赖 server.Server 接口**；渲染终端 UI |
 | **MCP Client** | `internal/mcp` | MCP 协议适配层；**只依赖 server.Server 接口**；不直接访问 Server 子模块 |
 | **Web Client** _(Future)_ | `internal/webui` | HTTP/WS 桥接；**只依赖 server.Server 接口**；提供 Web API |
 
-> 存储设计请优先参考 [docs/storage.md](storage.md)。该文档描述目标存储架构，不以当前实现与兼容层为约束。目标源码目录采用“父模块聚合”原则：属于 `server` 的执行、协议、存储、报告、工具等子模块都放在 `internal/server/` 下；其他父模块也按同样方式收纳自己的子模块，避免 `internal/` 顶层平铺过多业务细节。
+> 存储设计请优先参考 [统一运行存储设计](storage.md)。该文档描述目标存储架构，不以当前实现与兼容层为约束。目标源码目录采用“父模块聚合”原则：属于 `server` 的执行、协议、存储、报告、工具等子模块都放在 `internal/server/` 下；其他父模块也按同样方式收纳自己的子模块，避免 `internal/` 顶层平铺过多业务细节。
 
 ### 3.4 目录结构
 
@@ -225,6 +251,19 @@ internal/
       engine.go             ← 并发爬坡调度（Run / Stop）
       strategy.go           ← 步进 & 终止策略
       types.go              ← TurboResult / LevelResult
+
+    integrity/              ← Server 子模块：接口完整性测试
+      engine.go             ← Suite / Case 执行调度（Run / Stop）
+      suite.go              ← Suite 定义与内置 Suite 注册
+      case.go               ← Case 请求构造与执行
+      result.go             ← IntegrityResult / CaseResult 聚合
+      builtin.go            ← 内置 smoke / full Suite
+
+    assertion/              ← Server 子模块：声明式断言与规则文件
+      loader.go             ← 规则文件加载与版本校验
+      compiler.go           ← 内置断言和规则文件合并、编译
+      evaluator.go          ← op 求值与 AssertionResult 生成
+      fields.go             ← 受限 path 解析，区分 missing / null
 
     client/                 ← Server 子模块：上游 AI 协议客户端
       client.go             ← AI 客户端接口定义
@@ -265,6 +304,8 @@ internal/
       wizard.go             ← 新建 / 编辑弹窗向导（overlay，覆盖任务列表）
       dashboard.go          ← 标准模式仪表盘
       turbodash.go          ← Turbo 仪表盘
+      integritydash.go      ← 接口完整性测试仪表盘
+      integritydetail.go    ← Case 详情与断言详情页
       reqdetail.go          ← 请求详情页
       contextbar.go         ← Context Bar 组件（条件渲染）
 
@@ -350,7 +391,9 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 +   server.go / task.go / run.go / event.go / types.go
 +   runner/                 ← 从 internal/runner 迁入
 +   turbo/                  ← 从 internal/turbo 迁入
-+   client/                 ← 从 internal/client 迁入
++   integrity/              ← 新增：接口完整性测试执行
++   assertion/              ← 新增：声明式断言与规则文件
++   client/                 ← 从 internal/client 迁入并补充结构化响应保留
 +   store/                  ← 从 internal/store 迁入
 +   task/                   ← 从 internal/task 迁入
 +   config/                 ← 从 internal/config 迁入
@@ -365,19 +408,6 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 +   server.go               ← MCP 协议适配，仅依赖 server.Server 接口
 
   internal/tui/             ← TUI CLIENT（已有，结构不变）
-```
-
-  internal/runner/
-    runner.go               ← 扩展：增加 Stop() + RunWithCallback 稳定化
-
-  internal/turbo/
-+   engine.go / strategy.go / types.go  ← 新增
-
-  internal/task/
-+   task.go                  ← 任务纯业务逻辑（不持有文件 I/O）
-
-  internal/report/
-+   turbo_renderer.go       ← 新增
 
 - internal/display/         ← 废弃（功能被 tui/ 和 server/ 替代）
 - cmd/tpg/                  ← 废弃（功能合并进 tui 向导）
@@ -400,7 +430,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 
 ```
 启动无参数 ───────────────────────────────→ TaskList
-启动带完整参数 ─→ 创建任务 + 自动 StartRun ─→ Running / TurboRunning
+启动带完整参数 ─→ 创建任务 + 自动 StartRun ─→ Running / TurboRunning / IntegrityRunning
 
                  ┌─────────────┐
                  │  TaskList   │
@@ -443,6 +473,17 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
                         └──────────────→ TaskDetail
                 （完成/停止后直接返回 TaskDetail，最近运行展开）
 
+         [完整性测试] ▼
+                 ┌────────────────┐
+                 │IntegrityRunning│
+                 │ Suite / Case 执行│
+                 └──────┬──┬──────┘
+      [完成/s 停止]    │  │ [b/Esc 后台]
+                        │  └──→ TaskList
+                        ▼     （◉ 标记）
+                        └──────────────→ TaskDetail
+                （完成/停止后直接返回 TaskDetail，最近运行展开）
+
          [请求详情]  在 Running/TurboRunning 请求列表中选中后
                  ┌─────────────┐
                  │RequestDetail│
@@ -450,6 +491,14 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
                  └──────┬──────┘
            [b/Esc 返回] │
                         └──────→ Running / TurboRunning
+
+         [Case 详情]  在 IntegrityRunning Case 列表中选中后
+                 ┌───────────────┐
+                 │IntegrityDetail│
+                 │Case / Assertion│
+                 └──────┬────────┘
+           [b/Esc 返回] │
+                        └──────→ IntegrityRunning
 ```
 
 **多任务并发规则：**
@@ -461,7 +510,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 
 **后台运行规则：**
 
-- 在仪表盘（Running / TurboRunning）按 `[b]` 或 `[Esc]` 可返回任务列表，测试继续在后台执行
+- 在仪表盘（Running / TurboRunning / IntegrityRunning）按 `[b]` 或 `[Esc]` 可返回任务列表，测试继续在后台执行
 - 任务列表中正在运行的任务行首显示 `◉` 标记，对其按 `[Enter]` 可随时重新进入仪表盘
 
 ### 4.3 页面设计
@@ -481,6 +530,9 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ║                                                             ║
 ║   turbo-anthropic              Turbo   messages   ★ 并发8  ║
 ║     claude-3-7  1→50  步进+2  上次: 峰值 TPS 245.3          ║
+║                                                             ║
+║   integrity-responses          完整性   responses   ✓ 12/12 ║
+║     Suite openai-responses-smoke  规则 1 个  警告 2          ║
 ║                                                             ║
 ║   smoke-regression             标准    completions  从未运行 ║
 ║     gpt-4o-mini  并发2  请求20                              ║
@@ -578,7 +630,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ║  ◆ AIT   (列表背景，只读暗化)               ║
 ║  ┌────────────── 新建任务  2/3 · 测试参数 ──────────────┐  ║
 ║  │                                                       │  ║
-║  │  测试模式    ○ 标准模式    ● Turbo 模式               │  ║
+║  │  测试模式    ○ 标准模式    ● Turbo 模式    ○ 完整性测试 │  ║
 ║  │               [←→ 切换]                               │  ║
 ║  │  ── 标准模式参数 ───────────────────────────────      │  ║
 ║  │  并发数 [  5  ]   请求总数 [ 100 ]                    │  ║
@@ -587,6 +639,10 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ║  │  初始并发 [  1  ]   最大并发  [  50  ]                │  ║
 ║  │  步进值 [  2  ]   每级请求数 [  30  ]                 │  ║
 ║  │  停止条件  成功率低于 [ 90% ] 或 延迟 > [ 10s ]       │  ║
+║  │  ── 完整性测试参数 ─────────────────────────────      │  ║
+║  │  Suite [ openai-responses-smoke      ]                │  ║
+║  │  规则文件 [ ~/.ait/rules/responses-extra.json ]       │  ║
+║  │  失败策略 [ 全部执行 ]   单 Case 超时 [ 30s ]         │  ║
 ║  │  ── Prompt 配置 ────────────────────────────────      │  ║
 ║  │  输入方式  ● 直接输入   ○ 文件   ○ 按长度生成         │  ║
 ║  │  内容      你好，介绍一下你自己。                     │  ║
@@ -615,10 +671,11 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ║  │  测试模式    Turbo 模式                               │  ║
 ║  │  并发爬坡    1 → 50  步进 +2  每级 30 请求            │  ║
 ║  │  停止条件    成功率 < 90%  或  延迟 > 10s             │  ║
+║  │  完整性      Suite openai-responses-smoke  规则 1 个  │  ║
 ║  │  流式模式    开启                                     │  ║
 ║  │  Prompt      你好，介绍一下你自己。 (长度: 12)        │  ║
 ║  │                                                       │  ║
-║  │  保存任务到 ~/.ait/tasks.json  [✓]                    │  ║
+║  │  保存任务到 ~/.ait/tasks/<task-id>.json  [✓]          │  ║
 ║  │                                                       │  ║
 ║  │  ▶  保存任务                                          │  ║
 ║  │                                                       │  ║
@@ -706,7 +763,40 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 
 ---
 
-#### 页面 8：请求详情页
+#### 页面 8：接口完整性测试仪表盘
+
+```
+╔══ AIT  接口完整性测试 ─ integrity-responses ─────────────════╗
+║  ◆ AIT   gpt-4o · openai-responses · openai-responses-smoke ║
+╠══════════════════════════╦═════════════════════════════════╣
+║  测试配置                 ║  当前结论                        ║
+║                           ║                                 ║
+║  Suite  smoke             ║  通过       10 / 12              ║
+║  规则   1 个文件           ║  警告       2                    ║
+║  Case   12                ║  失败       0                    ║
+║  超时   30s / Case        ║  结论       ✓ 通过，有警告         ║
+╠══════════════════════════╩═════════════════════════════════╣
+║  进度  █████████░  11 / 12   当前: stream-basic-shape       ║
+╠═════════════════════════════════════════════════════════════╣
+║  Case 列表                                                   ║
+║   Case ID                    能力项          断言       结论 ║
+║  ──────────────────────────────────────────────────────── ║
+║   basic-response-shape        response       12/12      ✓    ║
+║   usage-shape                 usage           5/6      ⚠    ║
+║ ▶ stream-basic-shape          streaming       8/8      🔄    ║
+║   error-format                error           4/4      ✓    ║
+╠═════════════════════════════════════════════════════════════╣
+║  [Enter] 查看 Case 详情  [↑↓] 选择  [s] 停止                 ║
+╠═════════════════════════════════════════════════════════════╣
+║  [s] 停止  [b] 后台运行  [r] 提前报告  [q] 退出              ║
+╚═════════════════════════════════════════════════════════════╝
+```
+
+> **说明：** 完整性测试仪表盘关注 Suite、Case、Assertion 和 Capability 覆盖，不展示 TPS/TTFT 等性能指标作为主视图。Case 详情页展示请求、响应结构、派生指标和断言结果；运行完成后跳转任务详情页，最近运行展开为完整性结论摘要。
+
+---
+
+#### 页面 9：请求详情页
 
 ```
 ╔══ AIT  请求详情 - nightly-openai  #48 ─────────────────════╗
@@ -753,17 +843,18 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 | `d` | 任务列表 / 任务详情 | 删除当前任务 |
 | `y` | 任务列表 / 任务详情 | 复制当前任务 |
 | `b` / `Esc` | 任务详情 | 返回任务列表 |
-| `b` / `Esc` | 仪表盘（标准/Turbo） | **后台运行**，返回任务列表（测试继续进行） |
-| `b` / `Esc` | 请求详情页 | 返回仪表盘 |
+| `b` / `Esc` | 仪表盘（标准/Turbo/完整性） | **后台运行**，返回任务列表（测试继续进行） |
+| `b` / `Esc` | 请求详情页 / Case 详情页 | 返回仪表盘 |
 | `Enter` | 仪表盘请求列表 | 进入请求详情页 |
-| `↑` / `↓` | 仪表盘请求列表 / 请求详情 | 选择请求 / 滚动内容 |
+| `Enter` | 完整性仪表盘 Case 列表 | 进入 Case 详情页 |
+| `↑` / `↓` | 仪表盘请求列表 / Case 列表 / 详情页 | 选择条目 / 滚动内容 |
 | `←` / `→` | 请求详情页 | 切换上/下一条请求 |
 | `Tab` / `Shift+Tab` | 向导 | 在输入项间切换焦点 |
 | `↑` / `↓` | 任务列表、向导 | 上下选择 |
 | `←` / `→` | 向导模式选择 | 切换选项 |
 | `Enter` | 向导 | 确认 / 下一步 / 保存 |
 | `Esc` | 所有页 | 返回上一步 / 取消 |
-| `s` | 仪表盘（标准/Turbo） | 停止测试 |
+| `s` | 仪表盘（标准/Turbo/完整性） | 停止测试 |
 | `r` | 仪表盘 / 任务详情 | 生成报告文件 |
 | `m` | Turbo 仪表盘 | 手动标记当前并发为最大稳定并发并停止 |
 | `c` | 任务详情（有运行记录时） | 复制最近运行摘要到剪贴板 |
@@ -794,7 +885,10 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 | 仪表盘（选中请求） | `[Enter] 查看请求详情  [↑↓] 选择请求  [s] 停止` |
 | Turbo 仪表盘（未选中级别） | `[s] 停止  [b] 后台运行  [m] 标记极限` |
 | Turbo 仪表盘（选中已完成级别） | `[Enter] 查看该级别请求列表  [↑↓] 选择  [s] 停止` |
+| 完整性仪表盘（未选中 Case） | `[s] 停止  [b] 后台运行  [r] 提前报告` |
+| 完整性仪表盘（选中 Case） | `[Enter] 查看 Case 详情  [↑↓] 选择  [s] 停止` |
 | 请求详情页 | `[b/Esc] 返回仪表盘  [←→] 上/下一条请求` |
+| Case 详情页 | `[b/Esc] 返回完整性仪表盘  [←→] 上/下一个 Case` |
 
 **规则：**
 - Context Bar 使用与 Footer 相同的暗色调，但前景色略亮（用于区分层级）
@@ -815,173 +909,54 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 
 ## 5. Turbo 模式设计
 
-### 5.1 算法流程
+Turbo 模式是 AIT 的承载能力探测模式，用于在同一任务配置下逐级提升并发，自动找到最大稳定并发边界。
 
-```
-初始化
-  concurrency = TurboConfig.InitConcurrency   // 默认: 1
-  step        = TurboConfig.StepSize          // 默认: 2
-  levelReqs   = TurboConfig.LevelRequests     // 默认: 30（每级执行的请求数）
+完整设计见 [Turbo 模式功能设计](turbo.md)。总设计只保留关键约束：
 
-循环
-  ① 用当前 concurrency 执行 levelReqs 个请求
-     → 并发调用已有 runner.Runner（复用所有指标收集逻辑）
-
-  ② 采集该级别指标（LevelResult）
-      successRate = 成功请求数 / levelReqs
-      avgTPS      = mean(输出 TPS)
-      avgTTFT     = mean(TTFT)
-      cacheHitRate = cachedInputTokens / inputTokens
-      avgTotalTime = mean(总耗时)
-
-  ③ 判断终止条件（任意一条满足即终止）
-     a. successRate < TurboConfig.MinSuccessRate   → 服务降级
-     b. avgTotalTime > TurboConfig.MaxLatency       → 延迟过高
-     c. concurrency >= TurboConfig.MaxConcurrency   → 达到探测上限
-     d. 用户按下 [s] 或 [m]                         → 手动终止
-
-  ④ 如果未终止
-     记录 LevelResult 到 TurboResult.Levels
-     concurrency += step
-     继续循环
-
-结束
-  最大稳定并发 = 最后一个通过终止检查的并发数
-  TurboResult.MaxStableConcurrency = 最后一个 ✓ 稳定级别的并发数
-  TurboResult.PeakTPS = 所有 ✓ 稳定级别中的最大 avgTPS
-  生成 TurboResult
-```
-
-其中缓存命中率定义为“缓存命中的输入 token / 总输入 token”。
-- OpenAI Completions / Responses：基于 usage 中的 `cached_tokens`
-- Anthropic Messages：基于 usage 中的 `cache_read_input_tokens`
-- 若响应未提供缓存统计字段，则该指标记为 `N/A`，不参与阈值判断
-
-### 5.2 停止条件详解
-
-```
-type StopReason int
-
-const (
-    StopReasonLowSuccessRate  StopReason = iota // 成功率低于阈值
-    StopReasonHighLatency                        // 延迟超过阈值
-    StopReasonMaxConcurrency                     // 达到最大并发上限
-    StopReasonManual                             // 用户手动停止
-    StopReasonDegraded                           // 综合降级判断
-)
-```
-
-**降级判断示例：**
-
-```
-并发=8: 成功率=96%, avgTPS=245, avgTTFT=312ms, cache=44%  → ✓ 通过（成功率>90%，延迟<10s）
-并发=10: 成功率=84%                             → ✗ 停止（成功率 84% < 阈值 90%）
-最大稳定并发 = 8
-```
-
-### 5.3 CLI 参数
-
-Turbo 模式通过 `--turbo` 标志启用，新增以下参数：
-
-```bash
-# 启用 Turbo 模式
-ait --protocol=openai-responses --endpoint=https://api.openai.com/v1/responses --model=gpt-4o --turbo
-
-# 完整 Turbo 参数
-ait --protocol=openai-responses --endpoint=https://api.openai.com/v1/responses --model=gpt-4o --turbo \
-  --turbo-init-concurrency=1 \   # 初始并发数（默认: 1）
-  --turbo-max-concurrency=50 \   # 最大探测并发数（默认: 50）
-  --turbo-step=2 \               # 每级步进值（默认: 2）
-  --turbo-level-requests=30 \    # 每级执行的请求数（默认: 30）
-  --turbo-min-success-rate=0.9 \ # 成功率低于此值停止（默认: 0.9）
-  --turbo-max-latency=10s        # 延迟超过此值停止（默认: 10s）
-```
-
-**与现有参数的关系：**
-
-- `--concurrency` 在 Turbo 模式下**被忽略**（Turbo 自己控制并发）
-- `--count` 在 Turbo 模式下表示**每级**的请求数（等同于 `--turbo-level-requests`，优先级低于后者）
-- `--protocol` 允许值为 `openai-completions`、`openai-responses`、`anthropic-messages`
-- `--endpoint` 必须填写完整接口地址，例如 `https://api.openai.com/v1/responses`
-- 其他参数（protocol、endpoint、apiKey、model、stream、timeout 等）正常生效
-- 单个任务只接受一个 `--model`；如果要测试多个模型，应拆分成多个任务
-
-**与任务管理的关系：**
-
-- `--task=<id>` 直接加载已保存任务并进入详情页或直接运行
-- 通过完整 CLI 参数启动时，AIT 自动创建任务并立即调用 `StartRun`，直接进入 Running / TurboRunning 仪表盘
-- Turbo 运行完成后，其结果会自动追加到对应任务的历史记录中
-
-### 5.4 Turbo 报告格式
-
-**JSON 报告（新增字段）：**
-
-```json
-{
-  "turbo": {
-    "max_stable_concurrency": 8,
-    "peak_tps": 245.3,
-    "stop_reason": "low_success_rate",
-    "probe_duration": "52.3s",
-    "protocol": "openai-responses",
-    "endpoint_url": "https://api.openai.com/v1/responses",
-    "config": {
-      "init_concurrency": 1,
-      "max_concurrency": 50,
-      "step": 2,
-      "level_requests": 30,
-      "min_success_rate": 0.9,
-      "max_latency": "10s"
-    },
-    "levels": [
-      {
-        "concurrency": 1,
-        "total_requests": 30,
-        "success_count": 30,
-        "success_rate": 1.0,
-        "avg_tps": 31.2,
-        "avg_ttft": "89ms",
-        "cache_hit_rate": 0.0,
-        "avg_total_time": "0.82s",
-        "stable": true
-      }
-    ]
-  }
-}
-```
-
-**CSV 报告（新增 turbo 爬坡汇总表）：**
-
-```
-protocol,concurrency,success_rate,avg_tps,peak_tps,avg_ttft,cache_hit_rate,avg_total_time,stable
-openai-responses,1,1.00,31.2,38.5,89ms,0.00,0.82s,true
-openai-responses,2,1.00,62.5,74.1,91ms,0.18,0.84s,true
-openai-responses,4,0.99,121.3,145.2,98ms,0.26,0.91s,true
-openai-responses,6,0.98,178.4,201.3,124ms,0.33,1.08s,true
-openai-responses,8,0.96,245.3,280.1,312ms,0.44,1.51s,true
-openai-responses,10,0.84,198.1,234.5,892ms,0.12,4.23s,false
-```
+- `mode = "turbo"`，与 `standard`、`integrity` 并列。
+- 从 `init_concurrency` 开始线性爬坡，直到成功率低于阈值、平均延迟超过阈值、达到最大并发或用户手动停止。
+- 每个并发级别都复用标准请求执行和指标采集能力。
+- 每条请求写入统一 `requests.jsonl`，并在 `contexts.turbo` 中记录并发级别、级别序号和级别内请求序号。
+- 最终爬坡结论写入 `result.json` 的 `turbo` 区块，包括最大稳定并发、峰值 TPS、停止原因和级别结果。
+- TUI 主视图展示当前级别、级别列表和爬坡结论；选中级别后可查看该级别请求明细。
 
 ---
 
-## 6. 新增数据结构与接口
+## 6. 接口完整性测试模式设计
 
-### 6.1 TaskDefinition
+接口完整性测试是 AIT 的协议与业务行为验证模式。它不以性能压测为主要目标，而是确认目标服务在指定协议下是否具备可用、稳定、可解释的接口行为。
+
+完整设计见 [接口完整性测试功能设计](integrity.md)。总设计只保留关键约束：
+
+- `mode = "integrity"`，与 `standard`、`turbo` 并列。
+- 核心模型统一为 `Suite / Case / Assertion / Capability`。
+- 内置 Suite 负责协议级 Case；自定义测试规则通过 `integrity.rule_files` 追加或覆盖断言。
+- 自定义测试规则是第一版核心能力，首版只支持声明式规则文件，不支持脚本和自定义请求编排。
+- 执行层必须尽可能保留服务端返回结构，供断言、失败排查和后续内容检查使用。
+- 每个 Case 对应的请求事实写入统一 `requests.jsonl`，并在 `contexts.integrity` 中记录 Suite、Case、Capability 和断言结果。
+- 最终完整性结论写入 `result.json` 的 `integrity` 区块，包括 Case 统计、Capability 覆盖、断言统计和失败摘要。
+- MCP 适配层只通过 `server.Server` 暴露 Suite 预览、规则校验和 Case 详情等能力。
+
+---
+
+## 7. 新增数据结构与接口
+
+### 7.1 TaskDefinition
 
 ```go
 // internal/types/types.go 新增
 
 // TaskDefinition 可重复执行的测试任务定义
 type TaskDefinition struct {
-  ID             string          `json:"id"`
-  Name           string          `json:"name"`
-  Input          Input           `json:"input"`
-  CreatedAt      time.Time       `json:"created_at"`
-  UpdatedAt      time.Time       `json:"updated_at"`
-  LastRunAt      *time.Time      `json:"last_run_at,omitempty"`
-  LastRunSummary *TaskRunSummary `json:"last_run_summary,omitempty"`
+  ID        string    `json:"id"`
+  Name      string    `json:"name"`
+  Input     Input     `json:"input"`
+  CreatedAt time.Time `json:"created_at"`
+  UpdatedAt time.Time `json:"updated_at"`
 }
 ```
+
+任务文件只保存配置本体，不回填最近运行摘要；任务列表和任务详情中的最近运行信息由 `runs/<task-id>/` 下的 `run.json` 与 `result.json` 现场读取或聚合。
 
 其中 `Input.Model` 为单个模型标识，不允许逗号分隔列表。
 其中 `Input.Protocol` 允许值为 `openai-completions`、`openai-responses`、`anthropic-messages`。
@@ -990,31 +965,35 @@ type TaskDefinition struct {
 - `openai-responses` → `https://api.openai.com/v1/responses`
 - `anthropic-messages` → `https://api.anthropic.com/v1/messages`
 
-### 6.2 TaskRunSummary
+### 7.2 TaskRunSummary
 
 ```go
 // TaskRunSummary 单次任务运行后的摘要信息
 type TaskRunSummary struct {
   RunID                 string        `json:"run_id"`
   TaskID                string        `json:"task_id"`
-  Mode                  string        `json:"mode"`
+  Mode                  string        `json:"mode"` // standard | turbo | integrity
   Status                string        `json:"status"`
   Protocol              string        `json:"protocol"`
   Model                 string        `json:"model"`
   StartedAt             time.Time     `json:"started_at"`
   FinishedAt            time.Time     `json:"finished_at"`
-  SuccessRate           float64       `json:"success_rate"`
-  AvgTTFT               time.Duration `json:"avg_ttft"`
-  AvgTPS                float64       `json:"avg_tps"`
-  CacheHitRate          float64       `json:"cache_hit_rate"`
+  SuccessRate           float64       `json:"success_rate,omitempty"`
+  AvgTTFT               time.Duration `json:"avg_ttft,omitempty"`
+  AvgTPS                float64       `json:"avg_tps,omitempty"`
+  CacheHitRate          float64       `json:"cache_hit_rate,omitempty"`
   MaxStableConcurrency  int           `json:"max_stable_concurrency,omitempty"`
+  IntegrityConclusion   string        `json:"integrity_conclusion,omitempty"`
+  IntegrityPassedCases  int           `json:"integrity_passed_cases,omitempty"`
+  IntegrityFailedCases  int           `json:"integrity_failed_cases,omitempty"`
+  IntegrityWarnCount    int           `json:"integrity_warn_count,omitempty"`
   ReportJSONPath        string        `json:"report_json_path,omitempty"`
   ReportCSVPath         string        `json:"report_csv_path,omitempty"`
   ErrorSummary          string        `json:"error_summary,omitempty"`
 }
 ```
 
-### 6.3 TurboConfig
+### 7.3 TurboConfig
 
 ```go
 // internal/types/types.go 新增
@@ -1080,7 +1059,7 @@ type ReportData struct {
 }
 ```
 
-  ### 6.4 Input 扩展
+### 7.4 Input 扩展
 
 ```go
 // internal/types/types.go 扩展 Input
@@ -1088,16 +1067,76 @@ type ReportData struct {
 type Input struct {
     // ... 现有字段 ...
 
-    Protocol string // openai-completions | openai-responses | anthropic-messages
+    Mode        string // standard | turbo | integrity
+    Protocol    string // openai-completions | openai-responses | anthropic-messages
     EndpointURL string // 完整接口地址，例如 https://api.openai.com/v1/responses
 
+    // 标准模式
+    Concurrency int
+    Count       int
+
     // Turbo 模式
-    Turbo       bool        // 是否启用 Turbo 模式
-    TurboConfig TurboConfig // Turbo 配置（Turbo=true 时生效）
+    TurboConfig TurboConfig // Mode == "turbo" 时生效
+
+    // 接口完整性测试模式
+    Integrity IntegrityConfig // Mode == "integrity" 时生效
+}
+
+// IntegrityConfig 接口完整性测试配置
+type IntegrityConfig struct {
+    Suite         string   `json:"suite"`           // 例如 openai-responses-smoke
+    FailFast      bool     `json:"fail_fast"`
+    CaseTimeoutMS int      `json:"case_timeout_ms"`
+    RuleFiles     []string `json:"rule_files"`      // 自定义测试规则文件
 }
 ```
 
-### 6.5 Server 层类型
+### 7.5 IntegrityConfig 与结果类型
+
+```go
+// AssertionResult 单条断言结果
+type AssertionResult struct {
+    ID      string `json:"id"`
+    Name    string `json:"name,omitempty"`
+    CaseID  string `json:"case_id"`
+    Phase   string `json:"phase,omitempty"`
+    Level   string `json:"level"`   // error | warn | info
+    Path    string `json:"path,omitempty"`
+    Op      string `json:"op"`
+    Passed  bool   `json:"passed"`
+    Message string `json:"message,omitempty"`
+    Source  string `json:"source"`  // builtin | rule_file
+}
+
+// IntegrityCaseResult 单个 Case 的执行结果
+type IntegrityCaseResult struct {
+    CaseID      string            `json:"case_id"`
+    Name        string            `json:"name"`
+    Capability  string            `json:"capability"`
+    Status      string            `json:"status"` // passed | warned | failed | skipped
+    Assertions  []AssertionResult `json:"assertions"`
+    RequestRef  string            `json:"request_ref"`
+    ErrorSummary string           `json:"error_summary,omitempty"`
+}
+
+// IntegrityResult 完整性测试最终结果
+type IntegrityResult struct {
+    Suite           string                `json:"suite"`
+    Protocol        string                `json:"protocol"`
+    EndpointURL     string                `json:"endpoint_url"`
+    Model           string                `json:"model"`
+    Conclusion      string                `json:"conclusion"` // passed | warned | failed
+    TotalCases      int                   `json:"total_cases"`
+    PassedCases     int                   `json:"passed_cases"`
+    WarnedCases     int                   `json:"warned_cases"`
+    FailedCases     int                   `json:"failed_cases"`
+    Capabilities    map[string]string     `json:"capabilities"`
+    Cases           []IntegrityCaseResult `json:"cases"`
+    RuleFileSources []string              `json:"rule_file_sources,omitempty"`
+}
+```
+
+### 7.6 Server 层类型
 
 ```go
 // internal/server/types.go
@@ -1128,7 +1167,7 @@ type RunState struct {
     RunID        RunID
     TaskID       string
     Status       RunStatus
-    Mode         string       // "standard" | "turbo"
+    Mode         string       // "standard" | "turbo" | "integrity"
     StartedAt    time.Time
     FinishedAt   *time.Time
     // 标准模式
@@ -1140,15 +1179,21 @@ type RunState struct {
     // Turbo 模式
     Levels       []types.TurboLevelResult
     CurrentLevel int
+    // 完整性测试模式
+    IntegritySuite       string
+    IntegrityCases       []types.IntegrityCaseResult
+    CurrentIntegrityCase string
+    AssertionResults     []types.AssertionResult
     // 聚合实时指标（标准模式 / Turbo 当前级别）
     AvgTPS       float64
     AvgTTFT      time.Duration
     SuccessRate  float64
     CacheHitRate float64
     // 最终结果（完成后填充）
-    StandardResult *types.ReportData
-    TurboResult    *types.TurboResult
-    ErrorMsg       string
+    StandardResult  *types.ReportData
+    TurboResult     *types.TurboResult
+    IntegrityResult *types.IntegrityResult
+    ErrorMsg        string
 }
 
 // RequestMetrics 单条请求的指标快照（供请求详情页展示）
@@ -1189,15 +1234,18 @@ type RunSummary struct {
 type EventKind string
 
 const (
-    EventRequestDone  EventKind = "request_done"   // 单条请求完成
-    EventProgressTick EventKind = "progress_tick"  // 500ms 聚合快照
-    EventLevelDone    EventKind = "level_done"      // Turbo 一级完成
-    EventRunComplete  EventKind = "run_complete"    // 全部完成
-    EventRunFailed    EventKind = "run_failed"      // 运行出错
+    EventRequestDone          EventKind = "request_done"           // 单条请求完成
+    EventProgressTick         EventKind = "progress_tick"          // 500ms 聚合快照
+    EventLevelDone            EventKind = "level_done"             // Turbo 一级完成
+    EventIntegrityCaseStarted EventKind = "integrity_case_started" // 完整性 Case 开始
+    EventIntegrityCaseDone    EventKind = "integrity_case_done"    // 完整性 Case 完成
+    EventAssertionResult      EventKind = "assertion_result"       // 单条断言完成
+    EventRunComplete          EventKind = "run_complete"           // 全部完成
+    EventRunFailed            EventKind = "run_failed"             // 运行出错
 )
 ```
 
-### 6.6 TUI 消息类型
+### 7.7 TUI 消息类型
 
 TUI 层的 `tea.Msg` 类型由 `tui/client.go` 包装 `server.Server` 调用后产生，不直接暴露 server 内部类型：
 
@@ -1247,12 +1295,12 @@ type ErrorMsg struct {
 }
 ```
 
-### 6.7 Runner 接口扩展
+### 7.8 Runner 接口扩展
 
 ```go
-// internal/runner/runner.go — Server 层内部使用，TUI 不直接调用
+// internal/server/runner/runner.go — Server 层内部使用，TUI 不直接调用
 
-// RequestDoneCallback 每个请求完成后的回调（由 server/run.go 包装为 Event）
+// RequestDoneCallback 每个请求完成后的回调（由 server/run_service.go 包装为 Event）
 type RequestDoneCallback func(metrics *ResponseMetrics, index int, err error)
 
 // RunWithCallback 运行测试，每个请求完成后调用 cb（线程安全）
@@ -1261,53 +1309,45 @@ func (r *Runner) RunWithCallback(cb RequestDoneCallback) (*types.ReportData, err
 // Stop 异步停止正在进行的测试
 func (r *Runner) Stop()
 ```
-```
 
-### 6.8 任务与全局配置持久化
+### 7.9 统一存储接口
+
+目标存储结构以 [统一运行存储设计](storage.md) 为准。总设计只约定最小 Repository 能力：
 
 ```go
-// internal/config/config.go
+// internal/server/store/config_repo.go
+func LoadConfig() (*config.Config, error)    // ~/.ait/config.json
+func SaveConfig(cfg *config.Config) error
 
-type Config struct {
-  SaveAPIKey         bool   `json:"save_api_key"`
-  LastSelectedTaskID string `json:"last_selected_task_id,omitempty"`
-  DefaultProtocol    string `json:"default_protocol,omitempty"` // openai-completions | openai-responses | anthropic-messages
-}
+// internal/server/store/task_repo.go
+func ListTasks() ([]types.TaskDefinition, error)       // 扫描 ~/.ait/tasks/
+func LoadTask(taskID string) (*types.TaskDefinition, error)
+func SaveTask(task types.TaskDefinition) error          // ~/.ait/tasks/<task-id>.json
+func DeleteTask(taskID string) error
 
-func Load() (*Config, error)   // 从 ~/.ait/config.json 加载
-func (c *Config) Save() error  // 保存到 ~/.ait/config.json
+// internal/server/store/run_repo.go
+func CreateRun(taskID string, meta types.RunMeta) (server.RunID, error)
+func UpdateRunMeta(taskID string, runID server.RunID, meta types.RunMeta) error
+func SaveRunResult(taskID string, runID server.RunID, result types.RunResult) error
+func LoadRun(taskID string, runID server.RunID) (*types.RunMeta, *types.RunResult, error)
+func ListRuns(taskID string, limit int) ([]types.RunSummary, error) // 扫描 runs/<task-id>/
 
-// internal/store/store.go
-// 泛型基类，提供 JSON 文件安全读写
-
-type JSONStore[T any] struct {
-  path string
-}
-
-func NewJSONStore[T any](path string) *JSONStore[T]
-func (s *JSONStore[T]) Load() (T, error)
-func (s *JSONStore[T]) Save(v T) error  // 写入前加文件锁
-
-// internal/store/task.go
-
-type TaskStore struct {
-  Tasks []types.TaskDefinition `json:"tasks"`
-}
-
-func LoadTasks() (*TaskStore, error)                   // 从 ~/.ait/tasks.json 加载
-func (s *TaskStore) Save() error                       // 保存到 ~/.ait/tasks.json
-func (s *TaskStore) Upsert(task types.TaskDefinition)  // 新建或更新任务
-func (s *TaskStore) Delete(taskID string) error
-
-// internal/store/history.go
-
-func AppendRun(taskID string, run types.TaskRunSummary) error
-func ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error)
+// internal/server/store/request_log.go
+func AppendRequestFact(taskID string, runID server.RunID, fact types.RequestFact) error
+func ReadRequestFacts(taskID string, runID server.RunID) ([]types.RequestFact, error)
 ```
+
+约束：
+
+- 任务定义存入 `~/.ait/tasks/<task-id>.json`，不再使用单文件聚合任务清单。
+- 运行历史来自 `~/.ait/runs/<task-id>/<run-id>/`，不再维护独立历史文件或历史索引。
+- 请求级事实统一写入 `requests.jsonl`。
+- 最终业务结论统一写入 `result.json`。
+- 运行事件只服务实时 UI，不作为最终事实源。
 
 ---
 
-## 7. 开发计划
+## 8. 开发计划
 
 > **约定：** 严格遵守 SC 分层原则——先建好 Server 接口，再实现 TUI Client；所有 UI 层代码仅 import `internal/server`，不直接 import `runner` / `task` / `report` 等下层包。
 
@@ -1317,12 +1357,13 @@ func ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error
 
 **Step 1：Server 层（先行）**
 
-- [ ] `internal/types/types.go`：补充 `Task`、`TaskConfig`、`TurboConfig`、`ReportData` 等领域类型
-- [ ] `internal/store/store.go`：泛型 `JSONStore[T]` 基类（文件锁 + Load/Save）
-- [ ] `internal/store/task.go`：`TaskStore`，`~/.ait/tasks.json` CRUD
-- [ ] `internal/store/history.go`：`HistoryStore`，`~/.ait/history/<task-id>.json` 读写
-- [ ] `internal/config/config.go`：`~/.ait/config.json` 全局配置（复用 `store.JSONStore`）
-- [ ] `internal/runner/runner.go`：增加 `Stop()` + 稳定 `RunWithCallback`
+- [ ] `internal/server/types/types.go`：补充 `Task`、`TaskConfig`、`TurboConfig`、`ReportData` 等领域类型
+- [ ] `internal/server/store/fs.go`：统一文件读写、JSON/JSONL、目录工具与文件锁
+- [ ] `internal/server/store/task_repo.go`：`~/.ait/tasks/<task-id>.json` CRUD
+- [ ] `internal/server/store/run_repo.go`：`~/.ait/runs/<task-id>/<run-id>/run.json` 与 `result.json` 读写
+- [ ] `internal/server/store/request_log.go`：统一 `requests.jsonl` append/read
+- [ ] `internal/server/config/config.go`：`~/.ait/config.json` 全局配置（复用 store 基础能力）
+- [ ] `internal/server/runner/runner.go`：增加 `Stop()` + 稳定 `RunWithCallback`
 - [ ] `internal/server/server.go`：定义 `Server` 接口 + `New()` 构造函数
 - [ ] `internal/server/task_service.go`：实现任务管理 facade 方法（调用 task.Store）
 - [ ] `internal/server/run_service.go`：实现 `StartRun / StopRun / GetRunState`（调用 runner）
@@ -1344,6 +1385,7 @@ func ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error
 - [ ] `internal/tui/pages/reqdetail.go`：请求详情页（含原始输入/输出）
 - [ ] `cmd/ait/main.go`：`server.New()` → 启动 TUI
 - [ ] 协议枚举：`openai-completions`、`openai-responses`、`anthropic-messages`
+- [ ] 统一任务模式：`standard`、`turbo`、`integrity`
 - [ ] 响应式布局（终端宽度自适应）
 - [ ] `internal/display/` 退役，由 TUI 全面接管输出
 
@@ -1351,20 +1393,43 @@ func ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error
 
 ### Phase 2 — Turbo 模式
 
-**目标：** 将并发爬坡能力完整融入 SC 架构
+**目标：** 将并发爬坡能力完整融入 SC 架构，详见 [Turbo 模式功能设计](turbo.md)
 
-- [ ] `internal/turbo/engine.go`：爬坡调度（`Run / Stop`）
-- [ ] `internal/turbo/strategy.go`：步进 & 终止策略
-- [ ] `internal/turbo/types.go`：`TurboResult / LevelResult`
+- [ ] `internal/server/turbo/engine.go`：爬坡调度（`Run / Stop`）
+- [ ] `internal/server/turbo/strategy.go`：步进 & 终止策略
+- [ ] `internal/server/turbo/types.go`：`TurboResult / LevelResult`
 - [ ] `internal/server/run_service.go`：扩展 `StartRun` 支持 Turbo 模式（发布 `EventLevelDone`）
+- [ ] `internal/server/store/request_log.go`：按统一 `requests.jsonl` 记录每级请求事实
 - [ ] `internal/tui/pages/turbodash.go`：Turbo 仪表盘页（级别列表 + 当前级别指标）
-- [ ] `internal/tui/pages/taskdetail.go`：扩展支持 Turbo 运行结果展开（爬坡表格 + ASCII 曲线）
-- [ ] `internal/report/turbo_renderer.go`：Turbo CSV/JSON 报告渲染
-- [ ] Turbo 运行历史写回任务摘要
+- [ ] `internal/tui/pages/taskdetail.go`：从 `result.json` 展示 Turbo 运行结果（爬坡表格 + ASCII 曲线）
+- [ ] `internal/server/report/turbo_renderer.go`：Turbo CSV/JSON 报告渲染
 
 ---
 
-### Phase 3 — 增强 & Web UI 接入准备
+### Phase 3 — 接口完整性测试模式
+
+**目标：** 实现内置 Suite + 自定义测试规则文件 + Case 结果页的 MVP 主流程
+
+- [ ] `internal/server/integrity/engine.go`：Suite / Case 执行调度（`Run / Stop`）
+- [ ] `internal/server/integrity/suite.go`：Suite 定义、Case 定义和内置 Suite 注册
+- [ ] `internal/server/integrity/builtin.go`：内置 `smoke` / `full` Suite
+- [ ] `internal/server/integrity/result.go`：`IntegrityResult / IntegrityCaseResult` 聚合
+- [ ] `internal/server/assertion/loader.go`：声明式规则文件加载与版本校验
+- [ ] `internal/server/assertion/compiler.go`：内置断言和 `integrity.rule_files` 合并、编译
+- [ ] `internal/server/assertion/evaluator.go`：断言求值，支持 `exists / eq / contains / matches / gt` 等操作符
+- [ ] `internal/server/assertion/fields.go`：受限 path 解析，区分 missing / null
+- [ ] `internal/server/run_service.go`：扩展 `StartRun` 支持 `mode = "integrity"`，发布 Case 与 Assertion 事件
+- [ ] `internal/server/store/request_log.go`：按统一 `requests.jsonl` 保存 Case 请求事实与断言上下文
+- [ ] `internal/server/store/run_repo.go`：按统一 `result.json` 保存完整性测试最终业务结论
+- [ ] `internal/tui/pages/integritydash.go`：完整性测试仪表盘（Suite / Case / 结论）
+- [ ] `internal/tui/pages/integritydetail.go`：Case 详情与断言详情页
+- [ ] `internal/server/report`：完整性测试 JSON 报告渲染
+- [ ] `internal/mcp/server.go`：通过 `server.Server` 暴露 `ait.list_integrity_suites`、`ait.preview_integrity_suite`、`ait.validate_rule_file`、`ait.get_integrity_case_detail`
+- [ ] 完整性测试单元测试：规则文件校验、断言求值、Suite 执行、结果落盘
+
+---
+
+### Phase 4 — 增强 & Web UI 接入准备
 
 **目标：** 细节打磨，为 Web UI 预留接入点
 
@@ -1374,7 +1439,7 @@ func ListTaskRunHistory(taskID string, limit int) ([]types.TaskRunSummary, error
 - [ ] 任务详情页 `[c]` 复制最近运行摘要到剪贴板
 - [ ] `ntcharts` 折线图替换 ASCII 折线图（Turbo 曲线）
 - [ ] 终端尺寸变化自适应重绘
-- [ ] 完善单元测试（TUI model 测试、server 集成测试、turbo strategy 测试）
+- [ ] 完善单元测试（TUI model 测试、server 集成测试、turbo strategy 测试、integrity/assertion 测试）
 
 ---
 
