@@ -19,6 +19,7 @@
 相关设计：
 
 - [统一运行存储设计](storage.md)
+- [队列化执行架构设计](queue.md)
 - [Turbo 模式功能设计](turbo.md)
 - [接口完整性测试功能设计](integrity.md)
 
