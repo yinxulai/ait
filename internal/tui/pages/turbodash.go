@@ -12,6 +12,42 @@ import (
 	"github.com/yinxulai/ait/internal/server/types"
 )
 
+// getTurboLevels 从 RunState 的 ModeState 中提取 levels
+func getTurboLevels(rs *server.RunState) []types.TurboLevelResult {
+	if rs == nil || rs.ModeState == nil {
+		return nil
+	}
+	if levels, ok := rs.ModeState["levels"].([]types.TurboLevelResult); ok {
+		return levels
+	}
+	return nil
+}
+
+// getTurboConfig 从 RunState 的 ModeState 中提取 config
+func getTurboConfig(rs *server.RunState) *types.TurboConfig {
+	if rs == nil || rs.ModeState == nil {
+		return nil
+	}
+	if config, ok := rs.ModeState["config"].(*types.TurboConfig); ok {
+		return config
+	}
+	if config, ok := rs.ModeState["config"].(types.TurboConfig); ok {
+		return &config
+	}
+	return nil
+}
+
+// getTurboCurrentLevel 从 RunState 的 ModeState 中提取 current_level
+func getTurboCurrentLevel(rs *server.RunState) int {
+	if rs == nil || rs.ModeState == nil {
+		return 0
+	}
+	if level, ok := rs.ModeState["current_level"].(int); ok {
+		return level
+	}
+	return 0
+}
+
 // TurboDashState Turbo 模式仪表盘页状态。
 type TurboDashState struct {
 	RunID    server.RunID
@@ -188,18 +224,19 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	headerRight := []string{}
 	if rs != nil {
 		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)}
+		levels := getTurboLevels(rs)
 		var levelNum int
 		if d.IsRunning() {
-			levelNum = len(rs.Levels) + 1
+			levelNum = len(levels) + 1
 		} else {
-			levelNum = len(rs.Levels)
+			levelNum = len(levels)
 		}
 		if levelNum < 1 {
 			levelNum = 1
 		}
 		headerRight = []string{fmt.Sprintf("%s %d", i18n.T(i18n.KColLevel), levelNum)}
-		if len(rs.Levels) > 0 {
-			headerRight = append(headerRight, fmt.Sprintf("%d", len(rs.Levels)))
+		if len(levels) > 0 {
+			headerRight = append(headerRight, fmt.Sprintf("%d", len(levels)))
 		}
 	}
 	if d.TaskID != "" {
@@ -247,12 +284,16 @@ func buildTurboDashParams(rs *server.RunState, st Styles, maxH, width int) strin
 	if rs == nil {
 		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 	} else {
-		tc := rs.TurboConfig
-		lbls := []string{i18n.T(i18n.KRamp), i18n.T(i18n.KPerLevel), i18n.T(i18n.KStopCondLabel)}
-		lw := maxLabelWidth(lbls)
-		lines = append(lines, " "+labelValue(st, lbls[0], fmt.Sprintf("%d→%d  +%d", tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize), lw))
-		lines = append(lines, " "+labelValue(st, lbls[1], fmt.Sprintf("%d req", tc.LevelRequests), lw))
-		lines = append(lines, " "+labelValue(st, lbls[2], fmt.Sprintf("%.0f%%", tc.MinSuccessRate*100), lw))
+		tc := getTurboConfig(rs)
+		if tc == nil {
+			lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
+		} else {
+			lbls := []string{i18n.T(i18n.KRamp), i18n.T(i18n.KPerLevel), i18n.T(i18n.KStopCondLabel)}
+			lw := maxLabelWidth(lbls)
+			lines = append(lines, " "+labelValue(st, lbls[0], fmt.Sprintf("%d→%d  +%d", tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize), lw))
+			lines = append(lines, " "+labelValue(st, lbls[1], fmt.Sprintf("%d req", tc.LevelRequests), lw))
+			lines = append(lines, " "+labelValue(st, lbls[2], fmt.Sprintf("%.0f%%", tc.MinSuccessRate*100), lw))
+		}
 	}
 
 	return finishPanelLines(lines, maxH)
@@ -262,10 +303,7 @@ func buildTurboDashParams(rs *server.RunState, st Styles, maxH, width int) strin
 func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) string {
 	var lines []string
 
-	curLevel := 0
-	if rs != nil {
-		curLevel = rs.CurrentLevel
-	}
+	curLevel := getTurboCurrentLevel(rs)
 	lines = panelTitleLines(st, fmt.Sprintf(i18n.T(i18n.KTurboCurLevelFmt), curLevel), width, false)
 
 	if rs == nil {
@@ -288,16 +326,18 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	if total > 0 {
 		ratio = float64(done) / float64(total)
 	}
-	levelDone := len(rs.Levels)
+	levels := getTurboLevels(rs)
+	levelDone := len(levels)
 	var levelTotalStr string
-	cfg := rs.TurboConfig
-	if cfg.StepSize > 0 {
+	cfg := getTurboConfig(rs)
+	if cfg != nil && cfg.StepSize > 0 {
 		expected := (cfg.MaxConcurrency-cfg.InitConcurrency)/cfg.StepSize + 1
 		levelTotalStr = fmt.Sprintf("%d/%d", levelDone, expected)
 	} else {
 		levelTotalStr = fmt.Sprintf("%d", levelDone)
 	}
-	suffix := fmt.Sprintf(i18n.T(i18n.KTurboDashSuffix), done, total, rs.CurrentLevel, levelTotalStr)
+	curLevel := getTurboCurrentLevel(rs)
+	suffix := fmt.Sprintf(i18n.T(i18n.KTurboDashSuffix), done, total, curLevel, levelTotalStr)
 	return renderProgressBar(st, " "+padToDisplayWidth(i18n.T(i18n.KProgress), 4)+"  ", suffix, ratio, width)
 }
 

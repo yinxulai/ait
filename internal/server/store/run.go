@@ -25,12 +25,20 @@ type RunMetadata struct {
 }
 
 type RunResult struct {
-	TotalReqs            int                    `json:"total_reqs,omitempty"`
-	MaxStableConcurrency int                    `json:"max_stable_concurrency,omitempty"`
-	ErrorSummary         string                 `json:"error_summary,omitempty"`
-	StandardResult       *types.ReportData      `json:"standard_result,omitempty"`
-	TurboResult          *types.TurboResult     `json:"turbo_result,omitempty"`
-	IntegrityResult      *types.IntegrityResult `json:"integrity_result,omitempty"`
+	TotalReqs            int    `json:"total_reqs,omitempty"`
+	MaxStableConcurrency int    `json:"max_stable_concurrency,omitempty"`
+	ErrorSummary         string `json:"error_summary,omitempty"`
+	// ModeResult 存储模式特定的运行结果（泛型）
+	// 根据 RunMetadata.Mode 判断具体类型：
+	// - standard: types.ReportData
+	// - turbo: types.TurboResult
+	// - integrity: types.IntegrityResult
+	ModeResult any `json:"mode_result,omitempty"`
+
+	// 向后兼容：保留旧字段用于迁移
+	StandardResult  *types.ReportData      `json:"standard_result,omitempty"`
+	TurboResult     *types.TurboResult     `json:"turbo_result,omitempty"`
+	IntegrityResult *types.IntegrityResult `json:"integrity_result,omitempty"`
 }
 
 type StoredRun struct {
@@ -332,23 +340,46 @@ func (r StoredRun) Summary(requests []types.RequestMetrics) types.TaskRunSummary
 	if r.Result != nil {
 		summary.ErrorSummary = r.Result.ErrorSummary
 		summary.MaxStableConcurrency = r.Result.MaxStableConcurrency
-		if r.Result.StandardResult != nil {
-			summary.SuccessRate = r.Result.StandardResult.SuccessRate
-			summary.AvgTTFT = r.Result.StandardResult.AvgTTFT
-			summary.AvgTPS = r.Result.StandardResult.AvgTPS
-			summary.CacheHitRate = r.Result.StandardResult.AvgCacheHitRate
-			summary.RPM = r.Result.StandardResult.RPM
-			summary.TPM = r.Result.StandardResult.TPM
-		}
-		if r.Result.TurboResult != nil {
-			summary.MaxStableConcurrency = r.Result.TurboResult.MaxStableConcurrency
-		}
-		if r.Result.IntegrityResult != nil {
-			if r.Result.IntegrityResult.TotalCases > 0 {
-				summary.SuccessRate = float64(r.Result.IntegrityResult.PassedCases) / float64(r.Result.IntegrityResult.TotalCases) * 100
+		// 优先使用 ModeResult 泛型字段
+		if r.Result.ModeResult != nil {
+			switch result := r.Result.ModeResult.(type) {
+			case *types.ReportData:
+				summary.SuccessRate = result.SuccessRate
+				summary.AvgTTFT = result.AvgTTFT
+				summary.AvgTPS = result.AvgTPS
+				summary.CacheHitRate = result.AvgCacheHitRate
+				summary.RPM = result.RPM
+				summary.TPM = result.TPM
+			case *types.TurboResult:
+				summary.MaxStableConcurrency = result.MaxStableConcurrency
+			case *types.IntegrityResult:
+				if result.TotalCases > 0 {
+					summary.SuccessRate = float64(result.PassedCases) / float64(result.TotalCases) * 100
+				}
+				if result.RequiredFailedCases > 0 || result.FailedCases > 0 {
+					summary.ErrorSummary = fmt.Sprintf("%d/%d integrity cases failed", result.FailedCases, result.TotalCases)
+				}
 			}
-			if r.Result.IntegrityResult.RequiredFailedCases > 0 || r.Result.IntegrityResult.FailedCases > 0 {
-				summary.ErrorSummary = fmt.Sprintf("%d/%d integrity cases failed", r.Result.IntegrityResult.FailedCases, r.Result.IntegrityResult.TotalCases)
+		} else {
+			// 向后兼容：尝试从旧字段读取
+			if r.Result.StandardResult != nil {
+				summary.SuccessRate = r.Result.StandardResult.SuccessRate
+				summary.AvgTTFT = r.Result.StandardResult.AvgTTFT
+				summary.AvgTPS = r.Result.StandardResult.AvgTPS
+				summary.CacheHitRate = r.Result.StandardResult.AvgCacheHitRate
+				summary.RPM = r.Result.StandardResult.RPM
+				summary.TPM = r.Result.StandardResult.TPM
+			}
+			if r.Result.TurboResult != nil {
+				summary.MaxStableConcurrency = r.Result.TurboResult.MaxStableConcurrency
+			}
+			if r.Result.IntegrityResult != nil {
+				if r.Result.IntegrityResult.TotalCases > 0 {
+					summary.SuccessRate = float64(r.Result.IntegrityResult.PassedCases) / float64(r.Result.IntegrityResult.TotalCases) * 100
+				}
+				if r.Result.IntegrityResult.RequiredFailedCases > 0 || r.Result.IntegrityResult.FailedCases > 0 {
+					summary.ErrorSummary = fmt.Sprintf("%d/%d integrity cases failed", r.Result.IntegrityResult.FailedCases, r.Result.IntegrityResult.TotalCases)
+				}
 			}
 		}
 	}
@@ -359,6 +390,28 @@ func (r StoredRun) TotalReqs(requests []types.RequestMetrics) int {
 	if r.Result == nil {
 		return len(requests)
 	}
+	// 优先使用 ModeResult 泛型字段
+	if r.Result.ModeResult != nil {
+		switch result := r.Result.ModeResult.(type) {
+		case *types.ReportData:
+			if result.TotalRequests > 0 {
+				return result.TotalRequests
+			}
+		case *types.TurboResult:
+			total := 0
+			for _, level := range result.Levels {
+				total += level.TotalRequests
+			}
+			if total > 0 {
+				return total
+			}
+		case *types.IntegrityResult:
+			if result.TotalCases > 0 {
+				return result.TotalCases
+			}
+		}
+	}
+	// 向后兼容:尝试从旧字段读取
 	if r.Result.StandardResult != nil && r.Result.StandardResult.TotalRequests > 0 {
 		return r.Result.StandardResult.TotalRequests
 	}

@@ -318,14 +318,27 @@ func TestSnapshotState_DeepCopiesRequests(t *testing.T) {
 func TestSnapshotState_DeepCopiesLevels(t *testing.T) {
 	ar := &activeRun{
 		state: &RunState{
-			Levels: []types.TurboLevelResult{{Concurrency: 5}},
+			Mode: "turbo",
+			ModeState: map[string]any{
+				"levels": []types.TurboLevelResult{{Concurrency: 5}},
+			},
 		},
 	}
 	snap := ar.snapshotState()
 
-	ar.state.Levels[0] = types.TurboLevelResult{Concurrency: 99}
-	if snap.Levels[0].Concurrency != 5 {
-		t.Error("Levels slice was not deep-copied: snapshot reflects mutation of original")
+	// 修改原始 state 的 levels
+	if levels, ok := ar.state.ModeState["levels"].([]types.TurboLevelResult); ok {
+		levels[0] = types.TurboLevelResult{Concurrency: 99}
+		ar.state.ModeState["levels"] = levels
+	}
+
+	// 快照不应该受影响
+	if levels, ok := snap.ModeState["levels"].([]types.TurboLevelResult); ok {
+		if levels[0].Concurrency != 5 {
+			t.Errorf("ModeState levels slice was not deep-copied: snapshot reflects mutation of original. Got concurrency=%d, want 5", levels[0].Concurrency)
+		}
+	} else {
+		t.Error("Snapshot ModeState does not contain levels")
 	}
 }
 

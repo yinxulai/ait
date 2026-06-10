@@ -67,21 +67,19 @@ type RunState struct {
 	// 详细请求列表（按 index 排序）
 	Requests []*types.RequestMetrics
 
-	// Turbo 专用
-	TurboConfig  types.TurboConfig // 规范化后的 Turbo 配置（运行开始时填充）
-	Levels       []types.TurboLevelResult
-	CurrentLevel int
-
-	// Integrity 专用
-	IntegritySuite   types.IntegritySuite
-	IntegrityCases   []types.IntegrityCaseResult
-	CurrentCaseID    string
-	AssertionResults []types.AssertionResult
+	// 模式特定状态（运行时动态更新）
+	// 不同模式可在此存储自定义状态，如：
+	// - standard: 无额外状态
+	// - turbo: {"levels": [...], "current_level": 3, "config": {...}}
+	// - integrity: {"suite": {...}, "cases": [...], "current_case_id": "..."}
+	ModeState map[string]any
 
 	// 最终结果（运行结束后填充）
-	StandardResult  *types.ReportData
-	TurboResult     *types.TurboResult
-	IntegrityResult *types.IntegrityResult
+	// 根据 Mode 字段判断具体类型：
+	// - standard: types.ReportData
+	// - turbo: types.TurboResult
+	// - integrity: types.IntegrityResult
+	ModeResult any
 
 	ErrorMsg string
 }
