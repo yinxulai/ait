@@ -7,6 +7,7 @@ import (
 	"os"
 	"path/filepath"
 	"sort"
+	"sync"
 	"time"
 
 	"github.com/yinxulai/ait/internal/server/types"
@@ -38,6 +39,7 @@ type StoredRun struct {
 
 type RunStore struct {
 	root string
+	mu   sync.Mutex
 }
 
 func NewRunStore(root string) *RunStore {
@@ -76,18 +78,21 @@ func (s *RunStore) AppendRequest(taskID, runID string, request types.RequestMetr
 	if err != nil {
 		return err
 	}
+	data = append(data, '\n')
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
 
 	f, err := os.OpenFile(s.RequestsPath(taskID, runID), os.O_APPEND|os.O_CREATE|os.O_WRONLY, 0o644)
 	if err != nil {
 		return err
 	}
-	defer f.Close()
 
 	if _, err := f.Write(data); err != nil {
+		_ = f.Close()
 		return err
 	}
-	_, err = f.Write([]byte{'\n'})
-	return err
+	return f.Close()
 }
 
 func (s *RunStore) LoadRequests(taskID, runID string) ([]types.RequestMetrics, error) {
@@ -106,14 +111,16 @@ func (s *RunStore) LoadRequests(taskID, runID string) ([]types.RequestMetrics, e
 	scanner.Buffer(buf, maxLineSize)
 
 	requests := make([]types.RequestMetrics, 0)
+	lineNo := 0
 	for scanner.Scan() {
+		lineNo++
 		line := scanner.Bytes()
 		if len(line) == 0 {
 			continue
 		}
 		var request types.RequestMetrics
 		if err := json.Unmarshal(line, &request); err != nil {
-			continue
+			return nil, fmt.Errorf("parse requests jsonl line %d: %w", lineNo, err)
 		}
 		requests = append(requests, request)
 	}

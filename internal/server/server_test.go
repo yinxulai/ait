@@ -5,6 +5,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 	"time"
 
@@ -366,6 +367,73 @@ func TestAppendRequestToDisk_CreatesParentDirectory(t *testing.T) {
 	}
 	if reqs[0].TPS != req.TPS {
 		t.Errorf("TPS: got %v, want %v", reqs[0].TPS, req.TPS)
+	}
+}
+
+func TestAppendRequestToDisk_ConcurrentWritesRemainReadable(t *testing.T) {
+	s := newTestServer(t)
+	taskID := "task-1"
+	runID := RunID("run_disk_append_concurrent")
+	const count = 200
+
+	var wg sync.WaitGroup
+	errs := make(chan error, count)
+	start := make(chan struct{})
+	for i := 0; i < count; i++ {
+		i := i
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			<-start
+			errs <- s.runStore.AppendRequest(taskID, string(runID), types.RequestMetrics{
+				Index:     i,
+				Success:   true,
+				TotalTime: time.Duration(i+1) * time.Millisecond,
+				TTFT:      time.Millisecond,
+				TPS:       float64(i + 1),
+			})
+		}()
+	}
+	close(start)
+	wg.Wait()
+	close(errs)
+	for err := range errs {
+		if err != nil {
+			t.Fatalf("AppendRequest() returned unexpected error: %v", err)
+		}
+	}
+
+	reqs, err := s.runStore.LoadRequests(taskID, string(runID))
+	if err != nil {
+		t.Fatalf("LoadRequests() returned unexpected error: %v", err)
+	}
+	if len(reqs) != count {
+		t.Fatalf("expected %d requests loaded from disk, got %d", count, len(reqs))
+	}
+	for i, req := range reqs {
+		if req.Index != i {
+			t.Fatalf("request order/index mismatch at %d: got index %d", i, req.Index)
+		}
+	}
+}
+
+func TestLoadRequests_ReturnsErrorForCorruptJSONL(t *testing.T) {
+	s := newTestServer(t)
+	taskID := "task-1"
+	runID := "run_disk_corrupt"
+	if err := os.MkdirAll(s.runStore.RunDir(taskID, runID), 0o755); err != nil {
+		t.Fatalf("mkdir run dir: %v", err)
+	}
+	if err := os.WriteFile(s.runStore.RequestsPath(taskID, runID), []byte("{\"index\":0,\"success\":true}\nnot-json\n"), 0o644); err != nil {
+		t.Fatalf("write corrupt requests file: %v", err)
+	}
+
+	_, err := s.runStore.LoadRequests(taskID, runID)
+	if err == nil {
+		t.Fatal("expected LoadRequests() to return an error for corrupt JSONL")
+	}
+	if !strings.Contains(err.Error(), "line 2") {
+		t.Fatalf("expected error to include corrupt line number, got %v", err)
 	}
 }
 
