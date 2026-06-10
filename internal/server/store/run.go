@@ -25,11 +25,12 @@ type RunMetadata struct {
 }
 
 type RunResult struct {
-	TotalReqs            int                `json:"total_reqs,omitempty"`
-	MaxStableConcurrency int                `json:"max_stable_concurrency,omitempty"`
-	ErrorSummary         string             `json:"error_summary,omitempty"`
-	StandardResult       *types.ReportData  `json:"standard_result,omitempty"`
-	TurboResult          *types.TurboResult `json:"turbo_result,omitempty"`
+	TotalReqs            int                    `json:"total_reqs,omitempty"`
+	MaxStableConcurrency int                    `json:"max_stable_concurrency,omitempty"`
+	ErrorSummary         string                 `json:"error_summary,omitempty"`
+	StandardResult       *types.ReportData      `json:"standard_result,omitempty"`
+	TurboResult          *types.TurboResult     `json:"turbo_result,omitempty"`
+	IntegrityResult      *types.IntegrityResult `json:"integrity_result,omitempty"`
 }
 
 type StoredRun struct {
@@ -342,6 +343,14 @@ func (r StoredRun) Summary(requests []types.RequestMetrics) types.TaskRunSummary
 		if r.Result.TurboResult != nil {
 			summary.MaxStableConcurrency = r.Result.TurboResult.MaxStableConcurrency
 		}
+		if r.Result.IntegrityResult != nil {
+			if r.Result.IntegrityResult.TotalCases > 0 {
+				summary.SuccessRate = float64(r.Result.IntegrityResult.PassedCases) / float64(r.Result.IntegrityResult.TotalCases) * 100
+			}
+			if r.Result.IntegrityResult.RequiredFailedCases > 0 || r.Result.IntegrityResult.FailedCases > 0 {
+				summary.ErrorSummary = fmt.Sprintf("%d/%d integrity cases failed", r.Result.IntegrityResult.FailedCases, r.Result.IntegrityResult.TotalCases)
+			}
+		}
 	}
 	return summary
 }
@@ -361,6 +370,9 @@ func (r StoredRun) TotalReqs(requests []types.RequestMetrics) int {
 		if total > 0 {
 			return total
 		}
+	}
+	if r.Result.IntegrityResult != nil && r.Result.IntegrityResult.TotalCases > 0 {
+		return r.Result.IntegrityResult.TotalCases
 	}
 	if r.Result.TotalReqs > 0 {
 		return r.Result.TotalReqs

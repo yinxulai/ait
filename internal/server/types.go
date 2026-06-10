@@ -43,7 +43,7 @@ type RunState struct {
 	RunID      RunID
 	TaskID     string
 	Status     RunStatus
-	Mode       string // "standard" | "turbo"
+	Mode       string // "standard" | "turbo" | "integrity"
 	StartedAt  time.Time
 	FinishedAt *time.Time
 
@@ -72,9 +72,16 @@ type RunState struct {
 	Levels       []types.TurboLevelResult
 	CurrentLevel int
 
+	// Integrity 专用
+	IntegritySuite   types.IntegritySuite
+	IntegrityCases   []types.IntegrityCaseResult
+	CurrentCaseID    string
+	AssertionResults []types.AssertionResult
+
 	// 最终结果（运行结束后填充）
-	StandardResult *types.ReportData
-	TurboResult    *types.TurboResult
+	StandardResult  *types.ReportData
+	TurboResult     *types.TurboResult
+	IntegrityResult *types.IntegrityResult
 
 	ErrorMsg string
 }
@@ -89,6 +96,12 @@ const (
 	EventProgressTick EventKind = "progress_tick"
 	// EventLevelDone Turbo 模式下一个并发级别探测完成。
 	EventLevelDone EventKind = "level_done"
+	// EventIntegrityCaseStarted Integrity 模式下一个测试用例开始。
+	EventIntegrityCaseStarted EventKind = "integrity_case_started"
+	// EventIntegrityCaseDone Integrity 模式下一个测试用例完成。
+	EventIntegrityCaseDone EventKind = "integrity_case_done"
+	// EventAssertionResult Integrity 模式下断言完成。
+	EventAssertionResult EventKind = "assertion_result"
 	// EventRunComplete 运行正常结束。
 	EventRunComplete EventKind = "run_complete"
 	// EventRunFailed 运行异常中止。
@@ -96,11 +109,14 @@ const (
 )
 
 // Event 是推送给 TUI 层的通知。Payload 类型随 Kind 不同：
-//   - EventRequestDone  → *RunState（含最新请求结果的完整快照）
-//   - EventProgressTick → *RunState（定时聚合快照）
-//   - EventLevelDone    → types.TurboLevelResult
-//   - EventRunComplete  → *RunState（最终快照）
-//   - EventRunFailed    → error
+//   - EventRequestDone            → *RunState（含最新请求结果的完整快照）
+//   - EventProgressTick           → *RunState（定时聚合快照）
+//   - EventLevelDone              → types.TurboLevelResult
+//   - EventIntegrityCaseStarted   → *RunState
+//   - EventIntegrityCaseDone      → *RunState
+//   - EventAssertionResult        → []types.AssertionResult
+//   - EventRunComplete            → *RunState（最终快照）
+//   - EventRunFailed              → error
 type Event struct {
 	RunID   RunID
 	Kind    EventKind

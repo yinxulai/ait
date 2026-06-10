@@ -86,26 +86,39 @@ type PromptSource interface {
 
 // Input 测试配置信息 - 统一的配置结构
 type Input struct {
-	Protocol     string        `json:"protocol"`
-	EndpointURL  string        `json:"endpoint_url,omitempty"`
-	BaseUrl      string        `json:"base_url,omitempty"`
-	ProxyURL     string        `json:"proxy_url,omitempty"`
-	ApiKey       string        `json:"api_key,omitempty"`
-	Model        string        `json:"model"`
-	Concurrency  int           `json:"concurrency,omitempty"`
-	Count        int           `json:"count,omitempty"`
-	Stream       bool          `json:"stream,omitempty"`
-	Thinking     bool          `json:"thinking,omitempty"`     // 是否开启 thinking 模式（仅支持 OpenAI 协议）
-	Turbo        bool          `json:"turbo,omitempty"`        // 是否启用 Turbo 模式
-	TurboConfig  TurboConfig   `json:"turbo_config,omitempty"` // Turbo 模式配置
-	PromptMode   string        `json:"prompt_mode,omitempty"`
-	PromptText   string        `json:"prompt_text,omitempty"`
-	PromptFile   string        `json:"prompt_file,omitempty"`
-	PromptLength int           `json:"prompt_length,omitempty"`
-	PromptSource PromptSource  `json:"-"`                 // 运行态字段，不直接持久化
-	Report       bool          `json:"report,omitempty"`  // 是否生成报告文件
-	Timeout      time.Duration `json:"timeout,omitempty"` // 请求超时时间
-	Log          bool          `json:"log,omitempty"`     // 是否开启详细日志记录
+	Mode         string          `json:"mode,omitempty"`
+	Protocol     string          `json:"protocol"`
+	EndpointURL  string          `json:"endpoint_url,omitempty"`
+	BaseUrl      string          `json:"base_url,omitempty"`
+	ProxyURL     string          `json:"proxy_url,omitempty"`
+	ApiKey       string          `json:"api_key,omitempty"`
+	Model        string          `json:"model"`
+	Concurrency  int             `json:"concurrency,omitempty"`
+	Count        int             `json:"count,omitempty"`
+	Stream       bool            `json:"stream,omitempty"`
+	Thinking     bool            `json:"thinking,omitempty"`     // 是否开启 thinking 模式（仅支持 OpenAI 协议）
+	Turbo        bool            `json:"turbo,omitempty"`        // 兼容旧配置：是否启用 Turbo 模式
+	TurboConfig  TurboConfig     `json:"turbo_config,omitempty"` // Turbo 模式配置
+	Integrity    IntegrityConfig `json:"integrity,omitempty"`    // Integrity 模式配置
+	PromptMode   string          `json:"prompt_mode,omitempty"`
+	PromptText   string          `json:"prompt_text,omitempty"`
+	PromptFile   string          `json:"prompt_file,omitempty"`
+	PromptLength int             `json:"prompt_length,omitempty"`
+	PromptSource PromptSource    `json:"-"`                 // 运行态字段，不直接持久化
+	Report       bool            `json:"report,omitempty"`  // 是否生成报告文件
+	Timeout      time.Duration   `json:"timeout,omitempty"` // 请求超时时间
+	Log          bool            `json:"log,omitempty"`     // 是否开启详细日志记录
+}
+
+func (i Input) RunMode() string {
+	mode := strings.ToLower(strings.TrimSpace(i.Mode))
+	if mode != "" {
+		return mode
+	}
+	if i.Turbo {
+		return "turbo"
+	}
+	return "standard"
 }
 
 func (i Input) NormalizedProtocol() string {
@@ -323,6 +336,103 @@ type TurboResult struct {
 	Protocol             string             `json:"protocol"`
 	EndpointURL          string             `json:"endpoint_url"`
 	Timestamp            string             `json:"timestamp"`
+}
+
+type IntegrityConfig struct {
+	Suite         string   `json:"suite,omitempty"`
+	FailFast      bool     `json:"fail_fast,omitempty"`
+	CaseTimeoutMS int      `json:"case_timeout_ms,omitempty"`
+	RuleFiles     []string `json:"rule_files,omitempty"`
+}
+
+type Assertion struct {
+	ID      string `json:"id,omitempty"`
+	CaseID  string `json:"case_id,omitempty"`
+	Name    string `json:"name,omitempty"`
+	Phase   string `json:"phase,omitempty"`
+	Level   string `json:"level,omitempty"`
+	Path    string `json:"path"`
+	Op      string `json:"op"`
+	Value   any    `json:"value,omitempty"`
+	Message string `json:"message,omitempty"`
+	Source  string `json:"source,omitempty"`
+}
+
+type AssertionResult struct {
+	AssertionID string `json:"assertion_id,omitempty"`
+	Level       string `json:"level"`
+	Passed      bool   `json:"passed"`
+	Path        string `json:"path,omitempty"`
+	Op          string `json:"op,omitempty"`
+	Expected    any    `json:"expected,omitempty"`
+	Actual      any    `json:"actual,omitempty"`
+	Message     string `json:"message,omitempty"`
+}
+
+type IntegrityRequest struct {
+	Prompt string `json:"prompt,omitempty"`
+	Stream bool   `json:"stream,omitempty"`
+}
+
+type IntegritySuite struct {
+	Version      string          `json:"version"`
+	ID           string          `json:"id"`
+	Name         string          `json:"name,omitempty"`
+	Description  string          `json:"description,omitempty"`
+	Protocols    []string        `json:"protocols,omitempty"`
+	Capabilities []string        `json:"capabilities,omitempty"`
+	Cases        []IntegrityCase `json:"cases"`
+}
+
+type IntegrityCase struct {
+	ID          string           `json:"id"`
+	Name        string           `json:"name,omitempty"`
+	Description string           `json:"description,omitempty"`
+	Category    string           `json:"category,omitempty"`
+	Capability  string           `json:"capability,omitempty"`
+	Required    bool             `json:"required,omitempty"`
+	Request     IntegrityRequest `json:"request,omitempty"`
+	Assertions  []Assertion      `json:"assertions,omitempty"`
+	TimeoutMS   int              `json:"timeout_ms,omitempty"`
+	Retry       int              `json:"retry,omitempty"`
+	SkipWhen    []Assertion      `json:"skip_when,omitempty"`
+}
+
+type IntegrityCaseResult struct {
+	CaseID           string            `json:"case_id"`
+	Name             string            `json:"name,omitempty"`
+	Capability       string            `json:"capability,omitempty"`
+	Required         bool              `json:"required,omitempty"`
+	Status           string            `json:"status"`
+	StartedAt        time.Time         `json:"started_at"`
+	FinishedAt       *time.Time        `json:"finished_at,omitempty"`
+	Duration         time.Duration     `json:"duration"`
+	TotalAssertions  int               `json:"total_assertions"`
+	PassedAssertions int               `json:"passed_assertions"`
+	FailedAssertions int               `json:"failed_assertions"`
+	WarnedAssertions int               `json:"warned_assertions"`
+	Assertions       []AssertionResult `json:"assertions,omitempty"`
+	ErrorMessage     string            `json:"error_message,omitempty"`
+}
+
+type IntegrityResult struct {
+	SuiteID             string                `json:"suite_id"`
+	Status              string                `json:"status"`
+	StartedAt           time.Time             `json:"started_at"`
+	FinishedAt          *time.Time            `json:"finished_at,omitempty"`
+	Duration            time.Duration         `json:"duration"`
+	TotalCases          int                   `json:"total_cases"`
+	PassedCases         int                   `json:"passed_cases"`
+	FailedCases         int                   `json:"failed_cases"`
+	WarnedCases         int                   `json:"warned_cases"`
+	SkippedCases        int                   `json:"skipped_cases"`
+	RequiredFailedCases int                   `json:"required_failed_cases"`
+	Cases               []IntegrityCaseResult `json:"cases"`
+	Assertions          []AssertionResult     `json:"assertions,omitempty"`
+	Protocol            string                `json:"protocol,omitempty"`
+	Model               string                `json:"model,omitempty"`
+	EndpointURL         string                `json:"endpoint_url,omitempty"`
+	Timestamp           string                `json:"timestamp,omitempty"`
 }
 
 // MarshalJSON 自定义 JSON 序列化，将 time.Duration 转换为字符串
