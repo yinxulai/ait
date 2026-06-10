@@ -3,6 +3,7 @@ package client
 import (
 	"bufio"
 	"bytes"
+	"context"
 	"crypto/tls"
 	"encoding/json"
 	"fmt"
@@ -142,7 +143,7 @@ func (c *AnthropicClient) SetLogger(l *logger.Logger) {
 }
 
 // Request 发送 Anthropic 协议请求（支持流式和非流式）
-func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error) {
+func (c *AnthropicClient) Request(ctx context.Context, systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error) {
 	// 记录请求开始日志
 	if c.logger != nil && c.logger.IsEnabled() {
 		c.logger.LogTestStart(c.Model, userPrompt, map[string]interface{}{
@@ -200,21 +201,24 @@ func (c *AnthropicClient) Request(systemPrompt, userPrompt string, stream bool) 
 		}, err
 	}
 
-	return c.doRequest(reqBodyBytes, stream)
+	return c.doRequest(ctx, reqBodyBytes, stream)
 }
 
 // RawRequest 使用原始 JSON 请求体发送请求，stream 从请求体中的 stream 字段自动检测。
-func (c *AnthropicClient) RawRequest(rawBody string) (*ResponseMetrics, error) {
+func (c *AnthropicClient) RawRequest(ctx context.Context, rawBody string) (*ResponseMetrics, error) {
 	var tmp struct {
 		Stream bool `json:"stream"`
 	}
 	_ = json.Unmarshal([]byte(rawBody), &tmp)
-	return c.doRequest([]byte(rawBody), tmp.Stream)
+	return c.doRequest(ctx, []byte(rawBody), tmp.Stream)
 }
 
 // doRequest 执行 HTTP 请求并解析响应（支持流式和非流式）
-func (c *AnthropicClient) doRequest(reqBodyBytes []byte, stream bool) (*ResponseMetrics, error) {
-	req, err := http.NewRequest("POST", c.EndpointURL, bytes.NewBuffer(reqBodyBytes))
+func (c *AnthropicClient) doRequest(ctx context.Context, reqBodyBytes []byte, stream bool) (*ResponseMetrics, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.EndpointURL, bytes.NewBuffer(reqBodyBytes))
 	if err != nil {
 		// 记录错误日志
 		if c.logger != nil && c.logger.IsEnabled() {

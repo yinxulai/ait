@@ -11,7 +11,7 @@ import (
 	"github.com/yinxulai/ait/internal/server/types"
 )
 
-type RunnerFactory func(types.Input) (CaseRunner, error)
+type RunnerFactory func(types.Input, types.IntegrityCase) (CaseRunner, error)
 
 type CaseRunner interface {
 	RunWithCallback(standard.RequestDoneCallback) (*types.ReportData, error)
@@ -37,7 +37,7 @@ func NewExecutor(taskID string, input types.Input, suite types.IntegritySuite) *
 		TaskID: taskID,
 		Input:  input,
 		Suite:  suite,
-		RunnerFactory: func(caseInput types.Input) (CaseRunner, error) {
+		RunnerFactory: func(caseInput types.Input, _ types.IntegrityCase) (CaseRunner, error) {
 			return standard.NewRunner(taskID, caseInput)
 		},
 	}
@@ -128,7 +128,7 @@ func (e *Executor) runCase(c types.IntegrityCase) (types.IntegrityCaseResult, er
 		return failedCase(c, started, err.Error()), err
 	}
 
-	r, err := e.RunnerFactory(caseInput)
+	r, err := e.RunnerFactory(caseInput, c)
 	if err != nil {
 		return failedCase(c, started, err.Error()), err
 	}

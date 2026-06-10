@@ -26,13 +26,15 @@ func newTestServer(t *testing.T) *serverImpl {
 	}
 	ts := store.NewTaskStore(tasksDir)
 	rs := store.NewRunStore(runsDir)
-	return &serverImpl{
+	s := &serverImpl{
 		taskStore:  ts,
 		taskViews:  store.NewTaskViewStore(ts, rs),
 		runStore:   rs,
 		bus:        newEventBus(),
 		activeRuns: make(map[RunID]*activeRun),
 	}
+	s.scheduler = newRunScheduler(1, s.dispatchQueuedRun)
+	return s
 }
 
 func makeTaskConfig(name string) TaskConfig {
@@ -713,9 +715,9 @@ func TestStartRun_ReturnsRunIDAndRegistersActiveRun(t *testing.T) {
 	if state.TaskID != task.ID {
 		t.Errorf("TaskID: got %q, want %q", state.TaskID, task.ID)
 	}
-	// Initial status should be running (goroutine may not have progressed yet).
-	if state.Status != RunStatusRunning {
-		t.Errorf("Status: got %q, want %q", state.Status, RunStatusRunning)
+	// Initial status should be queued or running depending on scheduler timing.
+	if state.Status != RunStatusQueued && state.Status != RunStatusRunning {
+		t.Errorf("Status: got %q, want %q or %q", state.Status, RunStatusQueued, RunStatusRunning)
 	}
 }
 

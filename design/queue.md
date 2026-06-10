@@ -3,6 +3,8 @@
 > 版本：v0.2 设计草案  
 > 日期：2026-06-10
 
+> 当前实现状态：✅ 已完成全部设计实现。公共内存 FIFO 队列 `internal/server/queue`、运行调度器 `RunScheduler`、Server 级请求批队列 `RunRequestBatch` + `RequestExecutor` + `RunAggregator`、请求状态事件 (`request_queued`/`request_started`/`request_skipped`/`request_done`)、ModelClient context 化、三种模式统一接入 (`runStandard`/`runTurbo`/`runIntegrity` 均使用统一队列执行)、`snapshotState` 深拷贝 `RequestStates`。
+
 ---
 
 ## 目录

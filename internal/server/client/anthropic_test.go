@@ -1,6 +1,7 @@
 package client
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
 	"net/http"
@@ -184,7 +185,7 @@ func TestAnthropicClient_Request_NonStream(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("", "test prompt", false)
+	metrics, err := client.Request(context.Background(), "", "test prompt", false)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -221,7 +222,7 @@ func TestAnthropicClient_Request_Stream(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("", "test prompt", true)
+	metrics, err := client.Request(context.Background(), "", "test prompt", true)
 	elapsed := time.Since(start)
 
 	if err != nil {
@@ -277,7 +278,7 @@ func TestAnthropicClient_Request_SystemPromptUsesCacheControl(t *testing.T) {
 	defer server.Close()
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-	if _, err := client.Request("公共消息1\n\n公共消息2", "user prompt", false); err != nil {
+	if _, err := client.Request(context.Background(), "公共消息1\n\n公共消息2", "user prompt", false); err != nil {
 		t.Fatalf("Request() error = %v", err)
 	}
 }
@@ -291,7 +292,7 @@ func TestAnthropicClient_Request_PromptTokensIncludeCachedAndCreatedInput(t *tes
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("shared system", "user prompt", false)
+		metrics, err := client.Request(context.Background(), "shared system", "user prompt", false)
 		if err != nil {
 			t.Fatalf("Request() error = %v", err)
 		}
@@ -322,7 +323,7 @@ func TestAnthropicClient_Request_PromptTokensIncludeCachedAndCreatedInput(t *tes
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("shared system", "user prompt", true)
+		metrics, err := client.Request(context.Background(), "shared system", "user prompt", true)
 		if err != nil {
 			t.Fatalf("Request() error = %v", err)
 		}
@@ -344,7 +345,7 @@ func TestAnthropicClient_Request_ServerError(t *testing.T) {
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
-	metrics, err := client.Request("", "test prompt", false)
+	metrics, err := client.Request(context.Background(), "", "test prompt", false)
 
 	if err == nil {
 		t.Error("Request() should return error for server error")
@@ -386,7 +387,7 @@ func TestAnthropicClient_Request_InvalidEndpoint(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	// 这应该成功，因为我们使用的是正确的端点
-	_, err := client.Request("", "test prompt", false)
+	_, err := client.Request(context.Background(), "", "test prompt", false)
 	if err != nil {
 		t.Errorf("Request() should succeed with correct endpoint, got error: %v", err)
 	}
@@ -418,7 +419,7 @@ func TestAnthropicClient_Request_MissingHeaders(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
 	// 这应该成功，因为我们的客户端发送了正确的请求头
-	_, err := client.Request("", "test prompt", false)
+	_, err := client.Request(context.Background(), "", "test prompt", false)
 	if err != nil {
 		t.Errorf("Request() should succeed with correct headers, got error: %v", err)
 	}
@@ -428,7 +429,7 @@ func TestAnthropicClient_Request_NetworkError(t *testing.T) {
 	// 使用一个无效的地址来模拟网络错误
 	client := NewAnthropicClient(createTestConfig("http://invalid-host-that-does-not-exist.example", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
-	metrics, err := client.Request("", "test prompt", false)
+	metrics, err := client.Request(context.Background(), "", "test prompt", false)
 
 	// 应该返回错误
 	if err == nil {
@@ -459,7 +460,7 @@ func TestAnthropicClient_Request_InvalidURL(t *testing.T) {
 	// 使用一个格式错误的 URL
 	client := NewAnthropicClient(createTestConfig("://invalid-url", "test-key", "claude-3-sonnet-20240229", 30*time.Second, false))
 
-	metrics, err := client.Request("", "test prompt", false)
+	metrics, err := client.Request(context.Background(), "", "test prompt", false)
 
 	// 应该返回错误
 	if err == nil {
@@ -589,7 +590,7 @@ func TestAnthropicClient_ConnectionReuse(t *testing.T) {
 	// 发送多个串行请求来验证不复用连接的行为
 	requestCount := 3
 	for i := 0; i < requestCount; i++ {
-		metrics, err := client.Request("", fmt.Sprintf("test prompt %d", i), false)
+		metrics, err := client.Request(context.Background(), "", fmt.Sprintf("test prompt %d", i), false)
 		if err != nil {
 			t.Errorf("Request %d failed: %v", i, err)
 			continue
@@ -703,7 +704,7 @@ func TestAnthropicClient_Request_MalformedJSON(t *testing.T) {
 
 	// 测试非流式请求的 JSON 解析错误
 	t.Run("non-stream malformed JSON", func(t *testing.T) {
-		_, err := client.Request("", "test prompt", false)
+		_, err := client.Request(context.Background(), "", "test prompt", false)
 		if err == nil {
 			t.Error("Expected error for malformed JSON response")
 		}
@@ -711,7 +712,7 @@ func TestAnthropicClient_Request_MalformedJSON(t *testing.T) {
 
 	// 测试流式请求（应该跳过畸形的 JSON 并处理有效的）
 	t.Run("stream with some malformed JSON", func(t *testing.T) {
-		metrics, err := client.Request("", "test prompt", true)
+		metrics, err := client.Request(context.Background(), "", "test prompt", true)
 		if err != nil {
 			t.Errorf("Request should succeed even with some malformed JSON: %v", err)
 		}
@@ -741,7 +742,7 @@ func TestAnthropicClient_Request_BodyReadError(t *testing.T) {
 
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
-	_, err := client.Request("", "test prompt", false)
+	_, err := client.Request(context.Background(), "", "test prompt", false)
 	if err == nil {
 		t.Error("Expected error when response body cannot be read")
 	}
@@ -763,7 +764,7 @@ func TestAnthropicClient_Request_ScannerError(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 这个测试可能会因为 scanner 的缓冲区限制而失败
-	metrics, err := client.Request("", "test prompt", true)
+	metrics, err := client.Request(context.Background(), "", "test prompt", true)
 	// 无论成功还是失败都是正常的，关键是要覆盖这个代码路径
 	if err != nil {
 		t.Logf("Scanner error (expected in some cases): %v", err)
@@ -816,7 +817,7 @@ func TestAnthropicClient_Request_EdgeCases(t *testing.T) {
 			defer server.Close()
 
 			client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-			_, err := client.Request("", "test", tt.stream)
+			_, err := client.Request(context.Background(), "", "test", tt.stream)
 
 			if tt.expectError && err == nil {
 				t.Error("Expected error but got none")
@@ -854,7 +855,7 @@ func TestAnthropicClient_ConcurrentRequests(t *testing.T) {
 		go func(id int) {
 			defer wg.Done()
 
-			metrics, err := client.Request("", fmt.Sprintf("concurrent test %d", id), false)
+			metrics, err := client.Request(context.Background(), "", fmt.Sprintf("concurrent test %d", id), false)
 
 			mu.Lock()
 			if err != nil {
@@ -895,7 +896,7 @@ func TestAnthropicClient_Request_TimeoutHandling(t *testing.T) {
 	// 创建一个超时时间很短的客户端
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 100*time.Millisecond, false))
 
-	_, err := client.Request("", "timeout test", false)
+	_, err := client.Request(context.Background(), "", "timeout test", false)
 	if err == nil {
 		t.Error("Expected timeout error but got none")
 	}
@@ -927,7 +928,7 @@ func TestAnthropicClient_Request_EmptyContentArray(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	// 测试非流式请求
-	metrics, err := client.Request("", "test", false)
+	metrics, err := client.Request(context.Background(), "", "test", false)
 	if err != nil {
 		t.Errorf("Request should succeed with empty content: %v", err)
 	}
@@ -936,7 +937,7 @@ func TestAnthropicClient_Request_EmptyContentArray(t *testing.T) {
 	}
 
 	// 测试流式请求
-	metrics, err = client.Request("", "test", true)
+	metrics, err = client.Request(context.Background(), "", "test", true)
 	if err != nil {
 		t.Errorf("Stream request should succeed with empty content: %v", err)
 	}
@@ -980,7 +981,7 @@ func TestAnthropicClient_Request_StreamWithThinking(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("", "test prompt", true)
+	metrics, err := client.Request(context.Background(), "", "test prompt", true)
 
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
@@ -1035,7 +1036,7 @@ func TestAnthropicClient_Request_StreamWithPartialJSON(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("", "test prompt", true)
+	metrics, err := client.Request(context.Background(), "", "test prompt", true)
 
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
@@ -1096,7 +1097,7 @@ func TestAnthropicClient_Request_StreamWithMixedContent(t *testing.T) {
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("", "test prompt", true)
+	metrics, err := client.Request(context.Background(), "", "test prompt", true)
 
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
@@ -1163,7 +1164,7 @@ func TestAnthropicClient_Request_StreamWithEmptyThinkingAndPartialJSON(t *testin
 	client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
 
 	start := time.Now()
-	metrics, err := client.Request("", "test prompt", true)
+	metrics, err := client.Request(context.Background(), "", "test prompt", true)
 
 	if err != nil {
 		t.Errorf("Request() error = %v", err)
@@ -1199,7 +1200,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("", "test prompt", false)
+		metrics, err := client.Request(context.Background(), "", "test prompt", false)
 
 		// 应该有错误
 		if err == nil {
@@ -1238,7 +1239,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("", "test prompt", false)
+		metrics, err := client.Request(context.Background(), "", "test prompt", false)
 
 		// 应该有错误
 		if err == nil {
@@ -1273,7 +1274,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("", "test prompt", false)
+		metrics, err := client.Request(context.Background(), "", "test prompt", false)
 
 		// 这种情况下通常会是 JSON 解析错误而不是读取错误
 		if metrics == nil && err != nil {
@@ -1294,7 +1295,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 		defer server.Close()
 
 		client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-		metrics, err := client.Request("", "test prompt", true)
+		metrics, err := client.Request(context.Background(), "", "test prompt", true)
 
 		// 流式处理应该继续，即使有些 JSON 块无效
 		if err != nil {
@@ -1345,7 +1346,7 @@ func TestAnthropicClient_Request_ErrorHandlingFixes(t *testing.T) {
 				defer server.Close()
 
 				client := NewAnthropicClient(createTestConfig(server.URL, "test-key", "claude-3-sonnet", 30*time.Second, false))
-				metrics, err := client.Request("", "test prompt", false)
+				metrics, err := client.Request(context.Background(), "", "test prompt", false)
 
 				// 所有类型的错误都应该返回错误
 				if err == nil {

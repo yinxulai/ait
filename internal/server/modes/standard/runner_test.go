@@ -1,6 +1,7 @@
 package standard
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync/atomic"
@@ -32,11 +33,15 @@ type MockClient struct {
 	model           string
 }
 
-func (m *MockClient) Request(systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
+func (m *MockClient) Request(ctx context.Context, systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
 	callIndex := atomic.AddInt64(&m.callCount, 1) - 1
 
 	if m.requestDelay > 0 {
-		time.Sleep(m.requestDelay)
+		select {
+		case <-time.After(m.requestDelay):
+		case <-ctx.Done():
+			return nil, ctx.Err()
+		}
 	}
 
 	// 检查失败模式
@@ -93,8 +98,8 @@ func (m *MockClient) ResetCallCount() {
 }
 
 // RawRequest 使用原始 JSON 请求体发送请求（mock 实现）
-func (m *MockClient) RawRequest(rawBody string) (*client.ResponseMetrics, error) {
-	return m.Request("", rawBody, false)
+func (m *MockClient) RawRequest(ctx context.Context, rawBody string) (*client.ResponseMetrics, error) {
+	return m.Request(ctx, "", rawBody, false)
 }
 
 // SetLogger 设置日志记录器
@@ -1504,7 +1509,7 @@ type MockClientWithErrorMetrics struct {
 	errorMetrics               *client.ResponseMetrics
 }
 
-func (m *MockClientWithErrorMetrics) Request(systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
+func (m *MockClientWithErrorMetrics) Request(ctx context.Context, systemPrompt, prompt string, stream bool) (*client.ResponseMetrics, error) {
 	callIndex := atomic.AddInt64(&m.callCount, 1) - 1
 
 	// 检查是否应该失败
@@ -1552,6 +1557,6 @@ func (m *MockClientWithErrorMetrics) SetLogger(logger *logger.Logger) {
 	// Mock实现，不需要实际功能
 }
 
-func (m *MockClientWithErrorMetrics) RawRequest(rawBody string) (*client.ResponseMetrics, error) {
-	return m.Request("", rawBody, false)
+func (m *MockClientWithErrorMetrics) RawRequest(ctx context.Context, rawBody string) (*client.ResponseMetrics, error) {
+	return m.Request(ctx, "", rawBody, false)
 }

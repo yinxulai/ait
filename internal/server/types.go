@@ -31,11 +31,35 @@ type TaskConfig struct {
 type RunStatus string
 
 const (
+	RunStatusQueued    RunStatus = "queued"
 	RunStatusRunning   RunStatus = "running"
 	RunStatusCompleted RunStatus = "completed"
 	RunStatusFailed    RunStatus = "failed"
 	RunStatusStopped   RunStatus = "stopped"
 )
+
+// RequestStatus 单个请求的生命周期状态。
+type RequestStatus string
+
+const (
+	RequestStatusQueued    RequestStatus = "queued"
+	RequestStatusRunning   RequestStatus = "running"
+	RequestStatusSucceeded RequestStatus = "succeeded"
+	RequestStatusFailed    RequestStatus = "failed"
+	RequestStatusSkipped   RequestStatus = "skipped"
+)
+
+// RequestState 是请求队列中的单个请求快照。
+type RequestState struct {
+	Index      int
+	Status     RequestStatus
+	Level      int
+	CaseID     string
+	QueuedAt   time.Time
+	StartedAt  *time.Time
+	FinishedAt *time.Time
+	ErrorMsg   string
+}
 
 // RunState 一次运行的完整快照，由 GetRunState 返回。
 // 字段为只读快照，不持有锁，TUI 层可安全读取。
@@ -49,9 +73,12 @@ type RunState struct {
 
 	// 进度计数
 	TotalReqs   int
+	QueuedReqs  int
+	RunningReqs int
 	DoneReqs    int
 	SuccessReqs int
 	FailedReqs  int
+	SkippedReqs int
 
 	// 聚合指标（实时更新）
 	AvgTPS       float64
@@ -66,6 +93,9 @@ type RunState struct {
 
 	// 详细请求列表（按 index 排序）
 	Requests []*types.RequestMetrics
+
+	// 请求队列状态（按 index 记录）
+	RequestStates map[int]RequestState
 
 	// 模式特定状态（运行时动态更新）
 	// 不同模式可在此存储自定义状态，如：
@@ -88,6 +118,18 @@ type RunState struct {
 type EventKind string
 
 const (
+	// EventRunQueued 运行已进入队列，等待调度。
+	EventRunQueued EventKind = "run_queued"
+	// EventRunStarted 运行已被调度并开始执行。
+	EventRunStarted EventKind = "run_started"
+	// EventRunStopped 运行已停止。
+	EventRunStopped EventKind = "run_stopped"
+	// EventRequestQueued 单个请求已进入请求队列。
+	EventRequestQueued EventKind = "request_queued"
+	// EventRequestStarted 单个请求已开始执行。
+	EventRequestStarted EventKind = "request_started"
+	// EventRequestSkipped 单个请求因停止等原因被跳过。
+	EventRequestSkipped EventKind = "request_skipped"
 	// EventRequestDone 单个请求完成（含成功/失败）。
 	EventRequestDone EventKind = "request_done"
 	// EventProgressTick 定时聚合快照（约 500ms 发一次）。
@@ -107,14 +149,17 @@ const (
 )
 
 // Event 是推送给 TUI 层的通知。Payload 类型随 Kind 不同：
+//   - EventRequestQueued          → *RunState（含请求队列状态）
+//   - EventRequestStarted         → *RunState（含请求运行状态）
+//   - EventRequestSkipped         → *RunState（含请求跳过状态）
 //   - EventRequestDone            → *RunState（含最新请求结果的完整快照）
 //   - EventProgressTick           → *RunState（定时聚合快照）
-//   - EventLevelDone              → types.TurboLevelResult
+//   - EventLevelDone              → *RunState
 //   - EventIntegrityCaseStarted   → *RunState
 //   - EventIntegrityCaseDone      → *RunState
 //   - EventAssertionResult        → []types.AssertionResult
 //   - EventRunComplete            → *RunState（最终快照）
-//   - EventRunFailed              → error
+//   - EventRunFailed              → *RunState
 type Event struct {
 	RunID   RunID
 	Kind    EventKind

@@ -392,7 +392,7 @@ func (c *OpenAIClient) SetLogger(l *logger.Logger) {
 }
 
 // Request 发送 OpenAI 协议请求（支持流式和非流式）
-func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error) {
+func (c *OpenAIClient) Request(ctx context.Context, systemPrompt, userPrompt string, stream bool) (*ResponseMetrics, error) {
 	// 记录请求开始日志
 	if c.logger != nil && c.logger.IsEnabled() {
 		c.logger.LogTestStart(c.Model, userPrompt, map[string]interface{}{
@@ -411,21 +411,24 @@ func (c *OpenAIClient) Request(systemPrompt, userPrompt string, stream bool) (*R
 		return nil, err
 	}
 
-	return c.doRequest(jsonData, stream)
+	return c.doRequest(ctx, jsonData, stream)
 }
 
 // RawRequest 使用原始 JSON 请求体发送请求，stream 从请求体中的 stream 字段自动检测。
-func (c *OpenAIClient) RawRequest(rawBody string) (*ResponseMetrics, error) {
+func (c *OpenAIClient) RawRequest(ctx context.Context, rawBody string) (*ResponseMetrics, error) {
 	var tmp struct {
 		Stream bool `json:"stream"`
 	}
 	_ = json.Unmarshal([]byte(rawBody), &tmp)
-	return c.doRequest([]byte(rawBody), tmp.Stream)
+	return c.doRequest(ctx, []byte(rawBody), tmp.Stream)
 }
 
 // doRequest 执行 HTTP 请求并解析响应（支持流式和非流式）
-func (c *OpenAIClient) doRequest(jsonData []byte, stream bool) (*ResponseMetrics, error) {
-	req, err := http.NewRequestWithContext(context.Background(), "POST", c.endpointURL, bytes.NewBuffer(jsonData))
+func (c *OpenAIClient) doRequest(ctx context.Context, jsonData []byte, stream bool) (*ResponseMetrics, error) {
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	req, err := http.NewRequestWithContext(ctx, "POST", c.endpointURL, bytes.NewBuffer(jsonData))
 	if err != nil {
 		// 记录错误日志
 		if c.logger != nil && c.logger.IsEnabled() {

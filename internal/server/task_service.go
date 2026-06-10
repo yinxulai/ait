@@ -123,18 +123,16 @@ func (s *serverImpl) runningTaskSummariesLocked(tasks []types.TaskOverview) map[
 	running := make(map[string]types.TaskRunSummary)
 	for _, ar := range s.activeRuns {
 		ar.mu.RLock()
-		if ar.state == nil || ar.state.Status != RunStatusRunning {
-			ar.mu.RUnlock()
-			continue
-		}
-		taskDef, ok := taskByID[ar.state.TaskID]
-		if !ok {
-			ar.mu.RUnlock()
-			continue
-		}
-		summary := buildRunningRunSummary(taskDef, ar.snapshotState())
+		snapshot := ar.snapshotState()
 		ar.mu.RUnlock()
-		running[taskDef.ID] = summary
+		if snapshot == nil || (snapshot.Status != RunStatusQueued && snapshot.Status != RunStatusRunning) {
+			continue
+		}
+		taskDef, ok := taskByID[snapshot.TaskID]
+		if !ok {
+			continue
+		}
+		running[taskDef.ID] = buildRunningRunSummary(taskDef, snapshot)
 	}
 
 	if len(running) == 0 {
@@ -146,9 +144,9 @@ func (s *serverImpl) runningTaskSummariesLocked(tasks []types.TaskOverview) map[
 func (s *serverImpl) hasRunningTaskLocked(taskID string) bool {
 	for _, ar := range s.activeRuns {
 		ar.mu.RLock()
-		running := ar.state != nil && ar.state.TaskID == taskID && ar.state.Status == RunStatusRunning
+		active := ar.state != nil && ar.state.TaskID == taskID && (ar.state.Status == RunStatusQueued || ar.state.Status == RunStatusRunning)
 		ar.mu.RUnlock()
-		if running {
+		if active {
 			return true
 		}
 	}

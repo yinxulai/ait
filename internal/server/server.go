@@ -58,6 +58,7 @@ type serverImpl struct {
 	runStore   *store.RunStore
 	bus        *eventBus
 	activeRuns map[RunID]*activeRun
+	scheduler  *RunScheduler
 }
 
 // New 创建并初始化 Server 实例。
@@ -80,11 +81,13 @@ func New() (Server, error) {
 	ts := store.NewTaskStore(tasksDir)
 	rs := store.NewRunStore(runsDir)
 
-	return &serverImpl{
+	srv := &serverImpl{
 		taskStore:  ts,
 		taskViews:  store.NewTaskViewStore(ts, rs),
 		runStore:   rs,
 		bus:        newEventBus(),
 		activeRuns: make(map[RunID]*activeRun),
-	}, nil
+	}
+	srv.scheduler = newRunScheduler(1, srv.dispatchQueuedRun)
+	return srv, nil
 }

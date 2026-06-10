@@ -1,14 +1,15 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 	"sync"
-	"sync/atomic"
 	"time"
 
 	"github.com/yinxulai/ait/internal/server/client"
 	"github.com/yinxulai/ait/internal/server/config"
+	"github.com/yinxulai/ait/internal/server/logger"
 	"github.com/yinxulai/ait/internal/server/modes"
 	"github.com/yinxulai/ait/internal/server/modes/integrity"
 	"github.com/yinxulai/ait/internal/server/modes/standard"
@@ -17,12 +18,15 @@ import (
 	"github.com/yinxulai/ait/internal/server/store"
 	"github.com/yinxulai/ait/internal/server/task"
 	"github.com/yinxulai/ait/internal/server/types"
+	"github.com/yinxulai/ait/internal/server/upload"
 )
 
 // activeRun 持有一次正在执行的运行的全部运行时状态。
 type activeRun struct {
 	mu     sync.RWMutex
 	state  *RunState
+	ctx    context.Context
+	cancel context.CancelFunc
 	runner modes.Runner // 统一的模式执行器接口
 	// 用于计算实时均值
 	tpsSum    float64
@@ -30,21 +34,6 @@ type activeRun struct {
 	cacheSum  float64
 	tokenSum  int64 // 累计成功请求的输出 Token 数，用于计算 TPM
 	doneCount int   // 与 state.DoneReqs 保持同步，方便不加锁时计算
-}
-
-// callbackLevelRunner 包装 standard.Runner，在每次请求完成时调用回调，
-// 使 turbo 运行也能逐请求采集详细指标数据。
-type callbackLevelRunner struct {
-	r  *standard.Runner
-	cb standard.RequestDoneCallback
-}
-
-func (c *callbackLevelRunner) Run() (*types.ReportData, error) {
-	return c.r.RunWithCallback(c.cb)
-}
-
-func (c *callbackLevelRunner) Stop() {
-	c.r.Stop()
 }
 
 // snapshotState 返回 state 的深度拷贝（调用方须已持有 activeRun.mu 读锁）。
@@ -86,6 +75,13 @@ func (ar *activeRun) snapshotState() *RunState {
 				// 其他类型直接拷贝（基本类型或指针）
 				snap.ModeState[k] = v
 			}
+		}
+	}
+	// 深拷贝请求状态映射
+	if len(s.RequestStates) > 0 {
+		snap.RequestStates = make(map[int]RequestState, len(s.RequestStates))
+		for k, v := range s.RequestStates {
+			snap.RequestStates[k] = v
 		}
 	}
 	return &snap
@@ -138,6 +134,40 @@ func requestPointers(requests []types.RequestMetrics) []*types.RequestMetrics {
 		pointers = append(pointers, &request)
 	}
 	return pointers
+}
+
+func loggerForInput(input types.Input) *logger.Logger {
+	if !input.Log {
+		return nil
+	}
+	return logger.New(input.Log)
+}
+
+func uploadRequest(taskID string, metrics *client.ResponseMetrics, input types.Input) {
+	if metrics == nil || metrics.ErrorMessage != "" {
+		return
+	}
+	upload.New().UploadReport(taskID, metrics, input)
+}
+
+func (s *serverImpl) startProgressTicker(ar *activeRun, runID RunID) chan struct{} {
+	stopTick := make(chan struct{})
+	go func() {
+		ticker := time.NewTicker(500 * time.Millisecond)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-ticker.C:
+				ar.mu.RLock()
+				snap := ar.snapshotState()
+				ar.mu.RUnlock()
+				s.bus.publishRunEvent(Event{RunID: runID, Kind: EventProgressTick, Payload: snap})
+			case <-stopTick:
+				return
+			}
+		}
+	}()
+	return stopTick
 }
 
 func buildStoredRunMetadata(taskDef types.TaskDefinition, snap *RunState) store.RunMetadata {
@@ -286,7 +316,7 @@ func buildRunningRunSummary(taskDef types.TaskDefinition, snap *RunState) types.
 	return summary
 }
 
-// StartRun 启动一次新的运行，立即返回 RunID。
+// StartRun 提交一次新的运行，立即返回 RunID。
 func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	taskDef, err := s.taskStore.Get(taskID)
 	if err != nil {
@@ -295,7 +325,6 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 		}
 		return "", fmt.Errorf("get task %q: %w", taskID, err)
 	}
-	runStore := s.runStore
 
 	// 解析 PromptSource（将 PromptText/PromptFile 转换为可调用的 PromptSource）
 	hydratedInput, err := task.HydrateInput(taskDef.Input)
@@ -312,114 +341,113 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 
 	runID := RunID(fmt.Sprintf("run_%d", time.Now().UnixNano()))
 	now := time.Now()
-
 	mode := hydratedInput.RunMode()
+	ctx, cancel := context.WithCancel(context.Background())
 
 	state := &RunState{
 		RunID:     runID,
 		TaskID:    taskID,
-		Status:    RunStatusRunning,
+		Status:    RunStatusQueued,
 		Mode:      mode,
 		StartedAt: now,
 	}
 	switch mode {
-	case "turbo":
-		// turbo 模式：跨多个并发级别探测，请求总数不固定，动态追加
-		state.TotalReqs = 0
-	case "integrity":
+	case "turbo", "integrity":
 		state.TotalReqs = 0
 	default:
-		// standard 模式：请求数固定，动态追加（按完成顺序）
 		state.TotalReqs = hydratedInput.Count
 	}
 
-	ar := &activeRun{state: state}
+	ar := &activeRun{state: state, ctx: ctx, cancel: cancel}
 
 	s.mu.Lock()
+	if s.scheduler == nil {
+		s.scheduler = newRunScheduler(1, s.dispatchQueuedRun)
+	}
 	s.activeRuns[runID] = ar
 	s.mu.Unlock()
 
-	switch mode {
-	case "turbo":
-		go s.runTurbo(ar, runID, taskDef, hydratedInput, runStore)
-	case "integrity":
-		go s.runIntegrity(ar, runID, taskDef, hydratedInput, runStore)
-	default:
-		go s.runStandard(ar, runID, taskDef, hydratedInput, runStore)
+	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunQueued, Payload: state})
+	if err := s.scheduler.Enqueue(runQueueItem{RunID: runID, TaskID: taskID, TaskDef: taskDef, Input: hydratedInput, Mode: mode}); err != nil {
+		cancel()
+		s.removeActiveRun(runID)
+		return "", err
 	}
 
 	return runID, nil
 }
 
-// runStandard 在 goroutine 中执行标准运行。
-func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
-	rnr, err := standard.NewRunner(taskDef.ID, input)
-	if err != nil {
-		s.failRun(ar, runID, taskDef, runStore, err)
+func (s *serverImpl) dispatchQueuedRun(item runQueueItem) {
+	s.mu.RLock()
+	ar, ok := s.activeRuns[item.RunID]
+	runStore := s.runStore
+	s.mu.RUnlock()
+	if !ok {
 		return
 	}
 
 	ar.mu.Lock()
-	ar.runner = rnr
+	if ar.state.Status == RunStatusStopped {
+		ar.mu.Unlock()
+		return
+	}
+	ar.state.Status = RunStatusRunning
+	ar.state.StartedAt = time.Now()
 	ar.mu.Unlock()
 
-	// 启动 500ms 进度快照 goroutine，定期向订阅者推送 EventProgressTick。
-	stopTick := make(chan struct{})
-	go func() {
-		ticker := time.NewTicker(500 * time.Millisecond)
-		defer ticker.Stop()
-		for {
-			select {
-			case <-ticker.C:
-				ar.mu.RLock()
-				snap := ar.snapshotState()
-				ar.mu.RUnlock()
-				s.bus.publishRunEvent(Event{RunID: runID, Kind: EventProgressTick, Payload: snap})
-			case <-stopTick:
-				return
-			}
-		}
-	}()
+	ar.mu.RLock()
+	snap := ar.snapshotState()
+	ar.mu.RUnlock()
+	s.bus.publishRunEvent(Event{RunID: item.RunID, Kind: EventRunStarted, Payload: snap})
 
-	reportData, err := rnr.RunWithCallback(func(metrics *client.ResponseMetrics, idx int, cbErr error) {
-		rm := mapRequestMetrics(metrics, idx, cbErr)
-		_ = runStore.AppendRequest(taskDef.ID, string(runID), *rm)
+	switch item.Mode {
+	case "turbo":
+		s.runTurbo(ar, item.RunID, item.TaskDef, item.Input, runStore)
+	case "integrity":
+		s.runIntegrity(ar, item.RunID, item.TaskDef, item.Input, runStore)
+	default:
+		s.runStandard(ar, item.RunID, item.TaskDef, item.Input, runStore)
+	}
+}
 
-		ar.mu.Lock()
-		ar.state.Requests = append(ar.state.Requests, rm)
-		ar.state.DoneReqs++
-		if rm.Success {
-			ar.state.SuccessReqs++
-			ar.tpsSum += rm.TPS
-			ar.ttftSum += rm.TTFT
-			ar.cacheSum += rm.CacheHitRate
-		} else {
-			ar.state.FailedReqs++
-		}
-		successCount := ar.state.SuccessReqs
-		done := ar.state.DoneReqs
-		// 更新实时均值
-		if successCount > 0 {
-			ar.state.AvgTPS = ar.tpsSum / float64(successCount)
-			ar.state.AvgTTFT = ar.ttftSum / time.Duration(successCount)
-			ar.state.CacheHitRate = ar.cacheSum / float64(successCount)
-		}
-		if done > 0 {
-			ar.state.SuccessRate = float64(successCount) / float64(done) * 100
-		}
-		snap := ar.snapshotState()
-		ar.mu.Unlock()
-
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
-	})
-
-	close(stopTick)
-
+// runStandard 在 goroutine 中执行标准运行。
+func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
+	ctx := ar.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	loggerInstance := loggerForInput(input)
+	modelClient, err := client.NewClient(input, loggerInstance)
 	if err != nil {
 		s.failRun(ar, runID, taskDef, runStore, err)
 		return
 	}
+	aggregator := newRunAggregator(s, ar, runID, taskDef, runStore)
+	jobs := make([]RequestJob, 0, input.Count)
+	for i := 0; i < input.Count; i++ {
+		jobs = append(jobs, RequestJob{RunID: runID, Index: i, Input: input})
+	}
 
+	stopTick := s.startProgressTicker(ar, runID)
+	results := make([]*client.ResponseMetrics, input.Count)
+	start := time.Now()
+	launched := RunRequestBatch(ctx, jobs, input.Concurrency, NewRequestExecutor(modelClient), RequestQueueHooks{
+		OnQueued:  aggregator.MarkQueued,
+		OnStarted: aggregator.MarkStarted,
+		OnSkipped: aggregator.MarkSkipped,
+		OnDone: func(result RequestResult) {
+			if result.Metrics != nil {
+				results[result.Job.Index] = result.Metrics
+			}
+			rm := aggregator.Complete(result)
+			if rm.Success {
+				uploadRequest(taskDef.ID, result.Metrics, input)
+			}
+		},
+	})
+	close(stopTick)
+
+	reportData := standard.CalculateResult(input, results, time.Since(start), launched)
 	s.completeStandardRun(ar, runID, taskDef, runStore, reportData)
 }
 
@@ -431,15 +459,31 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 		return
 	}
 
+	ctx := ar.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	aggregator := newRunAggregator(s, ar, runID, taskDef, runStore)
+	caseIndex := 0
+
 	executor := integrity.NewExecutor(taskDef.ID, input, suite)
+	executor.RunnerFactory = func(caseInput types.Input, c types.IntegrityCase) (integrity.CaseRunner, error) {
+		modelClient, err := client.NewClient(caseInput, loggerForInput(caseInput))
+		if err != nil {
+			return nil, err
+		}
+		idx := caseIndex
+		caseIndex++
+		return newQueuedCaseRunner(ctx, runID, caseInput, modelClient, aggregator, idx, c.ID), nil
+	}
 	ar.mu.Lock()
 	ar.runner = executor
 	ar.state.TotalReqs = len(suite.Cases)
 	// 初始化模式状态
 	ar.state.ModeState = map[string]any{
-		"suite":            suite,
-		"cases":            []types.IntegrityCaseResult{},
-		"current_case_id":  "",
+		"suite":             suite,
+		"cases":             []types.IntegrityCaseResult{},
+		"current_case_id":   "",
 		"assertion_results": []types.AssertionResult{},
 	}
 	ar.mu.Unlock()
@@ -454,39 +498,21 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegrityCaseStarted, Payload: snap})
 	}
 	executor.OnRequestDone = func(c types.IntegrityCase, metrics *client.ResponseMetrics, idx int, cbErr error, assertions []types.AssertionResult) {
-		rm := mapRequestMetrics(metrics, idx, cbErr)
-		_ = runStore.AppendRequest(taskDef.ID, string(runID), *rm)
+		aggregator.Complete(RequestResult{
+			Job:     RequestJob{RunID: runID, Index: idx, Input: input, CaseID: c.ID},
+			Metrics: metrics,
+			Err:     cbErr,
+		})
 
 		ar.mu.Lock()
-		ar.state.Requests = append(ar.state.Requests, rm)
 		if ar.state.ModeState != nil {
 			if existing, ok := ar.state.ModeState["assertion_results"].([]types.AssertionResult); ok {
 				ar.state.ModeState["assertion_results"] = append(existing, assertions...)
 			}
 		}
-		ar.state.DoneReqs++
-		if rm.Success {
-			ar.state.SuccessReqs++
-			ar.tpsSum += rm.TPS
-			ar.ttftSum += rm.TTFT
-			ar.cacheSum += rm.CacheHitRate
-			ar.tokenSum += int64(rm.CompletionTokens)
-		} else {
-			ar.state.FailedReqs++
-		}
-		if ar.state.SuccessReqs > 0 {
-			ar.state.AvgTPS = ar.tpsSum / float64(ar.state.SuccessReqs)
-			ar.state.AvgTTFT = ar.ttftSum / time.Duration(ar.state.SuccessReqs)
-			ar.state.CacheHitRate = ar.cacheSum / float64(ar.state.SuccessReqs)
-		}
-		if ar.state.DoneReqs > 0 {
-			ar.state.SuccessRate = float64(ar.state.SuccessReqs) / float64(ar.state.DoneReqs) * 100
-		}
-		snap := ar.snapshotState()
 		ar.mu.Unlock()
 
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventAssertionResult, Payload: assertions})
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
 	}
 	executor.OnCaseDone = func(result types.IntegrityCaseResult) {
 		ar.mu.Lock()
@@ -516,54 +542,20 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 
 // runTurbo 在 goroutine 中执行 Turbo 运行。
 func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
-	// 全局请求计数器（原子递增），确保跨多个并发级别的请求索引唯一
-	var globalIdx int64
+	ctx := ar.ctx
+	if ctx == nil {
+		ctx = context.Background()
+	}
+	loggerInstance := loggerForInput(input)
+	modelClient, err := client.NewClient(input, loggerInstance)
+	if err != nil {
+		s.failRun(ar, runID, taskDef, runStore, err)
+		return
+	}
+	aggregator := newRunAggregator(s, ar, runID, taskDef, runStore)
 
 	factory := func(levelInput types.Input) (turbo.LevelRunner, error) {
-		r, err := standard.NewRunner(taskDef.ID, levelInput)
-		if err != nil {
-			return nil, err
-		}
-		return &callbackLevelRunner{
-			r: r,
-			cb: func(metrics *client.ResponseMetrics, _ int, cbErr error) {
-				gIdx := int(atomic.AddInt64(&globalIdx, 1)) - 1
-				rm := mapRequestMetrics(metrics, gIdx, cbErr)
-				rm.Level = levelInput.Concurrency
-				_ = runStore.AppendRequest(taskDef.ID, string(runID), *rm)
-
-				ar.mu.Lock()
-				ar.state.Requests = append(ar.state.Requests, rm)
-				ar.state.TotalReqs++
-				ar.state.DoneReqs++
-				if rm.Success {
-					ar.state.SuccessReqs++
-					ar.tpsSum += rm.TPS
-					ar.ttftSum += rm.TTFT
-					ar.cacheSum += rm.CacheHitRate
-					ar.tokenSum += int64(rm.CompletionTokens)
-				} else {
-					ar.state.FailedReqs++
-				}
-				if ar.state.SuccessReqs > 0 {
-					ar.state.AvgTPS = ar.tpsSum / float64(ar.state.SuccessReqs)
-					ar.state.AvgTTFT = ar.ttftSum / time.Duration(ar.state.SuccessReqs)
-					ar.state.CacheHitRate = ar.cacheSum / float64(ar.state.SuccessReqs)
-				}
-				if ar.state.DoneReqs > 0 {
-					ar.state.SuccessRate = float64(ar.state.SuccessReqs) / float64(ar.state.DoneReqs) * 100
-				}
-				// 更新 RPM/TPM（基于运行时长）
-				if elapsed := time.Since(ar.state.StartedAt).Minutes(); elapsed > 0 {
-					ar.state.RPM = float64(ar.state.DoneReqs) / elapsed
-					ar.state.TPM = float64(ar.tokenSum) / elapsed
-				}
-				snap := ar.snapshotState()
-				ar.mu.Unlock()
-
-				s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRequestDone, Payload: snap})
-			},
-		}, nil
+		return newQueuedLevelRunner(ctx, runID, levelInput, modelClient, aggregator, levelInput.Concurrency), nil
 	}
 
 	engine := turbo.New(factory)
@@ -607,7 +599,9 @@ func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef typ
 	finishedAt := time.Now()
 
 	ar.mu.Lock()
-	ar.state.Status = RunStatusCompleted
+	if ar.state.Status != RunStatusStopped {
+		ar.state.Status = RunStatusCompleted
+	}
 	ar.state.FinishedAt = &finishedAt
 	ar.state.ModeResult = data
 	if data != nil {
@@ -624,7 +618,11 @@ func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef typ
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
+	if snap.Status == RunStatusStopped {
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunStopped, Payload: snap})
+	} else {
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
+	}
 	s.bus.closeRunEvents(runID)
 	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
 		s.removeActiveRun(runID)
@@ -636,7 +634,9 @@ func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.
 	finishedAt := time.Now()
 
 	ar.mu.Lock()
-	ar.state.Status = RunStatusCompleted
+	if ar.state.Status != RunStatusStopped {
+		ar.state.Status = RunStatusCompleted
+	}
 	ar.state.FinishedAt = &finishedAt
 	ar.state.ModeResult = result
 	if result != nil {
@@ -655,7 +655,11 @@ func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
+	if snap.Status == RunStatusStopped {
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunStopped, Payload: snap})
+	} else {
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
+	}
 	s.bus.closeRunEvents(runID)
 	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
 		s.removeActiveRun(runID)
@@ -667,9 +671,11 @@ func (s *serverImpl) completeIntegrityRun(ar *activeRun, runID RunID, taskDef ty
 	finishedAt := time.Now()
 
 	ar.mu.Lock()
-	ar.state.Status = RunStatusCompleted
-	if result != nil && result.Status == "failed" {
-		ar.state.Status = RunStatusFailed
+	if ar.state.Status != RunStatusStopped {
+		ar.state.Status = RunStatusCompleted
+		if result != nil && result.Status == "failed" {
+			ar.state.Status = RunStatusFailed
+		}
 	}
 	ar.state.FinishedAt = &finishedAt
 	ar.state.ModeResult = result
@@ -688,7 +694,9 @@ func (s *serverImpl) completeIntegrityRun(ar *activeRun, runID RunID, taskDef ty
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	if snap.Status == RunStatusFailed {
+	if snap.Status == RunStatusStopped {
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunStopped, Payload: snap})
+	} else if snap.Status == RunStatusFailed {
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunFailed, Payload: snap})
 	} else {
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
@@ -737,9 +745,31 @@ func (s *serverImpl) StopRun(runID RunID) error {
 		return fmt.Errorf("run %q not found or already finished", runID)
 	}
 
-	ar.mu.RLock()
+	ar.mu.Lock()
+	if ar.cancel != nil {
+		ar.cancel()
+	}
+	if ar.state.Status == RunStatusQueued {
+		now := time.Now()
+		ar.state.Status = RunStatusStopped
+		ar.state.FinishedAt = &now
+		ar.mu.Unlock()
+		ar.mu.RLock()
+		snap := ar.snapshotState()
+		ar.mu.RUnlock()
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunStopped, Payload: snap})
+		s.bus.closeRunEvents(runID)
+		if taskDef, err := s.taskStore.Get(snap.TaskID); err == nil {
+			_ = s.persistFinalRun(s.runStore, taskDef, snap)
+		}
+		s.removeActiveRun(runID)
+		return nil
+	}
+	if ar.state.Status == RunStatusRunning {
+		ar.state.Status = RunStatusStopped
+	}
 	runner := ar.runner
-	ar.mu.RUnlock()
+	ar.mu.Unlock()
 
 	if runner != nil {
 		runner.Stop()
@@ -821,7 +851,7 @@ func (s *serverImpl) GenerateRunReport(runID RunID, format ReportFormat) (string
 		}
 	}
 
-	if status == RunStatusRunning {
+	if status == RunStatusQueued || status == RunStatusRunning {
 		return "", fmt.Errorf("run %q is still in progress", runID)
 	}
 

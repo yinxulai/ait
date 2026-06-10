@@ -1,6 +1,7 @@
 package standard
 
 import (
+	"context"
 	"math"
 	"sync"
 	"sync/atomic"
@@ -8,6 +9,7 @@ import (
 
 	"github.com/yinxulai/ait/internal/server/client"
 	"github.com/yinxulai/ait/internal/server/logger"
+	"github.com/yinxulai/ait/internal/server/queue"
 	"github.com/yinxulai/ait/internal/server/types"
 	"github.com/yinxulai/ait/internal/server/upload"
 )
@@ -52,6 +54,15 @@ func (r *Runner) Stop() {
 	})
 }
 
+func (r *Runner) stopContext() context.Context {
+	ctx, cancel := context.WithCancel(context.Background())
+	go func() {
+		<-r.stopCh
+		cancel()
+	}()
+	return ctx
+}
+
 func (r *Runner) acquireSlot(ch chan int) bool {
 	select {
 	case <-r.stopCh:
@@ -71,105 +82,88 @@ func calculateCacheHitRate(metrics *client.ResponseMetrics) float64 {
 	return float64(metrics.CachedInputTokens) / float64(metrics.PromptTokens)
 }
 
+type requestJob struct {
+	index int
+}
+
+func (r *Runner) executeRequest(ctx context.Context, idx int) (*client.ResponseMetrics, error) {
+	if r.input.PromptMode == "raw" {
+		rawBody := r.input.PromptSource.GetContentByIndex(idx)
+		return r.client.RawRequest(ctx, rawBody)
+	}
+	systemPrompt := r.input.PromptSource.GetSystemContent()
+	userPrompt := r.input.PromptSource.GetContentByIndex(idx)
+	return r.client.Request(ctx, systemPrompt, userPrompt, r.input.Stream)
+}
+
+func (r *Runner) runRequestQueue(results []*client.ResponseMetrics, onDone RequestDoneCallback) int {
+	ctx := r.stopContext()
+	concurrency := r.input.Concurrency
+	if concurrency <= 0 {
+		concurrency = 1
+	}
+
+	jobs := queue.New[requestJob](concurrency)
+	var wg sync.WaitGroup
+	var launched int64
+
+	for workerID := 0; workerID < concurrency; workerID++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for job := range jobs.Items() {
+				select {
+				case <-r.stopCh:
+					return
+				default:
+				}
+
+				atomic.AddInt64(&launched, 1)
+				metrics, err := r.executeRequest(ctx, job.index)
+				if metrics != nil {
+					results[job.index] = metrics
+				}
+				if err == nil && metrics != nil && metrics.ErrorMessage == "" && r.upload != nil {
+					r.upload.UploadReport(r.taskID, metrics, r.input)
+				}
+				if onDone != nil {
+					onDone(metrics, job.index, err)
+				}
+			}
+		}()
+	}
+
+enqueueLoop:
+	for i := 0; i < r.input.Count; i++ {
+		if err := jobs.EnqueueUntil(r.stopCh, requestJob{index: i}); err != nil {
+			break enqueueLoop
+		}
+	}
+	jobs.Close()
+	wg.Wait()
+	return int(atomic.LoadInt64(&launched))
+}
+
 // Run 执行性能测试，返回结果数据
 func (r *Runner) Run() (*types.ReportData, error) {
-	var wg sync.WaitGroup
 	results := make([]*client.ResponseMetrics, r.input.Count)
 	start := time.Now()
-	ch := make(chan int, r.input.Concurrency)
-	launchedCount := 0
-
-	for i := 0; i < r.input.Count; i++ {
-		if !r.acquireSlot(ch) {
-			break
-		}
-		launchedCount++
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			defer func() { <-ch }()
-
-			// 获取当前请求使用的prompt
-			var metrics *client.ResponseMetrics
-			var err error
-			if r.input.PromptMode == "raw" {
-				rawBody := r.input.PromptSource.GetContentByIndex(idx)
-				metrics, err = r.client.RawRequest(rawBody)
-			} else {
-				systemPrompt := r.input.PromptSource.GetSystemContent()
-				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
-				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
-			}
-			if err != nil {
-				// 即使有错误，也尝试保存 metrics（如果有的话）
-				if metrics != nil {
-					results[idx] = metrics
-				}
-				return
-			}
-
-			results[idx] = metrics
-
-			if metrics.ErrorMessage == "" && r.upload != nil {
-				r.upload.UploadReport(r.taskID, metrics, r.input)
-			}
-		}(i)
-	}
-	wg.Wait()
+	launchedCount := r.runRequestQueue(results, nil)
 	elapsed := time.Since(start)
-
-	// 计算并返回结果
 	return r.calculateResult(results, elapsed, launchedCount), nil
 }
 
 func (r *Runner) RunWithCallback(cb RequestDoneCallback) (*types.ReportData, error) {
-	var wg sync.WaitGroup
 	results := make([]*client.ResponseMetrics, r.input.Count)
 	start := time.Now()
-	ch := make(chan int, r.input.Concurrency)
-	launchedCount := 0
-
-	for i := 0; i < r.input.Count; i++ {
-		if !r.acquireSlot(ch) {
-			break
-		}
-		launchedCount++
-		wg.Add(1)
-		go func(idx int) {
-			defer wg.Done()
-			defer func() { <-ch }()
-
-			var metrics *client.ResponseMetrics
-			var err error
-			if r.input.PromptMode == "raw" {
-				rawBody := r.input.PromptSource.GetContentByIndex(idx)
-				metrics, err = r.client.RawRequest(rawBody)
-			} else {
-				systemPrompt := r.input.PromptSource.GetSystemContent()
-				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
-				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
-			}
-			if metrics != nil {
-				results[idx] = metrics
-			}
-
-			if err == nil && metrics != nil && metrics.ErrorMessage == "" && r.upload != nil {
-				r.upload.UploadReport(r.taskID, metrics, r.input)
-			}
-
-			if cb != nil {
-				cb(metrics, idx, err)
-			}
-		}(i)
-	}
-
-	wg.Wait()
+	launchedCount := r.runRequestQueue(results, cb)
 	elapsed := time.Since(start)
 	return r.calculateResult(results, elapsed, launchedCount), nil
 }
 
 // RunWithProgress 运行性能测试并实时显示进度
 func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types.ReportData, error) {
+	ctx := r.stopContext()
 	var wg sync.WaitGroup
 	results := make([]*client.ResponseMetrics, r.input.Count)
 	start := time.Now()
@@ -253,11 +247,11 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 			var err error
 			if r.input.PromptMode == "raw" {
 				rawBody := r.input.PromptSource.GetContentByIndex(idx)
-				metrics, err = r.client.RawRequest(rawBody)
+				metrics, err = r.client.RawRequest(ctx, rawBody)
 			} else {
 				systemPrompt := r.input.PromptSource.GetSystemContent()
 				userPrompt := r.input.PromptSource.GetContentByIndex(idx)
-				metrics, err = r.client.Request(systemPrompt, userPrompt, r.input.Stream)
+				metrics, err = r.client.Request(ctx, systemPrompt, userPrompt, r.input.Stream)
 			}
 			if err != nil {
 				ttftsMutex.Lock()
@@ -348,6 +342,11 @@ func (r *Runner) RunWithProgress(progressCallback func(types.StatsData)) (*types
 }
 
 // calculateResult 计算性能统计结果
+func CalculateResult(input types.Input, results []*client.ResponseMetrics, totalTime time.Duration, totalRequests ...int) *types.ReportData {
+	r := &Runner{input: input}
+	return r.calculateResult(results, totalTime, totalRequests...)
+}
+
 func (r *Runner) calculateResult(results []*client.ResponseMetrics, totalTime time.Duration, totalRequests ...int) *types.ReportData {
 	requestCount := r.input.Count
 	if len(totalRequests) > 0 {
