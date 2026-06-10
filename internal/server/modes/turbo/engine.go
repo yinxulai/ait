@@ -5,7 +5,7 @@ import (
 	"sync"
 	"time"
 
-	runnerpkg "github.com/yinxulai/ait/internal/server/runner"
+	standardpkg "github.com/yinxulai/ait/internal/server/modes/standard"
 	"github.com/yinxulai/ait/internal/server/types"
 )
 
@@ -48,7 +48,7 @@ func New(factory RunnerFactory) *Engine {
 
 func DefaultRunnerFactory(taskID string) RunnerFactory {
 	return func(input types.Input) (LevelRunner, error) {
-		return runnerpkg.NewRunner(taskID, input)
+		return standardpkg.NewRunner(taskID, input)
 	}
 }
 

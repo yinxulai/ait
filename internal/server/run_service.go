@@ -9,12 +9,12 @@ import (
 
 	"github.com/yinxulai/ait/internal/server/client"
 	"github.com/yinxulai/ait/internal/server/config"
-	"github.com/yinxulai/ait/internal/server/integrity"
+	"github.com/yinxulai/ait/internal/server/modes/integrity"
+	"github.com/yinxulai/ait/internal/server/modes/standard"
+	"github.com/yinxulai/ait/internal/server/modes/turbo"
 	"github.com/yinxulai/ait/internal/server/report"
-	"github.com/yinxulai/ait/internal/server/runner"
 	"github.com/yinxulai/ait/internal/server/store"
 	"github.com/yinxulai/ait/internal/server/task"
-	"github.com/yinxulai/ait/internal/server/turbo"
 	"github.com/yinxulai/ait/internal/server/types"
 )
 
@@ -22,7 +22,7 @@ import (
 type activeRun struct {
 	mu                sync.RWMutex
 	state             *RunState
-	rnr               *runner.Runner      // standard 模式使用
+	rnr               *standard.Runner    // standard 模式使用
 	turboEngine       *turbo.Engine       // turbo 模式使用
 	integrityExecutor *integrity.Executor // integrity 模式使用
 	// 用于计算实时均值
@@ -33,11 +33,11 @@ type activeRun struct {
 	doneCount int   // 与 state.DoneReqs 保持同步，方便不加锁时计算
 }
 
-// callbackLevelRunner 包装 runner.Runner，在每次请求完成时调用回调，
+// callbackLevelRunner 包装 standard.Runner，在每次请求完成时调用回调，
 // 使 turbo 运行也能逐请求采集详细指标数据。
 type callbackLevelRunner struct {
-	r  *runner.Runner
-	cb runner.RequestDoneCallback
+	r  *standard.Runner
+	cb standard.RequestDoneCallback
 }
 
 func (c *callbackLevelRunner) Run() (*types.ReportData, error) {
@@ -321,7 +321,7 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 
 // runStandard 在 goroutine 中执行标准运行。
 func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
-	rnr, err := runner.NewRunner(taskDef.ID, input)
+	rnr, err := standard.NewRunner(taskDef.ID, input)
 	if err != nil {
 		s.failRun(ar, runID, taskDef, runStore, err)
 		return
@@ -479,7 +479,7 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 		ar.state.CurrentLevel = levelInput.Concurrency
 		ar.mu.Unlock()
 
-		r, err := runner.NewRunner(taskDef.ID, levelInput)
+		r, err := standard.NewRunner(taskDef.ID, levelInput)
 		if err != nil {
 			return nil, err
 		}

@@ -4,9 +4,9 @@ import (
 	"sync"
 	"time"
 
-	"github.com/yinxulai/ait/internal/server/assertion"
 	"github.com/yinxulai/ait/internal/server/client"
-	"github.com/yinxulai/ait/internal/server/runner"
+	"github.com/yinxulai/ait/internal/server/modes/integrity/assertion"
+	"github.com/yinxulai/ait/internal/server/modes/standard"
 	"github.com/yinxulai/ait/internal/server/task"
 	"github.com/yinxulai/ait/internal/server/types"
 )
@@ -14,7 +14,7 @@ import (
 type RunnerFactory func(types.Input) (CaseRunner, error)
 
 type CaseRunner interface {
-	RunWithCallback(runner.RequestDoneCallback) (*types.ReportData, error)
+	RunWithCallback(standard.RequestDoneCallback) (*types.ReportData, error)
 	Stop()
 }
 
@@ -38,7 +38,7 @@ func NewExecutor(taskID string, input types.Input, suite types.IntegritySuite) *
 		Input:  input,
 		Suite:  suite,
 		RunnerFactory: func(caseInput types.Input) (CaseRunner, error) {
-			return runner.NewRunner(taskID, caseInput)
+			return standard.NewRunner(taskID, caseInput)
 		},
 	}
 }
