@@ -1,6 +1,6 @@
 # AIT 功能设计与架构文档
 
-> 版本：v2.0 设计草案  
+> 版本：v2.0 设计草案
 > 日期：2026-05-16
 
 ---
@@ -18,6 +18,8 @@
 
 相关设计：
 
+- [TUI 页面功能与布局设计](tui-pages.md)
+- [TUI 重写实施计划](tui-implementation-plan.md)
 - [统一运行存储设计](storage.md)
 - [队列化执行架构设计](queue.md)
 - [Turbo 模式功能设计](turbo.md)
