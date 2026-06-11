@@ -15,6 +15,7 @@ GIT_COMMIT ?= $(shell git rev-parse --short HEAD 2>/dev/null || echo "unknown")
 BUILD_TIME ?= $(shell date -u +"%Y-%m-%dT%H:%M:%SZ")
 LDFLAGS=-ldflags "-w -s -X main.Version=$(VERSION) -X main.GitCommit=$(GIT_COMMIT) -X main.BuildTime=$(BUILD_TIME)"
 BUILD_FLAGS=-trimpath $(LDFLAGS)
+WEB_DIR=internal/web
 
 ## help: 显示此帮助信息
 .PHONY: help
@@ -28,6 +29,19 @@ build:
 	@echo "正在构建 $(BINARY)..."
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)/
+
+## web-build: 构建 Web UI 静态产物
+.PHONY: web-build
+web-build:
+	@echo "正在构建 Web UI..."
+	cd $(WEB_DIR) && npm ci && npm run build
+
+## build-web: 构建当前平台二进制并嵌入 Web UI
+.PHONY: build-web
+build-web: web-build
+	@echo "正在构建嵌入 Web UI 的 $(BINARY)..."
+	@mkdir -p $(BIN_DIR)
+	$(GOBUILD) -tags webembed $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)/
 
 ## build-all: 交叉编译所有平台
 .PHONY: build-all

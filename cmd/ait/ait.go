@@ -11,6 +11,7 @@ import (
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/server/config"
 	"github.com/yinxulai/ait/internal/tui"
+	"github.com/yinxulai/ait/internal/web"
 )
 
 // 版本信息，通过 ldflags 在构建时注入。
@@ -24,6 +25,7 @@ func main() {
 	// ── flags ────────────────────────────────────────────────────────────────
 	versionFlag := flag.Bool("version", false, "显示版本信息")
 	mcpFlag := flag.Bool("mcp", false, "启用 MCP 模式")
+	webFlag := flag.Bool("web", false, "启用 Web UI 模式")
 	langFlag := flag.String("lang", "", "界面语言：zh 或 en")
 	flag.Parse()
 
@@ -51,9 +53,16 @@ func main() {
 		i18n.SetLang(i18n.EN)
 	}
 
-	if routeByMCPFlag(*mcpFlag) == "mcp" {
+	switch routeByFlags(*mcpFlag, *webFlag) {
+	case "mcp":
 		if err := mcp.New(srv).Run(context.Background()); err != nil {
 			fmt.Fprintf(os.Stderr, "MCP 启动失败: %v\n", err)
+			os.Exit(1)
+		}
+		return
+	case "web":
+		if err := web.Run(context.Background()); err != nil {
+			fmt.Fprintf(os.Stderr, "Web UI 启动失败: %v\n", err)
 			os.Exit(1)
 		}
 		return
@@ -66,9 +75,16 @@ func main() {
 	}
 }
 
-func routeByMCPFlag(enabled bool) string {
-	if enabled {
+func routeByFlags(mcpEnabled, webEnabled bool) string {
+	if mcpEnabled {
 		return "mcp"
 	}
+	if webEnabled {
+		return "web"
+	}
 	return "tui"
+}
+
+func routeByMCPFlag(enabled bool) string {
+	return routeByFlags(enabled, false)
 }

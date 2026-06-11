@@ -57,7 +57,20 @@ jobs:
       - name: 设置 Go 环境
         uses: actions/setup-go@v4
         with:
-          go-version: '1.22'
+          go-version-file: 'go.mod'
+
+      - name: 设置 Node.js 环境
+        uses: actions/setup-node@v4
+        with:
+          node-version: '24'
+          cache: npm
+          cache-dependency-path: internal/web/package-lock.json
+
+      - name: 构建 Web UI
+        working-directory: internal/web
+        run: |
+          npm ci
+          npm run build
 
       - name: 构建二进制文件
         env:
@@ -69,13 +82,14 @@ jobs:
           for binary in ait; do
             echo "构建 $binary for ${{ matrix.goos }}/${{ matrix.goarch }}..."
             go build \
+              -tags webembed \
               -ldflags "-w -s \
                 -X main.Version=${{ github.ref_name }} \
                 -X main.GitCommit=${{ github.sha }} \
                 -X main.BuildTime=$(date -u '+%Y-%m-%d_%H:%M:%S') \
-                -X 'github.com/yinxulai/ait/internal/upload.UploadBaseURL=${{ secrets.UPLOAD_BASE_URL }}' \
-                -X 'github.com/yinxulai/ait/internal/upload.UploadAuthToken=${{ secrets.UPLOAD_AUTH_TOKEN }}' \
-                -X 'github.com/yinxulai/ait/internal/upload.UploadUserAgent=${{ github.repository }}(${{ github.ref_name }})'" \
+                -X 'github.com/yinxulai/ait/internal/server/upload.UploadBaseURL=${{ secrets.UPLOAD_BASE_URL }}' \
+                -X 'github.com/yinxulai/ait/internal/server/upload.UploadAuthToken=${{ secrets.UPLOAD_AUTH_TOKEN }}' \
+                -X 'github.com/yinxulai/ait/internal/server/upload.UploadUserAgent=${{ github.repository }}(${{ github.ref_name }})'" \
               -o dist/$binary-${{ matrix.suffix }}${{ matrix.extension }} \
               ./cmd/$binary/
           done
