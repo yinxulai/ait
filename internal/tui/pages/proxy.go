@@ -2,11 +2,12 @@ package pages
 
 import (
 	"strings"
-
+	
 	"charm.land/lipgloss/v2"
 	"github.com/charmbracelet/bubbles/cursor"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"github.com/yinxulai/ait/internal/i18n"
 )
 
@@ -209,14 +210,14 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 		}
 	}
 
-	fieldW := maxInt(10, contentW-19)
+	fieldW := shared.MaxInt(10, contentW-19)
 
 	// 代理类型字段
 	typeLabel := proxyTypeLabel(s.ProxyType)
 	if s.FieldIndex == 0 {
 		typeLabel = "‹ " + typeLabel + " ›"
 	}
-	typeLabel = truncate(typeLabel, maxInt(4, fieldW))
+	typeLabel = shared.Truncate(typeLabel, shared.MaxInt(4, fieldW))
 	typeFieldStyle := st.FieldIdle
 	if s.FieldIndex == 0 {
 		typeFieldStyle = st.FieldActive
@@ -250,9 +251,9 @@ func buildProxyConfigContent(s *ProxyConfigState, st Styles, contentW, maxH int)
 	appendBlock(lipgloss.JoinHorizontal(lipgloss.Top, urlLabelBlock, urlRendered))
 
 	lines = append(lines, "")
-	lines = append(lines, st.Muted.Render(truncate(proxyTypeHint(s.ProxyType), contentW)))
+	lines = append(lines, st.Muted.Render(shared.Truncate(proxyTypeHint(s.ProxyType), contentW)))
 	lines = append(lines, "")
-	lines = append(lines, st.Muted.Render(truncate(i18n.T(i18n.KProxySaveHint), contentW)))
+	lines = append(lines, st.Muted.Render(shared.Truncate(i18n.T(i18n.KProxySaveHint), contentW)))
 
 	// 填充至 maxH
 	for len(lines) < maxH {

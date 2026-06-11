@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"fmt"
 	"strconv"
 	"strings"
@@ -45,8 +46,9 @@ type WizardState struct {
 	Model       string
 
 	// Step 2: 测试参数
-	Turbo  bool
-	Stream bool
+	Turbo     bool
+	Integrity bool
+	Stream    bool
 
 	// 标准模式参数
 	Concurrency int
@@ -59,6 +61,10 @@ type WizardState struct {
 	StepSize        int
 	LevelRequests   int
 	MinSuccessRate  float64 // 百分比，如 90
+
+	// Integrity 模式参数
+	IntegritySuite   string
+	IntegrityFailFast bool
 
 	// Prompt 配置
 	PromptMode   string
@@ -106,7 +112,7 @@ func loadCurrentFieldInput(wz *WizardState) {
 	case wizardStep1:
 		fields = step1Fields()
 	case wizardStep2:
-		fields = step2Fields(wz.Turbo)
+		fields = step2Fields(wz)
 	default:
 		return
 	}
@@ -156,6 +162,7 @@ func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 	wz.APIKey = inp.ApiKey
 	wz.Model = inp.Model
 	wz.Turbo = inp.Turbo
+	wz.Integrity = inp.Integrity.Enabled || inp.Integrity.Suite != ""
 	wz.Stream = inp.Stream
 	wz.PromptText = inp.PromptText
 	wz.PromptFile = inp.PromptFile
@@ -195,6 +202,11 @@ func NewWizardStateEdit(t *types.TaskDefinition) *WizardState {
 	if tc.MinSuccessRate > 0 {
 		wz.MinSuccessRate = tc.MinSuccessRate * 100
 	}
+	ic := inp.Integrity
+	if ic.Suite != "" {
+		wz.IntegritySuite = ic.Suite
+	}
+	wz.IntegrityFailFast = ic.FailFast
 	// 数据字段全部填充完毕后，重新加载当前字段（Name）到 input
 	loadCurrentFieldInput(wz)
 	return wz
@@ -228,6 +240,11 @@ func (wz *WizardState) BuildTaskConfig() server.TaskConfig {
 				StepSize:        wz.StepSize,
 				LevelRequests:   wz.LevelRequests,
 				MinSuccessRate:  turboRate,
+			},
+			Integrity: types.IntegrityConfig{
+				Enabled:    wz.Integrity,
+				Suite:     wz.IntegritySuite,
+				FailFast:  wz.IntegrityFailFast,
 			},
 			PromptMode:   wz.PromptMode,
 			PromptText:   wz.PromptText,
@@ -275,6 +292,16 @@ func intField(label string, get func(*WizardState) int, set func(*WizardState, i
 				set(wz, n)
 			}
 		},
+	}
+}
+
+// stringField 构造一个字符串输入字段。
+func stringField(label string, get func(*WizardState) string, set func(*WizardState, string)) fieldDef {
+	return fieldDef{
+		kind:  fieldText,
+		label: label,
+		get:   func(wz *WizardState) string { return get(wz) },
+		set:   func(wz *WizardState, v string) { set(wz, v) },
 	}
 }
 
@@ -342,34 +369,72 @@ func step1Fields() []fieldDef {
 	}
 }
 
-// step2Fields 返回步骤2的字段列表（根据 Turbo 模式动态变化）。
-func step2Fields(turbo bool) []fieldDef {
+// step2Fields 返回步骤2的字段列表（根据模式动态变化）。
+// 使用新的模式架构：每个模式独立定义自己的字段
+func step2Fields(wz *WizardState) []fieldDef {
+	// 1. 模式选择字段
 	fields := []fieldDef{
 		{
 			kind: fieldBool, label: i18n.T(i18n.KWzTestMode),
 			get: func(wz *WizardState) string {
-				if wz.Turbo {
-					return i18n.T(i18n.KWzTurboMode)
+				switch {
+				case wz.Integrity:
+					return i18n.T(i18n.KIntegrityMode)
+				case wz.Turbo:
+					return i18n.T(i18n.KTurboMode)
+				default:
+					return i18n.T(i18n.KWzStandardMode)
 				}
-				return i18n.T(i18n.KWzStandardMode)
 			},
-			toggle:             func(wz *WizardState, _ bool) { wz.Turbo = !wz.Turbo },
+			toggle: func(wz *WizardState, _ bool) {
+				// 循环切换：Standard → Turbo → Integrity → Standard
+				if wz.Integrity {
+					wz.Integrity = false
+					wz.Turbo = false
+				} else if wz.Turbo {
+					wz.Turbo = false
+					wz.Integrity = true
+				} else {
+					wz.Turbo = true
+				}
+			},
 			triggersFieldReset: true,
 		},
 	}
 
-	if !turbo {
+	// 2. 根据模式添加对应字段（使用独立的模式实现）
+	switch {
+	case wz.Integrity:
+		// Integrity 模式：测试套件 + 遇错即停
 		fields = append(fields,
-			intField(i18n.T(i18n.KWzConcurrency), func(wz *WizardState) int { return wz.Concurrency }, func(wz *WizardState, n int) { wz.Concurrency = n }),
-			intField(i18n.T(i18n.KWzTotalRequests), func(wz *WizardState) int { return wz.Count }, func(wz *WizardState, n int) { wz.Count = n }),
-			intField(i18n.T(i18n.KWzTimeoutSecs), func(wz *WizardState) int { return wz.Timeout }, func(wz *WizardState, n int) { wz.Timeout = n }),
+			stringField(i18n.T(i18n.KWzIntegritySuite), 
+				func(wz *WizardState) string { return wz.IntegritySuite }, 
+				func(wz *WizardState, v string) { wz.IntegritySuite = v }),
+			fieldDef{
+				kind:   fieldBool,
+				label:  i18n.T(i18n.KWzFailFast),
+				get:    func(wz *WizardState) string { return boolLabel(wz.IntegrityFailFast) },
+				toggle: func(wz *WizardState, _ bool) { wz.IntegrityFailFast = !wz.IntegrityFailFast },
+			},
 		)
-	} else {
+		// Integrity 模式不需要 Prompt 和 Stream 配置
+		return fields
+
+	case wz.Turbo:
+		// Turbo 模式：渐进式并发参数
 		fields = append(fields,
-			intField(i18n.T(i18n.KWzInitConc), func(wz *WizardState) int { return wz.InitConcurrency }, func(wz *WizardState, n int) { wz.InitConcurrency = n }),
-			intField(i18n.T(i18n.KWzMaxConc), func(wz *WizardState) int { return wz.MaxConcurrency }, func(wz *WizardState, n int) { wz.MaxConcurrency = n }),
-			intField(i18n.T(i18n.KWzStepSize), func(wz *WizardState) int { return wz.StepSize }, func(wz *WizardState, n int) { wz.StepSize = n }),
-			intField(i18n.T(i18n.KWzLevelReqs), func(wz *WizardState) int { return wz.LevelRequests }, func(wz *WizardState, n int) { wz.LevelRequests = n }),
+			intField(i18n.T(i18n.KWzInitConc), 
+				func(wz *WizardState) int { return wz.InitConcurrency }, 
+				func(wz *WizardState, n int) { wz.InitConcurrency = n }),
+			intField(i18n.T(i18n.KWzMaxConc), 
+				func(wz *WizardState) int { return wz.MaxConcurrency }, 
+				func(wz *WizardState, n int) { wz.MaxConcurrency = n }),
+			intField(i18n.T(i18n.KWzStepSize), 
+				func(wz *WizardState) int { return wz.StepSize }, 
+				func(wz *WizardState, n int) { wz.StepSize = n }),
+			intField(i18n.T(i18n.KWzLevelReqs), 
+				func(wz *WizardState) int { return wz.LevelRequests }, 
+				func(wz *WizardState, n int) { wz.LevelRequests = n }),
 			fieldDef{
 				kind:  fieldNumber,
 				label: i18n.T(i18n.KWzMinSuccessRate),
@@ -381,9 +446,23 @@ func step2Fields(turbo bool) []fieldDef {
 				},
 			},
 		)
+
+	default:
+		// Standard 模式：基础并发参数
+		fields = append(fields,
+			intField(i18n.T(i18n.KWzConcurrency), 
+				func(wz *WizardState) int { return wz.Concurrency }, 
+				func(wz *WizardState, n int) { wz.Concurrency = n }),
+			intField(i18n.T(i18n.KWzTotalRequests), 
+				func(wz *WizardState) int { return wz.Count }, 
+				func(wz *WizardState, n int) { wz.Count = n }),
+			intField(i18n.T(i18n.KWzTimeoutSecs), 
+				func(wz *WizardState) int { return wz.Timeout }, 
+				func(wz *WizardState, n int) { wz.Timeout = n }),
+		)
 	}
 
-	// 流式模式：与测试模式无关，两种模式均可配置
+	// 3. Stream 配置（Standard 和 Turbo 模式共用）
 	fields = append(fields, fieldDef{
 		kind:   fieldBool,
 		label:  i18n.T(i18n.KWzStreamMode),
@@ -391,7 +470,7 @@ func step2Fields(turbo bool) []fieldDef {
 		toggle: func(wz *WizardState, _ bool) { wz.Stream = !wz.Stream },
 	})
 
-	// Prompt 字段（共用）
+	// 4. Prompt 配置（Standard 和 Turbo 模式共用）
 	promptModes := []string{PromptModeText, PromptModeFile, PromptModeGenerated, PromptModeRaw}
 	fields = append(fields,
 		fieldDef{
@@ -427,10 +506,6 @@ func step2Fields(turbo bool) []fieldDef {
 				}
 			},
 		},
-	)
-
-	// 根据 prompt 模式添加对应字段（在渲染时动态决定）
-	fields = append(fields,
 		fieldDef{
 			kind: fieldText, label: i18n.T(i18n.KWzPromptContent),
 			get: func(wz *WizardState) string {
@@ -457,6 +532,7 @@ func step2Fields(turbo bool) []fieldDef {
 			},
 		},
 	)
+	
 	return fields
 }
 
@@ -473,7 +549,7 @@ func HandleWizardKey(wz *WizardState, msg tea.KeyMsg, client Client) (*WizardSta
 	case wizardStep1:
 		fields = step1Fields()
 	case wizardStep2:
-		fields = step2Fields(wz.Turbo)
+		fields = step2Fields(wz)
 	case wizardStep3:
 		// Step 3 只有两个动作：保存、保存并运行
 		switch msg.String() {
@@ -633,14 +709,17 @@ func RenderWizard(wz *WizardState, st Styles, width, height int) string {
 	}
 	headerRight := []string{}
 	if wz.Step >= wizardStep2 {
-		if wz.Turbo {
+		switch {
+		case wz.Integrity:
+			headerRight = append(headerRight, i18n.T(i18n.KIntegrityMode))
+		case wz.Turbo:
 			headerRight = append(headerRight, i18n.T(i18n.KTurboMode))
-		} else {
+		default:
 			headerRight = append(headerRight, i18n.T(i18n.KStandardMode))
 		}
 	}
 	if wz.Model != "" {
-		headerRight = append(headerRight, truncate(wz.Model, 18))
+		headerRight = append(headerRight, shared.Truncate(wz.Model, 18))
 	}
 	action := i18n.T(i18n.KNewTask)
 	if wz.EditingID != "" {
@@ -676,7 +755,7 @@ func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string 
 	// 为 body 保留最少 5 行空间
 	minBodyH := 5
 	availableForContent := maxH - bottomCount
-	maxTopH := maxInt(1, availableForContent-minBodyH)
+	maxTopH := shared.MaxInt(1, availableForContent-minBodyH)
 
 	// 限制 topLines 大小
 	if len(topLines) > maxTopH {
@@ -687,10 +766,10 @@ func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string 
 	}
 
 	bodyLines, focusLine, focusEndLine := buildWizardBody(wz, st, width)
-	bodyH := maxInt(1, availableForContent-len(topLines))
+	bodyH := shared.MaxInt(1, availableForContent-len(topLines))
 	offset := 0
 	if wz.Step == wizardStep3 {
-		offset = clampInt(wz.ScrollOff, 0, maxInt(0, len(bodyLines)-bodyH))
+		offset = clampInt(wz.ScrollOff, 0, shared.MaxInt(0, len(bodyLines)-bodyH))
 	} else if focusLine >= 0 {
 		// 先确保聚焦块末尾（含提示行）可见，再保证起始行不滚出视口顶部
 		offset = ensureVisibleOffset(focusEndLine, len(bodyLines), 0, bodyH)
@@ -698,7 +777,7 @@ func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string 
 			offset = focusLine
 		}
 	}
-	end := minInt(len(bodyLines), offset+bodyH)
+	end := shared.MinInt(len(bodyLines), offset+bodyH)
 	visibleBody := append([]string{}, bodyLines[offset:end]...)
 	for len(visibleBody) < bodyH {
 		visibleBody = append(visibleBody, "")
@@ -709,7 +788,7 @@ func buildWizardPageContent(wz *WizardState, st Styles, width, maxH int) string 
 	if showBottomDivider {
 		lines = append(lines, dividerLine(st, width))
 	}
-	lines = append(lines, st.Muted.Render(truncate(wizardStatusText(wz, offset, end, len(bodyLines), bodyH), width)))
+	lines = append(lines, st.Muted.Render(shared.Truncate(wizardStatusText(wz, offset, end, len(bodyLines), bodyH), width)))
 
 	if len(lines) > maxH {
 		lines = lines[:maxH]
@@ -747,16 +826,19 @@ func buildWizardBody(wz *WizardState, st Styles, contentW int) ([]string, int, i
 		}
 
 	case wizardStep2:
-		fields := step2Fields(wz.Turbo)
+		fields := step2Fields(wz)
 		for i, f := range fields {
 			if f.label == i18n.T(i18n.KWzInputMode) {
 				lines = append(lines, "", st.Muted.Render(i18n.T(i18n.KWzPromptConfig)))
 			}
 			appendField(renderWizardField(st, f, wz, i == wz.FieldIndex, contentW), i == wz.FieldIndex)
 			if f.label == i18n.T(i18n.KWzTestMode) {
-				if wz.Turbo {
+				switch {
+				case wz.Integrity:
+					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzIntegrityModeLabel)))
+				case wz.Turbo:
 					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzTurboModeLabel)))
-				} else {
+				default:
 					lines = append(lines, st.Muted.Render("               "+i18n.T(i18n.KWzSelectModeHint)))
 				}
 			}
@@ -808,7 +890,7 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 	// 内容区 = n - border(2) - padding(2) = n - 4
 	// fieldW 为内容区目标宽度，渲染时传 fieldW+4 作为 Width 参数
 	// 总宽 = label(15) + (fieldW+4) = fieldW + 19 ≤ maxW → fieldW = maxW - 19
-	fieldW := maxInt(10, maxW-19)
+	fieldW := shared.MaxInt(10, maxW-19)
 	valueStyle := st.Value
 	if valueStr == "" && !active {
 		valueStr = i18n.T(i18n.KWzNotFilled)
@@ -820,13 +902,13 @@ func renderWizardField(st Styles, f fieldDef, wz *WizardState, active bool, maxW
 		if active {
 			valueStr = "‹ " + valueStr + " ›"
 		}
-		valueStr = truncate(valueStr, maxInt(4, fieldW))
+		valueStr = shared.Truncate(valueStr, shared.MaxInt(4, fieldW))
 	} else {
 		if active {
 			wz.input.Width = fieldW
 			valueStr = wz.input.View()
 		} else {
-			valueStr = fitTail(valueStr, maxInt(1, fieldW))
+			valueStr = fitTail(valueStr, shared.MaxInt(1, fieldW))
 		}
 	}
 
@@ -867,12 +949,17 @@ func renderStep3Summary(wz *WizardState, st Styles, innerW int) []string {
 	addRow(i18n.T(i18n.KWzTestModel), wizardFallback(wz.Model, i18n.T(i18n.KWzNotFilled)), st.Value)
 
 	lines = append(lines, "", st.SectionHead.Render(i18n.T(i18n.KWzExecParams)))
-	if wz.Turbo {
+	switch {
+	case wz.Integrity:
+		addRow(i18n.T(i18n.KWzTestMode), i18n.T(i18n.KIntegrityMode), st.Value)
+		addRow(i18n.T(i18n.KWzIntegritySuite), wizardFallback(wz.IntegritySuite, i18n.T(i18n.KWzNotFilled)), st.Value)
+		addRow(i18n.T(i18n.KWzFailFast), boolLabel(wz.IntegrityFailFast), st.Value)
+	case wz.Turbo:
 		addRow(i18n.T(i18n.KWzTestMode), i18n.T(i18n.KWzTurboMode), st.Value)
 		addRow(i18n.T(i18n.KWzConcurrencyRamp), fmt.Sprintf("%d → %d · +%d · %d req",
 			wz.InitConcurrency, wz.MaxConcurrency, wz.StepSize, wz.LevelRequests), st.Value)
 		addRow(i18n.T(i18n.KWzStopCondition), fmt.Sprintf("< %.0f%%", wz.MinSuccessRate), st.Value)
-	} else {
+	default: // Standard
 		addRow(i18n.T(i18n.KWzTestMode), i18n.T(i18n.KWzStandardMode), st.Value)
 		addRow(i18n.T(i18n.KWzConcurrency), strconv.Itoa(wz.Concurrency), st.Value)
 		addRow(i18n.T(i18n.KWzTotalRequests), strconv.Itoa(wz.Count), st.Value)
@@ -977,12 +1064,12 @@ func fitTail(s string, maxW int) string {
 
 func appendWizardSummaryRow(lines *[]string, st Styles, label, value string, width int, valueStyle lipgloss.Style) {
 	labelW := 14
-	contentW := maxInt(8, width-labelW-1)
-	segments := wrapText(value, contentW)
+	contentW := shared.MaxInt(8, width-labelW-1)
+	segments := shared.WrapText(value, contentW)
 	if len(segments) == 0 {
 		segments = []string{""}
 	}
-	*lines = append(*lines, st.Label.Render(padRight(label, labelW))+" "+valueStyle.Render(segments[0]))
+	*lines = append(*lines, st.Label.Render(shared.PadRight(label, labelW))+" "+valueStyle.Render(segments[0]))
 	indent := strings.Repeat(" ", labelW+1)
 	for _, segment := range segments[1:] {
 		*lines = append(*lines, indent+valueStyle.Render(segment))
@@ -1015,7 +1102,7 @@ func wizardStatusText(wz *WizardState, offset, end, scrollTotal, visible int) st
 	case wizardStep1:
 		fieldTotal = len(step1Fields())
 	case wizardStep2:
-		fieldTotal = len(step2Fields(wz.Turbo))
+		fieldTotal = len(step2Fields(wz))
 	}
 	if fieldTotal <= 0 {
 		return i18n.T(i18n.KWzNoFields)

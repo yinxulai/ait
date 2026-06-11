@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"fmt"
 	"strings"
 
@@ -80,7 +81,7 @@ func (d *TurboDashState) AdjustReqOffset(visH, total int) {
 	} else if sel >= off+visH {
 		off = sel - visH + 1
 	}
-	d.ReqOff = clampInt(off, 0, maxInt(0, total-visH))
+	d.ReqOff = clampInt(off, 0, shared.MaxInt(0, total-visH))
 }
 
 // NewTurboDashState 创建 Turbo 仪表盘初始状态。
@@ -97,7 +98,7 @@ func (d *TurboDashState) IsRunning() bool {
 	if d == nil {
 		return false
 	}
-	return isRunStateRunning(d.RunState)
+	return shared.IsRunStateRunning(d.RunState)
 }
 
 // HandleTurboDashKey 处理 Turbo 仪表盘按键。
@@ -223,7 +224,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 	headerLeft := []string{i18n.T(i18n.KWaitingStatus)}
 	headerRight := []string{}
 	if rs != nil {
-		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)}
+		headerLeft = []string{shared.RunStatusText(string(rs.Status)), fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)}
 		levels := getTurboLevels(rs)
 		var levelNum int
 		if d.IsRunning() {
@@ -240,7 +241,7 @@ func RenderTurboDash(d *TurboDashState, taskName string, st Styles, width, heigh
 		}
 	}
 	if d.TaskID != "" {
-		headerRight = append(headerRight, truncate(d.TaskID, 14))
+		headerRight = append(headerRight, shared.Truncate(d.TaskID, 14))
 	}
 	l := PageLayout{
 		HeaderTitle:     i18n.T(i18n.KTurboMonitor),
@@ -289,7 +290,7 @@ func buildTurboDashParams(rs *server.RunState, st Styles, maxH, width int) strin
 			lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 		} else {
 			lbls := []string{i18n.T(i18n.KRamp), i18n.T(i18n.KPerLevel), i18n.T(i18n.KStopCondLabel)}
-			lw := maxLabelWidth(lbls)
+			lw := shared.MaxLabelWidth(lbls)
 			lines = append(lines, " "+labelValue(st, lbls[0], fmt.Sprintf("%d→%d  +%d", tc.InitConcurrency, tc.MaxConcurrency, tc.StepSize), lw))
 			lines = append(lines, " "+labelValue(st, lbls[1], fmt.Sprintf("%d req", tc.LevelRequests), lw))
 			lines = append(lines, " "+labelValue(st, lbls[2], fmt.Sprintf("%.0f%%", tc.MinSuccessRate*100), lw))
@@ -318,7 +319,7 @@ func buildTurboDashMetrics(rs *server.RunState, st Styles, maxH, width int) stri
 // buildTurboProgressLine 构建 Turbo 模式进度条行。
 func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	if rs == nil {
-		return " " + padToDisplayWidth(i18n.T(i18n.KProgress), 4) + "  " + st.Muted.Render(i18n.T(i18n.KWaitingDots))
+		return " " + shared.PadToDisplayWidth(i18n.T(i18n.KProgress), 4) + "  " + st.Muted.Render(i18n.T(i18n.KWaitingDots))
 	}
 	total := rs.TotalReqs
 	done := rs.DoneReqs
@@ -338,7 +339,7 @@ func buildTurboProgressLine(rs *server.RunState, st Styles, width int) string {
 	}
 	curLevel := getTurboCurrentLevel(rs)
 	suffix := fmt.Sprintf(i18n.T(i18n.KTurboDashSuffix), done, total, curLevel, levelTotalStr)
-	return renderProgressBar(st, " "+padToDisplayWidth(i18n.T(i18n.KProgress), 4)+"  ", suffix, ratio, width)
+	return renderProgressBar(st, " "+shared.PadToDisplayWidth(i18n.T(i18n.KProgress), 4)+"  ", suffix, ratio, width)
 }
 
 // buildTurboRequestList 构建 Turbo 模式请求列表区域。
@@ -377,7 +378,7 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 		if !r.Success {
 			statusText = "✗"
 		}
-		totalText := fmtDuration(r.TotalTime)
+		totalText := shared.FmtDuration(r.TotalTime)
 		if !r.Success && r.ErrorMessage != "" {
 			totalText = r.ErrorMessage
 		}
@@ -388,7 +389,7 @@ func buildTurboRequestList(d *TurboDashState, rs *server.RunState, st Styles, wi
 			status:  statusText,
 			level:   fmt.Sprintf("%d", r.Level),
 			total:   totalText,
-			ttft:    fmtDuration(r.TTFT),
+			ttft:    shared.FmtDuration(r.TTFT),
 			cache:   fmt.Sprintf("%dtok", r.CachedTokens),
 			ptok:    fmt.Sprintf("%dtok", r.PromptTokens),
 			ctok:    fmt.Sprintf("%dtok", r.CompletionTokens),

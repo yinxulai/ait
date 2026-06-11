@@ -120,6 +120,7 @@ const (
 	KStandardMode
 	KTurboMonitor
 	KTurboModeMeta
+	KIntegrityMode
 	KSuccessRateFmt   // "成功率 %.1f%%"
 	KTurboCurLevelFmt // "当前级别实时指标 [并发 = %d]"
 	KTurboDashSuffix  // "  %d/%d  并发 %d  进度 %s 级"
@@ -299,6 +300,9 @@ const (
 	KWzTestMode
 	KWzTurboMode
 	KWzStandardMode
+	KWzIntegrityMode
+	KWzIntegritySuite
+	KWzFailFast
 	KWzConcurrency
 	KWzTotalRequests
 	KWzTimeoutSecs
@@ -316,6 +320,7 @@ const (
 	KWzPromptConfig
 	KWzSelectModeHint
 	KWzTurboModeLabel
+	KWzIntegrityModeLabel
 	KWzStepFmt // "步骤 %d/3"
 	KWzStep1Label
 	KWzStep2Label
@@ -452,6 +457,7 @@ var translations = [2]map[Key]string{
 		KStandardMode:     "标准",
 		KTurboMonitor:     "Turbo 探测监控",
 		KTurboModeMeta:    "Turbo 模式",
+		KIntegrityMode:    "Integrity 模式",
 		KSuccessRateFmt:   "成功率 %.1f%%",
 		KTurboCurLevelFmt: "当前级别实时指标 [并发 = %d]",
 		KTurboDashSuffix:  "  %d/%d  并发 %d  进度 %s 级",
@@ -638,6 +644,9 @@ var translations = [2]map[Key]string{
 		KWzTestMode:         "测试模式",
 		KWzTurboMode:        "Turbo 模式",
 		KWzStandardMode:     "标准模式",
+		KWzIntegrityMode:    "Integrity 模式",
+		KWzIntegritySuite:  "测试套件",
+		KWzFailFast:       "遇错即停",
 		KWzConcurrency:      "并发数",
 		KWzTotalRequests:    "请求总数",
 		KWzTimeoutSecs:      "超时(秒)",
@@ -655,6 +664,7 @@ var translations = [2]map[Key]string{
 		KWzPromptConfig:     "Prompt 配置",
 		KWzSelectModeHint:   "选择压测模式，并补全并发与 Prompt 参数。",
 		KWzTurboModeLabel:   "Turbo 模式",
+		KWzIntegrityModeLabel: "Integrity 完整性验证模式",
 		KWzStepFmt:          "步骤 %d/3",
 		KWzStep1Label:       "1 基本信息",
 		KWzStep2Label:       "2 测试参数",
@@ -789,6 +799,7 @@ var translations = [2]map[Key]string{
 		KStandardMode:     "Standard",
 		KTurboMonitor:     "Turbo Probe Monitor",
 		KTurboModeMeta:    "Turbo Mode",
+		KIntegrityMode:   "Integrity Mode",
 		KSuccessRateFmt:   "Success %.1f%%",
 		KTurboCurLevelFmt: "Current Level Metrics [Concurrency = %d]",
 		KTurboDashSuffix:  "  %d/%d  Level %d  Progress %s",
@@ -975,6 +986,9 @@ var translations = [2]map[Key]string{
 		KWzTestMode:         "Test Mode",
 		KWzTurboMode:        "Turbo Mode",
 		KWzStandardMode:     "Standard Mode",
+		KWzIntegrityMode:    "Integrity Mode",
+		KWzIntegritySuite:   "Test Suite",
+		KWzFailFast:        "Fail Fast",
 		KWzConcurrency:      "Concurrency",
 		KWzTotalRequests:    "Total Requests",
 		KWzTimeoutSecs:      "Timeout (s)",
@@ -992,6 +1006,7 @@ var translations = [2]map[Key]string{
 		KWzPromptConfig:     "Prompt Config",
 		KWzSelectModeHint:   "Select load test mode, then fill in concurrency and Prompt parameters.",
 		KWzTurboModeLabel:   "Turbo Mode",
+		KWzIntegrityModeLabel: "Integrity Mode",
 		KWzStepFmt:          "Step %d/3",
 		KWzStep1Label:       "1 Basic Info",
 		KWzStep2Label:       "2 Parameters",

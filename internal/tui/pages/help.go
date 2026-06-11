@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"strings"
 
 	"charm.land/lipgloss/v2"
@@ -59,14 +60,14 @@ func HandleHelpKey(s *HelpState, msg tea.KeyMsg) (*HelpState, NavAction) {
 	case "pgdown":
 		s.ScrollY += 10
 		if s.ScrollY >= totalLines {
-			s.ScrollY = maxInt(0, totalLines-1)
+			s.ScrollY = shared.MaxInt(0, totalLines-1)
 		}
 
 	case "home", "g":
 		s.ScrollY = 0
 
 	case "end", "G":
-		s.ScrollY = maxInt(0, totalLines-1)
+		s.ScrollY = shared.MaxInt(0, totalLines-1)
 	}
 
 	return s, nav
@@ -200,7 +201,7 @@ func buildHelpLines(s *HelpState, contentW, _ int) []string {
 		for _, item := range sec.items {
 			lines = append(lines, "    "+item.term)
 			// 简单 wrap desc
-			wrapped := wrapText(item.desc, maxInt(20, contentW-6))
+			wrapped := shared.WrapText(item.desc, shared.MaxInt(20, contentW-6))
 			for _, l := range wrapped {
 				lines = append(lines, "      "+l)
 			}
@@ -221,10 +222,10 @@ func buildHelpContent(s *HelpState, st Styles, contentW, maxH int) string {
 		rawLines = append(rawLines, "")
 		for _, item := range sec.items {
 			// term 列
-			termStr := st.Label.Render(padRight(item.term, termW))
+			termStr := st.Label.Render(shared.PadRight(item.term, termW))
 			// desc 第一行与 term 同行，后续行缩进
-			descW := maxInt(20, contentW-termW-4)
-			wrapped := wrapText(item.desc, descW)
+			descW := shared.MaxInt(20, contentW-termW-4)
+			wrapped := shared.WrapText(item.desc, descW)
 			if len(wrapped) == 0 {
 				wrapped = []string{""}
 			}
@@ -242,7 +243,7 @@ func buildHelpContent(s *HelpState, st Styles, contentW, maxH int) string {
 
 	// 应用滚动
 	if s.ScrollY >= len(rawLines) {
-		s.ScrollY = maxInt(0, len(rawLines)-1)
+		s.ScrollY = shared.MaxInt(0, len(rawLines)-1)
 	}
 	visible := rawLines
 	if s.ScrollY > 0 {

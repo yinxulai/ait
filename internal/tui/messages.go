@@ -55,6 +55,16 @@ type ReportGeneratedMsg struct {
 	Path  string
 }
 
+// IntegrityCaseDoneMsg Integrity 测试用例完成事件。
+type IntegrityCaseDoneMsg struct {
+	CaseResult types.IntegrityCaseResult
+}
+
+// AssertionResultMsg 断言结果事件。
+type AssertionResultMsg struct {
+	Assertions []types.AssertionResult
+}
+
 // ErrorMsg 通用异步错误，显示在状态栏。
 type ErrorMsg struct {
 	Err error

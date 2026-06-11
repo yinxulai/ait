@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"fmt"
 	"strings"
 	"time"
@@ -40,7 +41,7 @@ func (d *DashboardState) IsRunning() bool {
 	if d == nil {
 		return false
 	}
-	return isRunStateRunning(d.RunState)
+	return shared.IsRunStateRunning(d.RunState)
 }
 
 // AdjustReqOffset 根据屏幕显示顺序调整列表可见窗口。
@@ -62,7 +63,7 @@ func (d *DashboardState) AdjustReqOffset(visH, total int) {
 	} else if sel >= off+visH {
 		off = sel - visH + 1
 	}
-	d.ReqOff = clampInt(off, 0, maxInt(0, total-visH))
+	d.ReqOff = clampInt(off, 0, shared.MaxInt(0, total-visH))
 }
 
 // HandleDashboardKey 处理仪表盘页按键。
@@ -192,14 +193,14 @@ func RenderDashboard(d *DashboardState, taskName string, st Styles, width, heigh
 	headerLeft := []string{i18n.T(i18n.KWaitingStatus)}
 	headerRight := []string{}
 	if rs != nil {
-		headerLeft = []string{runStatusText(string(rs.Status)), fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)}
+		headerLeft = []string{shared.RunStatusText(string(rs.Status)), fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs)}
 		headerRight = []string{fmt.Sprintf(i18n.T(i18n.KSuccessRateFmt), rs.SuccessRate)}
 		if !rs.StartedAt.IsZero() {
-			headerRight = append(headerRight, i18n.T(i18n.KStart)+" "+fmtRelativeTime(rs.StartedAt))
+			headerRight = append(headerRight, i18n.T(i18n.KStart)+" "+shared.FmtRelativeTime(rs.StartedAt))
 		}
 	}
 	if d.TaskID != "" {
-		headerRight = append(headerRight, truncate(d.TaskID, 14))
+		headerRight = append(headerRight, shared.Truncate(d.TaskID, 14))
 	}
 	l := PageLayout{
 		HeaderTitle:     i18n.T(i18n.KStdMonitorTitle),
@@ -244,7 +245,7 @@ func buildDashParamsPanel(d *DashboardState, rs *server.RunState, st Styles, max
 		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KWaitingData)))
 	} else {
 		lbls := []string{i18n.T(i18n.KProgress), i18n.T(i18n.KSuccessCount), i18n.T(i18n.KFailureCount)}
-		lw := maxLabelWidth(lbls)
+		lw := shared.MaxLabelWidth(lbls)
 		lines = append(lines, " "+labelValue(st, lbls[0], fmt.Sprintf("%d/%d", rs.DoneReqs, rs.TotalReqs), lw))
 		lines = append(lines, " "+labelValue(st, lbls[1], fmt.Sprintf("%d", rs.SuccessReqs), lw))
 		lines = append(lines, " "+labelValue(st, lbls[2], fmt.Sprintf("%d", rs.FailedReqs), lw))
@@ -269,7 +270,7 @@ func buildDashMetricsPanel(rs *server.RunState, st Styles, maxH, width int) stri
 // buildProgressLine 构建进度条行。
 func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 	if rs == nil {
-		return " " + padToDisplayWidth(i18n.T(i18n.KProgress), 4) + "  " + st.Muted.Render(i18n.T(i18n.KWaitingDots))
+		return " " + shared.PadToDisplayWidth(i18n.T(i18n.KProgress), 4) + "  " + st.Muted.Render(i18n.T(i18n.KWaitingDots))
 	}
 	total := rs.TotalReqs
 	done := rs.DoneReqs
@@ -280,13 +281,13 @@ func buildProgressLine(rs *server.RunState, st Styles, width int) string {
 	elapsed := "─"
 	if !rs.StartedAt.IsZero() {
 		if rs.FinishedAt != nil {
-			elapsed = fmtDuration(rs.FinishedAt.Sub(rs.StartedAt))
+			elapsed = shared.FmtDuration(rs.FinishedAt.Sub(rs.StartedAt))
 		} else {
-			elapsed = fmtDuration(time.Since(rs.StartedAt))
+			elapsed = shared.FmtDuration(time.Since(rs.StartedAt))
 		}
 	}
 	suffix := fmt.Sprintf("  %d / %d   %s", done, total, elapsed)
-	return renderProgressBar(st, " "+padToDisplayWidth(i18n.T(i18n.KProgress), 4)+"  ", suffix, ratio, width)
+	return renderProgressBar(st, " "+shared.PadToDisplayWidth(i18n.T(i18n.KProgress), 4)+"  ", suffix, ratio, width)
 }
 
 // buildRequestList 构建请求列表区域。
@@ -324,7 +325,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 		if !r.Success {
 			statusText = "✗"
 		}
-		totalText := fmtDuration(r.TotalTime)
+		totalText := shared.FmtDuration(r.TotalTime)
 		if !r.Success && r.ErrorMessage != "" {
 			totalText = r.ErrorMessage
 		}
@@ -334,7 +335,7 @@ func buildRequestList(d *DashboardState, rs *server.RunState, st Styles, width, 
 			id:      fmt.Sprintf("#%d", len(reqs)-pos),
 			status:  statusText,
 			total:   totalText,
-			ttft:    fmtDuration(r.TTFT),
+			ttft:    shared.FmtDuration(r.TTFT),
 			cache:   fmt.Sprintf("%dtok", r.CachedTokens),
 			ptok:    fmt.Sprintf("%dtok", r.PromptTokens),
 			ctok:    fmt.Sprintf("%dtok", r.CompletionTokens),

@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"fmt"
 	"strings"
 	"time"
@@ -186,8 +187,11 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 		cbItems = Hotkeys_TaskDetail_NoHistory()
 	}
 	modeStr := i18n.T(i18n.KStandardMode)
-	if inp.Turbo {
+	switch inp.RunMode() {
+	case "turbo":
 		modeStr = i18n.T(i18n.KTurboMode)
+	case "integrity":
+		modeStr = i18n.T(i18n.KIntegrityMode)
 	}
 	headerRight := []string{i18n.T(i18n.KNoRunRecords)}
 	historyCount := len(taskDetailHistoryEntries(s))
@@ -198,7 +202,7 @@ func RenderTaskDetail(s *TaskDetailState, st Styles, width, height int) string {
 		headerRight = append([]string{i18n.T(i18n.KRunning)}, headerRight...)
 	}
 	l := PageLayout{
-		HeaderTitle:     truncate(t.Name, 28),
+		HeaderTitle:     shared.Truncate(t.Name, 28),
 		HeaderSubtitle:  i18n.T(i18n.KTaskDetailSubtitle),
 		HeaderMeta:      i18n.T(i18n.KRecordDetails),
 		HeaderInfoLeft:  []string{modeStr, inp.NormalizedProtocol()},
@@ -223,39 +227,39 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	leftLines := panelTitleLines(st, i18n.T(i18n.KProtocol), leftW, false)
 
 	proto := inp.NormalizedProtocol()
-	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KProtocol))+"  "+st.Value.Render(proto), leftW))
-	endpoint := truncate(inp.ResolvedEndpointURL(), leftW-8)
-	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KEndpoint))+"  "+st.Value.Render(endpoint), leftW))
+	leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KProtocol))+"  "+st.Value.Render(proto), leftW))
+	endpoint := shared.Truncate(inp.ResolvedEndpointURL(), leftW-8)
+	leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KEndpoint))+"  "+st.Value.Render(endpoint), leftW))
 	if inp.ProxyURL != "" {
-		proxy := truncate(inp.ProxyURL, leftW-8)
-		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KProxy))+"  "+st.Value.Render(proxy), leftW))
+		proxy := shared.Truncate(inp.ProxyURL, leftW-8)
+		leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KProxy))+"  "+st.Value.Render(proxy), leftW))
 	}
-	leftLines = append(leftLines, padRight("", leftW))
+	leftLines = append(leftLines, shared.PadRight("", leftW))
 
-	model := truncate(inp.Model, leftW-10)
-	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KModel))+"  "+st.Value.Render(model), leftW))
+	model := shared.Truncate(inp.Model, leftW-10)
+	leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KModel))+"  "+st.Value.Render(model), leftW))
 	modeStr := i18n.T(i18n.KStandardMode)
 	if inp.Turbo {
 		modeStr = i18n.T(i18n.KTurboMode)
 	}
-	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KMode))+"  "+st.Value.Render(modeStr), leftW))
+	leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KMode))+"  "+st.Value.Render(modeStr), leftW))
 	if inp.Turbo {
 		tc := inp.TurboConfig
-		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KConcurrency))+"  "+st.Value.Render(
+		leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KConcurrency))+"  "+st.Value.Render(
 			fmt.Sprintf("%d → %d", tc.InitConcurrency, tc.MaxConcurrency)), leftW))
-		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KStepLabel))+"  "+st.Value.Render(
+		leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KStepLabel))+"  "+st.Value.Render(
 			fmt.Sprintf("+%d  %d req", tc.StepSize, tc.LevelRequests)), leftW))
 	} else {
-		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KConcurrency))+"  "+st.Value.Render(
+		leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KConcurrency))+"  "+st.Value.Render(
 			fmt.Sprintf("%d", inp.Concurrency)), leftW))
-		leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KRequests))+"  "+st.Value.Render(
+		leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KRequests))+"  "+st.Value.Render(
 			fmt.Sprintf("%d", inp.Count)), leftW))
 	}
-	leftLines = append(leftLines, padRight("", leftW))
-	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KTimeout))+"  "+st.Value.Render(fmtDuration(inp.Timeout)), leftW))
-	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KStream))+"  "+st.Value.Render(boolLabel(inp.Stream)), leftW))
+	leftLines = append(leftLines, shared.PadRight("", leftW))
+	leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KTimeout))+"  "+st.Value.Render(shared.FmtDuration(inp.Timeout)), leftW))
+	leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KStream))+"  "+st.Value.Render(boolLabel(inp.Stream)), leftW))
 	prompt := promptSummary(inp.PromptMode, inp.PromptText, inp.PromptFile, inp.PromptLength)
-	leftLines = append(leftLines, padRight(" "+st.Label.Render(i18n.T(i18n.KPromptLabel))+"  "+st.Value.Render(truncate(prompt, leftW-12)), leftW))
+	leftLines = append(leftLines, shared.PadRight(" "+st.Label.Render(i18n.T(i18n.KPromptLabel))+"  "+st.Value.Render(shared.Truncate(prompt, leftW-12)), leftW))
 	leftContent := finishPanelLines(leftLines, panelContentH)
 
 	// ─── 右栏：历史运行记录 ─────────────────────────────────────
@@ -270,7 +274,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	}
 
 	if effectiveLen == 0 {
-		rightLines := append(rightTitle, padRight(" "+st.Muted.Render(i18n.T(i18n.KNoRunRecords)), rightW))
+		rightLines := append(rightTitle, shared.PadRight(" "+st.Muted.Render(i18n.T(i18n.KNoRunRecords)), rightW))
 		rightContent := finishPanelLines(rightLines, panelContentH)
 		return renderSplitPanels(st, leftPanelFrame, rightPanelFrame, leftContent, rightContent)
 	}
@@ -292,7 +296,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	}
 	tableMaxH := panelContentH - len(detailLines)
 	if tableMaxH < 5 {
-		allowedDetail := maxInt(0, panelContentH-5)
+		allowedDetail := shared.MaxInt(0, panelContentH-5)
 		if len(detailLines) > allowedDetail {
 			detailLines = detailLines[:allowedDetail]
 		}
@@ -316,7 +320,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	rowData := make([]histRow, effectiveLen)
 	if hasActive {
 		rs := s.ActiveRun
-		modeShort := modeShortLabel(rs.Mode)
+		modeShort := shared.ModeShortLabel(rs.Mode)
 		rateStr := "─"
 		if rs.TotalReqs > 0 {
 			rateStr = fmt.Sprintf("%.1f%%", rs.SuccessRate)
@@ -342,10 +346,10 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 		isRunning := run.Status == string(server.RunStatusRunning)
 		isFailed := run.Status == string(server.RunStatusFailed)
 		isMuted := run.Status == string(server.RunStatusStopped)
-		modeShort := modeShortLabel(run.Mode)
+		modeShort := shared.ModeShortLabel(run.Mode)
 		durText := "─"
 		if !run.FinishedAt.IsZero() {
-			durText = fmtDuration(run.FinishedAt.Sub(run.StartedAt))
+			durText = shared.FmtDuration(run.FinishedAt.Sub(run.StartedAt))
 		}
 		timeText := run.StartedAt.Format("2006-01-02 15:04")
 		if isRunning {
@@ -359,7 +363,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 			mode:      modeShort,
 			rate:      fmt.Sprintf("%.1f%%", run.SuccessRate),
 			dur:       durText,
-			ttft:      fmtDuration(run.AvgTTFT),
+			ttft:      shared.FmtDuration(run.AvgTTFT),
 			tps:       fmt.Sprintf("%.1f", run.AvgTPS),
 			rpm:       fmt.Sprintf("%.0f", run.RPM),
 			tpm:       fmt.Sprintf("%.0f", run.TPM),
@@ -374,13 +378,13 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	h5 := i18n.T(i18n.KElapsed)
 	colWidths := []int{
 		0,                      // 时间=flex
-		maxInt(9, hw(h3)),      // 模式
-		maxInt(10, hw(h4)),     // 成功率
-		maxInt(10, hw(h5)),     // 耗时
-		maxInt(10, hw("TTFT")), // TTFT
-		maxInt(10, hw("TPS")),  // TPS
-		maxInt(8, hw("RPM")),   // RPM
-		maxInt(8, hw("TPM")),   // TPM
+		shared.MaxInt(9, hw(h3)),      // 模式
+		shared.MaxInt(10, hw(h4)),     // 成功率
+		shared.MaxInt(10, hw(h5)),     // 耗时
+		shared.MaxInt(10, hw("TTFT")), // TTFT
+		shared.MaxInt(10, hw("TPS")),  // TPS
+		shared.MaxInt(8, hw("RPM")),   // RPM
+		shared.MaxInt(8, hw("TPM")),   // TPM
 	}
 	sel := s.HistorySel
 	tableH := tableMaxH - len(rightTitle)
@@ -441,10 +445,10 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 
 // buildMetricRow 构建指标表格一行。
 func buildMetricRow(st Styles, name, minV, avgV, stdV, maxV string) string {
-	return "  " + st.Label.Render(padRight(name, 16)) +
-		st.Value.Render(padRight(minV, 10)) +
-		st.MetricVal.Render(padRight(avgV, 10)) +
-		st.Muted.Render(padRight(stdV, 10)) +
+	return "  " + st.Label.Render(shared.PadRight(name, 16)) +
+		st.Value.Render(shared.PadRight(minV, 10)) +
+		st.MetricVal.Render(shared.PadRight(avgV, 10)) +
+		st.Muted.Render(shared.PadRight(stdV, 10)) +
 		st.Value.Render(maxV)
 }
 
@@ -484,23 +488,23 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 	}
 	sel := history[histIdx]
 	elapsed := sel.FinishedAt.Sub(sel.StartedAt)
-	elapsedText := fmtDuration(elapsed)
+	elapsedText := shared.FmtDuration(elapsed)
 	finishedText := sel.FinishedAt.Format("2006-01-02 15:04")
 	if sel.FinishedAt.IsZero() {
-		elapsedText = fmtDuration(time.Since(sel.StartedAt))
+		elapsedText = shared.FmtDuration(time.Since(sel.StartedAt))
 		finishedText = i18n.T(i18n.KRunning)
 	}
-	labelW := maxLabelWidth([]string{
+	labelW := shared.MaxLabelWidth([]string{
 		i18n.T(i18n.KStatus), i18n.T(i18n.KMode), i18n.T(i18n.KStart), i18n.T(i18n.KEnd),
 		i18n.T(i18n.KElapsed), i18n.T(i18n.KSuccessRate), "TTFT", "TPS", "RPM", "TPM",
 		i18n.T(i18n.KProtocol), i18n.T(i18n.KModel), i18n.T(i18n.KCache), i18n.T(i18n.KErrorSummary),
 	})
 	indent := " "
 	gap := 4
-	contentW := maxInt(12, width-lipgloss.Width(indent))
+	contentW := shared.MaxInt(12, width-lipgloss.Width(indent))
 	useTwoCols := contentW >= 48
 
-	statusText := runStatusText(sel.Status)
+	statusText := shared.RunStatusText(sel.Status)
 	statusStyle := st.Value
 	switch sel.Status {
 	case "running":
@@ -513,21 +517,21 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 		statusStyle = st.Muted
 	}
 
-	modeText := modeShortLabel(sel.Mode)
+	modeText := shared.ModeShortLabel(sel.Mode)
 
 	renderCell := func(label, value string, valueStyle lipgloss.Style, cellW int) string {
-		prefix := st.Label.Render(padRight(label, labelW))
-		available := maxInt(6, cellW-labelW-2)
-		return prefix + "  " + valueStyle.Render(truncate(value, available))
+		prefix := st.Label.Render(shared.PadRight(label, labelW))
+		available := shared.MaxInt(6, cellW-labelW-2)
+		return prefix + "  " + valueStyle.Render(shared.Truncate(value, available))
 	}
 
 	appendSingleField := func(lines []string, label, value string, valueStyle lipgloss.Style) []string {
-		valueW := maxInt(10, contentW-labelW-2)
-		segments := wrapText(value, valueW)
+		valueW := shared.MaxInt(10, contentW-labelW-2)
+		segments := shared.WrapText(value, valueW)
 		if len(segments) == 0 {
 			segments = []string{""}
 		}
-		lines = append(lines, indent+st.Label.Render(padRight(label, labelW))+"  "+valueStyle.Render(segments[0]))
+		lines = append(lines, indent+st.Label.Render(shared.PadRight(label, labelW))+"  "+valueStyle.Render(segments[0]))
 		contIndent := strings.Repeat(" ", lipgloss.Width(indent)+labelW+2)
 		for _, seg := range segments[1:] {
 			lines = append(lines, contIndent+valueStyle.Render(seg))
@@ -542,14 +546,14 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 		}
 		leftW := (contentW - gap) / 2
 		rightW := contentW - gap - leftW
-		row := indent + padRight(renderCell(leftLabel, leftValue, leftStyle, leftW), leftW) + strings.Repeat(" ", gap) +
+		row := indent + shared.PadRight(renderCell(leftLabel, leftValue, leftStyle, leftW), leftW) + strings.Repeat(" ", gap) +
 			renderCell(rightLabel, rightValue, rightStyle, rightW)
 		return append(lines, row)
 	}
 
 	lines := []string{
-		padRight(st.Divider.Render(strings.Repeat("─", width)), width),
-		padRight(" "+st.SectionHead.Render(i18n.T(i18n.KRecordDetails)), width),
+		shared.PadRight(st.Divider.Render(strings.Repeat("─", width)), width),
+		shared.PadRight(" "+st.SectionHead.Render(i18n.T(i18n.KRecordDetails)), width),
 	}
 
 	lines = appendPairRow(lines,
@@ -565,7 +569,7 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 		i18n.T(i18n.KSuccessRate), fmt.Sprintf("%.1f%%", sel.SuccessRate), st.Value,
 	)
 	lines = appendPairRow(lines,
-		"TTFT", fmtDuration(sel.AvgTTFT), st.Value,
+		"TTFT", shared.FmtDuration(sel.AvgTTFT), st.Value,
 		"TPS", fmt.Sprintf("%.1f", sel.AvgTPS), st.MetricVal,
 	)
 	lines = appendPairRow(lines,
@@ -579,7 +583,7 @@ func buildTaskHistoryDetailLines(history []types.TaskRunSummary, histIdx int, st
 	}
 	if sel.ErrorSummary != "" {
 		lines = append(lines, indent+st.Label.Render(i18n.T(i18n.KErrorSummary)))
-		for _, seg := range wrapText(sel.ErrorSummary, maxInt(10, contentW-2)) {
+		for _, seg := range shared.WrapText(sel.ErrorSummary, shared.MaxInt(10, contentW-2)) {
 			lines = append(lines, indent+"  "+st.ErrStyle.Render(seg))
 		}
 	}

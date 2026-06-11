@@ -546,6 +546,26 @@ func (m *Model) handleServerEvent(msg ServerEventMsg) (tea.Model, tea.Cmd) {
 			m.client.LoadTasksCmd(),
 			m.client.LoadTaskRunHistoryCmd(taskID, 10),
 		)
+	case server.EventIntegrityCaseStarted:
+		if rs, ok := e.Payload.(*server.RunState); ok {
+			if m.dash != nil {
+				m.dash.RunState = rs
+			}
+			m.injectRunState(rs)
+		}
+
+	case server.EventIntegrityCaseDone:
+		if rs, ok := e.Payload.(*server.RunState); ok {
+			if m.dash != nil {
+				m.dash.RunState = rs
+			}
+			m.injectRunState(rs)
+		}
+
+	case server.EventAssertionResult:
+		if assertions, ok := e.Payload.([]types.AssertionResult); ok {
+			_ = assertions
+		}
 	}
 
 	// 继续等待下一条事件

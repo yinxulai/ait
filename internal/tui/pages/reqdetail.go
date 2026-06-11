@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"fmt"
 
 	tea "github.com/charmbracelet/bubbletea"
@@ -127,9 +128,9 @@ func RenderReqDetail(s *ReqDetailState, taskName string, st Styles, width, heigh
 	l := PageLayout{
 		HeaderTitle:     i18n.T(i18n.KViewRequest),
 		HeaderSubtitle:  i18n.T(i18n.KReqDetailSubtitle),
-		HeaderMeta:      truncate(string(s.RunID), 18),
+		HeaderMeta:      shared.Truncate(string(s.RunID), 18),
 		HeaderInfoLeft:  []string{fmt.Sprintf("%s %d/%d", i18n.T(i18n.KRequests), idx+1, len(s.Requests)), status},
-		HeaderInfoRight: []string{fmt.Sprintf("%.0f%%", r.CacheHitRate*100), fmtDuration(r.TotalTime)},
+		HeaderInfoRight: []string{fmt.Sprintf("%.0f%%", r.CacheHitRate*100), shared.FmtDuration(r.TotalTime)},
 		Hotkeys:         NewPageHotkeysWithHelp(Hotkeys_ReqDetail(), i18n.T(i18n.KHintGoBack), i18n.T(i18n.KHintQuit)),
 	}
 	frame := l.Frame(width, height)
@@ -175,11 +176,11 @@ func buildReqPerfPanel(r *types.RequestMetrics, st Styles, maxH, width int) stri
 	}
 	totalTime := "─"
 	if r.TotalTime > 0 {
-		totalTime = fmtDuration(r.TotalTime)
+		totalTime = shared.FmtDuration(r.TotalTime)
 	}
 	ttft := "─"
 	if r.TTFT > 0 {
-		ttft = fmtDuration(r.TTFT)
+		ttft = shared.FmtDuration(r.TTFT)
 	}
 	tps := "─"
 	if r.TPS > 0 {
@@ -189,18 +190,18 @@ func buildReqPerfPanel(r *types.RequestMetrics, st Styles, maxH, width int) stri
 	cacheSummary := fmt.Sprintf("%d tok (%.1f%%)", r.CachedTokens, r.CacheHitRate*100)
 	errorSummary := "—"
 	if !r.Success {
-		errorSummary = normalizeInlineText(r.ErrorMessage)
+		errorSummary = shared.NormalizeInlineText(r.ErrorMessage)
 		if errorSummary == "" {
 			errorSummary = i18n.T(i18n.KRunFailed)
 		}
-		errorSummary = truncate(errorSummary, maxInt(8, width-8))
+		errorSummary = shared.Truncate(errorSummary, shared.MaxInt(8, width-8))
 	}
 
 	lbls := []string{
 		i18n.T(i18n.KStatus), i18n.T(i18n.KTotalTime), "TTFT",
 		i18n.T(i18n.KOutputTPS), i18n.T(i18n.KToken), i18n.T(i18n.KCache),
 	}
-	lw := maxLabelWidth(lbls)
+	lw := shared.MaxLabelWidth(lbls)
 	lines = append(lines, " "+labelValue(st, lbls[0], statusStr, lw))
 	lines = append(lines, " "+labelValue(st, lbls[1], st.MetricVal.Render(totalTime), lw))
 	lines = append(lines, " "+labelValue(st, lbls[2], st.MetricVal.Render(ttft), lw))
@@ -227,13 +228,16 @@ func buildReqNetworkPanel(r *types.RequestMetrics, st Styles, maxH, width int) s
 	lbls := []string{
 		i18n.T(i18n.KDNS), i18n.T(i18n.KTCPConnect), i18n.T(i18n.KTLSHandshake), i18n.T(i18n.KTargetIP),
 	}
-	lw := maxLabelWidth(lbls)
-	lines = append(lines, " "+labelValue(st, lbls[0], fmtDuration(r.DNSTime), lw))
-	lines = append(lines, " "+labelValue(st, lbls[1], fmtDuration(r.ConnectTime), lw))
-	lines = append(lines, " "+labelValue(st, lbls[2], fmtDuration(r.TLSTime), lw))
+	lw := shared.MaxLabelWidth(lbls)
+	lines = append(lines, " "+labelValue(st, lbls[0], shared.FmtDuration(r.DNSTime), lw))
+	lines = append(lines, " "+labelValue(st, lbls[1], shared.FmtDuration(r.ConnectTime), lw))
+	lines = append(lines, " "+labelValue(st, lbls[2], shared.FmtDuration(r.TLSTime), lw))
+	// 始终显示目标IP行，保持高度一致
+	targetIPValue := "—"
 	if r.TargetIP != "" {
-		lines = append(lines, " "+labelValue(st, lbls[3], truncate(r.TargetIP, maxInt(4, width-12)), lw))
+		targetIPValue = shared.Truncate(r.TargetIP, shared.MaxInt(4, width-12))
 	}
+	lines = append(lines, " "+labelValue(st, lbls[3], targetIPValue, lw))
 
 	return finishPanelLines(lines, maxH)
 }
@@ -246,7 +250,7 @@ func buildInputSection(r *types.RequestMetrics, st Styles, width, maxH int) stri
 	if r.RequestBody == "" {
 		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KNotRecorded)))
 	} else {
-		for _, l := range wrapText(r.RequestBody, width-3) {
+		for _, l := range shared.WrapText(r.RequestBody, width-3) {
 			if len(lines) >= maxH-1 {
 				break
 			}
@@ -265,7 +269,7 @@ func buildOutputSection(r *types.RequestMetrics, scrollY int, st Styles, width, 
 	if r.ResponseBody == "" {
 		lines = append(lines, " "+st.Muted.Render(i18n.T(i18n.KNotRecorded)))
 	} else {
-		allLines := wrapText(r.ResponseBody, width-3)
+		allLines := shared.WrapText(r.ResponseBody, width-3)
 		if scrollY >= len(allLines) {
 			scrollY = len(allLines) - 1
 		}

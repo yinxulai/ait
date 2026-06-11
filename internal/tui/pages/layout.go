@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"strings"
 
 	"github.com/yinxulai/ait/internal/i18n"
@@ -231,5 +232,5 @@ func renderTooSmall(st Styles, width, _ int) string {
 	if width < 4 {
 		return "..."
 	}
-	return st.Muted.Render(truncate(i18n.T(i18n.KWindowTooSmall), width))
+	return st.Muted.Render(shared.Truncate(i18n.T(i18n.KWindowTooSmall), width))
 }

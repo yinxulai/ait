@@ -1,6 +1,7 @@
 package pages
 
 import (
+	"github.com/yinxulai/ait/internal/tui/pages/shared"
 	"fmt"
 	"strings"
 	"time"
@@ -170,10 +171,10 @@ func RenderTaskList(s *TaskListState, st Styles, width, height int) string {
 	}
 	headerRight := []string{i18n.T(i18n.KNoRunHistory)}
 	if latest := s.latestRunAt(); latest != nil {
-		headerRight = []string{fmtRelativeTime(*latest)}
+		headerRight = []string{shared.FmtRelativeTime(*latest)}
 	}
 	if t, ok := s.CurrentTask(); ok {
-		headerRight = append([]string{truncate(t.Name, 22)}, headerRight...)
+		headerRight = append([]string{shared.Truncate(t.Name, 22)}, headerRight...)
 	}
 	l := PageLayout{
 		HeaderTitle:     i18n.T(i18n.KTaskCenter),
@@ -231,7 +232,7 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 		isRunning := hasActiveRun || (t.LatestRun != nil && t.LatestRun.Status == string(server.RunStatusRunning))
 		lastRunText := "─"
 		if t.LatestRun != nil && !t.LatestRun.FinishedAt.IsZero() {
-			lastRunText = fmtRelativeTime(t.LatestRun.FinishedAt)
+			lastRunText = shared.FmtRelativeTime(t.LatestRun.FinishedAt)
 		}
 
 		displayName := t.Name
@@ -248,9 +249,9 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 
 		ttftText := "─"
 		if hasActiveRun && rs != nil && rs.AvgTTFT > 0 {
-			ttftText = fmtDuration(rs.AvgTTFT)
+			ttftText = shared.FmtDuration(rs.AvgTTFT)
 		} else if !hasActiveRun && t.LatestRun != nil {
-			ttftText = fmtDuration(t.LatestRun.AvgTTFT)
+			ttftText = shared.FmtDuration(t.LatestRun.AvgTTFT)
 		}
 
 		tpsText := "─"
@@ -314,15 +315,15 @@ func buildTaskListContent(s *TaskListState, st Styles, width, maxH int) string {
 	h7 := i18n.T(i18n.KColAvgTPS)
 	colWidths := []int{
 		0,                     // 任务名称=flex
-		maxInt(10, hw(h1)),    // 模式
-		maxInt(28, hw(h2)),    // 协议（数据可能较长）
-		maxInt(14, hw(h3)),    // 上次运行
-		maxInt(10, hw(h4)),    // 成功率
-		maxInt(12, hw(h5)),    // 缓存命中
-		maxInt(12, hw(h6)),    // TTFT均值
-		maxInt(12, hw(h7)),    // TPS均值
-		maxInt(10, hw("RPM")), // RPM
-		maxInt(10, hw("TPM")), // TPM
+		shared.MaxInt(10, hw(h1)),    // 模式
+		shared.MaxInt(28, hw(h2)),    // 协议（数据可能较长）
+		shared.MaxInt(14, hw(h3)),    // 上次运行
+		shared.MaxInt(10, hw(h4)),    // 成功率
+		shared.MaxInt(12, hw(h5)),    // 缓存命中
+		shared.MaxInt(12, hw(h6)),    // TTFT均值
+		shared.MaxInt(12, hw(h7)),    // TPS均值
+		shared.MaxInt(10, hw("RPM")), // RPM
+		shared.MaxInt(10, hw("TPM")), // TPM
 	}
 	t := lgtable.New().
 		Headers(i18n.T(i18n.KTaskName), h1, h2, h3, h4, h5, h6, h7, "RPM", "TPM").
@@ -411,9 +412,9 @@ func buildTaskListConfirmContent(s *TaskListState, st Styles, width, maxH int) s
 		return strings.Repeat("\n", maxH-1)
 	}
 	lines = append(lines, "")
-	lines = append(lines, st.ErrStyle.Render("  "+fmt.Sprintf("%s %s", i18n.T(i18n.KConfirmDeletePrompt), truncate(task.Name, maxInt(8, width-24)))))
+	lines = append(lines, st.ErrStyle.Render("  "+fmt.Sprintf("%s %s", i18n.T(i18n.KConfirmDeletePrompt), shared.Truncate(task.Name, shared.MaxInt(8, width-24)))))
 	lines = append(lines, "")
-	lines = append(lines, "  "+st.Label.Render(i18n.T(i18n.KTaskName))+"  "+st.Value.Render(truncate(task.Name, maxInt(8, width-14))))
+	lines = append(lines, "  "+st.Label.Render(i18n.T(i18n.KTaskName))+"  "+st.Value.Render(shared.Truncate(task.Name, shared.MaxInt(8, width-14))))
 	lines = append(lines, "  "+st.Label.Render(i18n.T(i18n.KTaskID))+"  "+st.Muted.Render(task.ID))
 	lines = append(lines, "")
 	lines = append(lines, "  "+st.Muted.Render(i18n.T(i18n.KIrreversible)))

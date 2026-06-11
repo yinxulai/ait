@@ -118,7 +118,18 @@ func (i Input) RunMode() string {
 	if i.Turbo {
 		return "turbo"
 	}
+	if i.Integrity.Enabled {
+		return "integrity"
+	}
 	return "standard"
+}
+
+func (i Input) IsTurbo() bool {
+	return i.Turbo || i.Integrity.Enabled == false && strings.ToLower(i.Mode) == "turbo"
+}
+
+func (i Input) IsIntegrity() bool {
+	return i.Integrity.Enabled || i.Integrity.Suite != ""
 }
 
 func (i Input) NormalizedProtocol() string {
@@ -339,8 +350,9 @@ type TurboResult struct {
 }
 
 type IntegrityConfig struct {
-	Suite         string   `json:"suite,omitempty"`
-	FailFast      bool     `json:"fail_fast,omitempty"`
+	Enabled      bool     `json:"enabled,omitempty"`
+	Suite        string   `json:"suite,omitempty"`
+	FailFast     bool     `json:"fail_fast,omitempty"`
 	CaseTimeoutMS int      `json:"case_timeout_ms,omitempty"`
 	RuleFiles     []string `json:"rule_files,omitempty"`
 }
