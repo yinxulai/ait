@@ -1,0 +1,41 @@
+{
+  "version": "1.0.0",
+  "repository": "https://github.com/yinxulai/ait",
+  "description": "AIT 内置完整性测试规则集",
+  "compatibility": {
+    "min_version": "0.1.0",
+    "max_version": "99.99.99"
+  },
+  "rules": {
+    "openai-completions": {
+      "suite": "openai-completions-smoke",
+      "protocol": "openai-completions",
+      "file": "integrity/openai-completions.json",
+      "description": "OpenAI Chat Completions 协议基础规则"
+    },
+    "openai-responses": {
+      "suite": "openai-responses-smoke",
+      "protocol": "openai-responses",
+      "file": "integrity/openai-responses.json",
+      "description": "OpenAI Responses API 协议基础规则"
+    },
+    "anthropic-messages": {
+      "suite": "anthropic-messages-smoke",
+      "protocol": "anthropic-messages",
+      "file": "integrity/anthropic-messages.json",
+      "description": "Anthropic Messages API 协议基础规则"
+    },
+    "common-latency": {
+      "suite": "*",
+      "protocol": "*",
+      "file": "integrity/common-latency.json",
+      "description": "通用延迟阈值检查"
+    }
+  },
+  "update_sources": {
+    "stable": "https://raw.githubusercontent.com/yinxulai/ait/{version}/data/index.json",
+    "latest": "https://raw.githubusercontent.com/yinxulai/ait/main/data/index.json",
+    "dev": "https://raw.githubusercontent.com/yinxulai/ait/dev/data/index.json"
+  },
+  "last_updated": "2026-06-11T00:00:00Z"
+}

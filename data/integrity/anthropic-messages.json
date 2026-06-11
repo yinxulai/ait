@@ -1,0 +1,49 @@
+{
+  "version": "ait.integrity.rules/v1",
+  "suite": "anthropic-messages-smoke",
+  "description": "Anthropic Messages API 协议完整性验证规则",
+  "assertions": [
+    {
+      "id": "builtin.anthropic.http_status",
+      "case_id": "basic-response-shape",
+      "level": "error",
+      "path": "response.status_code",
+      "op": "between",
+      "value": [200, 299],
+      "message": "HTTP 状态码必须在 200-299 范围内"
+    },
+    {
+      "id": "builtin.anthropic.id.format",
+      "case_id": "basic-response-shape",
+      "level": "error",
+      "path": "response.body.id",
+      "op": "matches",
+      "value": "^msg_[a-zA-Z0-9]+$",
+      "message": "Anthropic Messages ID 必须符合 msg_xxx 格式"
+    },
+    {
+      "id": "builtin.anthropic.content.exists",
+      "case_id": "basic-response-shape",
+      "level": "error",
+      "path": "response.body.content",
+      "op": "exists",
+      "message": "响应必须包含 content 数组"
+    },
+    {
+      "id": "builtin.anthropic.content.not_empty",
+      "case_id": "basic-response-shape",
+      "level": "error",
+      "path": "response.body.content[0]",
+      "op": "exists",
+      "message": "content 数组不能为空"
+    },
+    {
+      "id": "builtin.anthropic.usage.exists",
+      "case_id": "basic-response-shape",
+      "level": "warn",
+      "path": "response.body.usage",
+      "op": "exists",
+      "message": "建议返回 usage 信息"
+    }
+  ]
+}

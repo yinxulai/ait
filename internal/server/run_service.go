@@ -342,7 +342,13 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 	runID := RunID(fmt.Sprintf("run_%d", time.Now().UnixNano()))
 	now := time.Now()
 	mode := hydratedInput.RunMode()
-	ctx, cancel := context.WithCancel(context.Background())
+	// 使用 Server 的生命周期 Context，这样运行可以响应 Server 关闭
+	// 如果 Server 没有 ctx（测试场景），使用 Background
+	parentCtx := s.ctx
+	if parentCtx == nil {
+		parentCtx = context.Background()
+	}
+	ctx, cancel := context.WithCancel(parentCtx)
 
 	state := &RunState{
 		RunID:     runID,
@@ -414,7 +420,11 @@ func (s *serverImpl) dispatchQueuedRun(item runQueueItem) {
 func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
 	ctx := ar.ctx
 	if ctx == nil {
-		ctx = context.Background()
+		// 备用：使用 Server 的生命周期 Context
+		ctx = s.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
 	}
 	loggerInstance := loggerForInput(input)
 	modelClient, err := client.NewClient(input, loggerInstance)
@@ -453,7 +463,7 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 
 // runIntegrity 在 goroutine 中执行接口完整性测试。
 func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
-	suite, err := integrity.LoadSuite(input)
+	suite, err := integrity.LoadSuiteWithManager(input, s.rulesManager)
 	if err != nil {
 		s.failRun(ar, runID, taskDef, runStore, err)
 		return
@@ -461,7 +471,11 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 
 	ctx := ar.ctx
 	if ctx == nil {
-		ctx = context.Background()
+		// 备用：使用 Server 的生命周期 Context
+		ctx = s.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
 	}
 	aggregator := newRunAggregator(s, ar, runID, taskDef, runStore)
 	caseIndex := 0
@@ -544,7 +558,11 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
 	ctx := ar.ctx
 	if ctx == nil {
-		ctx = context.Background()
+		// 备用：使用 Server 的生命周期 Context
+		ctx = s.ctx
+		if ctx == nil {
+			ctx = context.Background()
+		}
 	}
 	loggerInstance := loggerForInput(input)
 	modelClient, err := client.NewClient(input, loggerInstance)

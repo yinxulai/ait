@@ -36,7 +36,7 @@ func main() {
 	}
 
 	// ── 创建 Server ───────────────────────────────────────────────────────────
-	srv, err := server.New()
+	srv, err := server.NewWithVersion(Version)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "初始化 Server 失败: %v\n", err)
 		os.Exit(1)

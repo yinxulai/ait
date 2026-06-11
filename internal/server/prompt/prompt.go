@@ -3,6 +3,7 @@ package prompt
 import (
 	"fmt"
 	"io/fs"
+	"log/slog"
 	"math/rand"
 	"os"
 	"path/filepath"
@@ -154,7 +155,7 @@ func (ps *PromptSource) GetRandomContent() string {
 	// 读取文件内容
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 读取文件失败 %s: %v\n", filePath, err)
+		slog.Warn("failed to read prompt file", "path", filePath, "error", err)
 		return ""
 	}
 
@@ -183,7 +184,7 @@ func (ps *PromptSource) GetContentByIndex(index int) string {
 	filePath := ps.FilePaths[index]
 	content, err := os.ReadFile(filePath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "警告: 读取文件失败 %s: %v\n", filePath, err)
+		slog.Warn("failed to read prompt file, falling back to random", "path", filePath, "error", err)
 		return ps.GetRandomContent()
 	}
 

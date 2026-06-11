@@ -1,6 +1,7 @@
 package server
 
 import (
+	"context"
 	"errors"
 	"fmt"
 
@@ -72,6 +73,11 @@ func (s *serverImpl) DeleteTask(id string) error {
 		return err
 	}
 	return s.runStore.DeleteTaskRuns(id)
+}
+
+// Context 返回 Server 的生命周期 Context。
+func (s *serverImpl) Context() context.Context {
+	return s.ctx
 }
 
 // DuplicateTask 复制指定任务（ID 和时间戳重置，名称加 " (copy)" 后缀）。

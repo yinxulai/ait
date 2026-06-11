@@ -1,0 +1,173 @@
+{
+  "version": "ait.integrity.rules/v1",
+  "suite": "openai-completions-smoke",
+  "description": "OpenAI Chat Completions 协议完整性验证规则",
+  "cases": [
+    {
+      "id": "basic-non-streaming",
+      "name": "基础非流式响应",
+      "description": "验证非流式 Chat Completions API 的基本响应格式",
+      "category": "protocol",
+      "capability": "basic_request",
+      "required": true,
+      "request": {
+        "prompt": "Reply with a short greeting in one sentence.",
+        "stream": false
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "http_status",
+          "level": "error",
+          "path": "response.status_code",
+          "op": "between",
+          "value": [200, 299],
+          "message": "HTTP 状态码必须在 200-299 范围内"
+        },
+        {
+          "id": "id.format",
+          "level": "error",
+          "path": "response.body.id",
+          "op": "matches",
+          "value": "^chatcmpl-[a-zA-Z0-9]+$",
+          "message": "Chat Completions ID 必须符合 chatcmpl-xxx 格式"
+        },
+        {
+          "id": "choices.exists",
+          "level": "error",
+          "path": "response.body.choices",
+          "op": "exists",
+          "message": "响应必须包含 choices 数组"
+        },
+        {
+          "id": "choices.not_empty",
+          "level": "error",
+          "path": "response.body.choices[0]",
+          "op": "exists",
+          "message": "choices 数组不能为空"
+        },
+        {
+          "id": "message.content",
+          "level": "error",
+          "path": "response.body.choices[0].message.content",
+          "op": "exists",
+          "message": "message 必须包含 content 字段"
+        },
+        {
+          "id": "finish_reason",
+          "level": "error",
+          "path": "response.body.choices[0].finish_reason",
+          "op": "in",
+          "value": ["stop", "length", "content_filter", "tool_calls", "function_call"],
+          "message": "finish_reason 必须是有效值"
+        },
+        {
+          "id": "usage.exists",
+          "level": "warn",
+          "path": "response.body.usage",
+          "op": "exists",
+          "message": "建议返回 usage 信息"
+        },
+        {
+          "id": "usage.prompt_tokens",
+          "level": "info",
+          "path": "response.body.usage.prompt_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "prompt_tokens 应该大于等于 0"
+        },
+        {
+          "id": "usage.completion_tokens",
+          "level": "info",
+          "path": "response.body.usage.completion_tokens",
+          "op": "gt",
+          "value": 0,
+          "message": "completion_tokens 应该大于 0"
+        }
+      ]
+    },
+    {
+      "id": "streaming-response",
+      "name": "流式响应",
+      "description": "验证流式 Chat Completions API 的响应格式",
+      "category": "protocol",
+      "capability": "streaming",
+      "required": true,
+      "request": {
+        "prompt": "Count from 1 to 5, one number per line.",
+        "stream": true
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "http_status",
+          "level": "error",
+          "path": "response.status_code",
+          "op": "eq",
+          "value": 200,
+          "message": "流式响应 HTTP 状态码必须是 200"
+        },
+        {
+          "id": "content_type",
+          "level": "error",
+          "path": "response.headers.content-type",
+          "op": "contains",
+          "value": "text/event-stream",
+          "message": "流式响应 Content-Type 必须包含 text/event-stream"
+        },
+        {
+          "id": "first_chunk.id",
+          "level": "error",
+          "path": "response.body.chunks[0].id",
+          "op": "matches",
+          "value": "^chatcmpl-[a-zA-Z0-9]+$",
+          "message": "第一个 chunk 必须包含 chatcmpl-xxx 格式的 ID"
+        },
+        {
+          "id": "delta.exists",
+          "level": "error",
+          "path": "response.body.chunks[0].choices[0].delta",
+          "op": "exists",
+          "message": "流式响应必须包含 delta 对象"
+        },
+        {
+          "id": "final_chunk.finish_reason",
+          "level": "error",
+          "path": "response.body.chunks[-1].choices[0].finish_reason",
+          "op": "in",
+          "value": ["stop", "length", "content_filter"],
+          "message": "最后一个 chunk 必须包含有效的 finish_reason"
+        }
+      ]
+    },
+    {
+      "id": "model-parameter",
+      "name": "模型参数验证",
+      "description": "验证模型参数是否正确返回",
+      "category": "protocol",
+      "capability": "model_info",
+      "required": false,
+      "request": {
+        "prompt": "Say OK",
+        "stream": false
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "model.exists",
+          "level": "warn",
+          "path": "response.body.model",
+          "op": "exists",
+          "message": "建议返回使用的模型名称"
+        },
+        {
+          "id": "created.exists",
+          "level": "info",
+          "path": "response.body.created",
+          "op": "exists",
+          "message": "建议返回创建时间戳"
+        }
+      ]
+    }
+  ]
+}

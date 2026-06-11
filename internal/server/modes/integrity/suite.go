@@ -1,8 +1,10 @@
 package integrity
 
 import (
+	"context"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"strings"
@@ -16,32 +18,65 @@ const (
 )
 
 type RuleFile struct {
-	Version    string            `json:"version"`
-	Suite      string            `json:"suite"`
-	Assertions []types.Assertion `json:"assertions"`
+	Version     string              `json:"version"`
+	Suite       string              `json:"suite"`
+	Description string              `json:"description"`
+	Cases       []types.IntegrityCase `json:"cases"`       // 新：完整的测试用例
+	Assertions  []types.Assertion     `json:"assertions"`  // 旧：兼容性保留
 }
 
 func LoadSuite(input types.Input) (types.IntegritySuite, error) {
+	return LoadSuiteWithManager(input, nil)
+}
+
+func LoadSuiteWithManager(input types.Input, rulesManager *RulesManager) (types.IntegritySuite, error) {
 	suite := BuiltinSuite(input.NormalizedProtocol(), input.Integrity.Suite)
+	
+	// 自动加载内置规则
+	if rulesManager != nil {
+		builtinFiles, err := rulesManager.GetRuleFiles(input.NormalizedProtocol(), suite.ID)
+		if err == nil {
+			for _, file := range builtinFiles {
+				rules, err := LoadRuleFile(file)
+				if err != nil {
+					// 内置规则加载失败只警告，不中断
+					slog.Warn("failed to load builtin rule, skipping", "file", file, "error", err)
+					continue
+				}
+				// 跳过 suite 检查（内置规则可以使用 * 通配）
+				suite = MergeCases(suite, rules.Cases, file)
+				suite = MergeAssertions(suite, rules.Assertions, file)
+			}
+		}
+	}
+	
+	// 加载用户自定义规则
 	for _, file := range input.Integrity.RuleFiles {
 		rules, err := LoadRuleFile(file)
 		if err != nil {
 			return types.IntegritySuite{}, err
 		}
-		if strings.TrimSpace(rules.Suite) != "" && rules.Suite != suite.ID {
+		if strings.TrimSpace(rules.Suite) != "" && rules.Suite != suite.ID && rules.Suite != "*" {
 			return types.IntegritySuite{}, fmt.Errorf("rule file %q targets suite %q, current suite is %q", file, rules.Suite, suite.ID)
 		}
+		suite = MergeCases(suite, rules.Cases, file)
 		suite = MergeAssertions(suite, rules.Assertions, file)
 	}
 	return suite, nil
 }
 
 func LoadRuleFile(path string) (RuleFile, error) {
+	return LoadRuleFileWithContext(context.Background(), path)
+}
+
+func LoadRuleFileWithContext(ctx context.Context, path string) (RuleFile, error) {
+	// 只支持本地文件路径
 	path = expandHome(path)
 	data, err := os.ReadFile(path)
 	if err != nil {
 		return RuleFile{}, fmt.Errorf("load integrity rule file %q: %w", path, err)
 	}
+
 	var rules RuleFile
 	if err := json.Unmarshal(data, &rules); err != nil {
 		return RuleFile{}, fmt.Errorf("parse integrity rule file %q: %w", path, err)
@@ -49,12 +84,111 @@ func LoadRuleFile(path string) (RuleFile, error) {
 	if rules.Version != "" && rules.Version != DefaultRuleVersion {
 		return RuleFile{}, fmt.Errorf("unsupported integrity rule version %q in %q", rules.Version, path)
 	}
+	
+	// 设置 assertions 的 source（兼容旧格式）
 	for i := range rules.Assertions {
 		if strings.TrimSpace(rules.Assertions[i].Source) == "" {
 			rules.Assertions[i].Source = path
 		}
 	}
+	
+	// 设置 cases 中 assertions 的 source（新格式）
+	for i := range rules.Cases {
+		for j := range rules.Cases[i].Assertions {
+			if strings.TrimSpace(rules.Cases[i].Assertions[j].Source) == "" {
+				rules.Cases[i].Assertions[j].Source = path
+			}
+			// 设置 CaseID（如果没有）
+			if strings.TrimSpace(rules.Cases[i].Assertions[j].CaseID) == "" {
+				rules.Cases[i].Assertions[j].CaseID = rules.Cases[i].ID
+			}
+		}
+	}
+	
 	return rules, nil
+}
+
+// MergeCases 合并完整的测试用例到 suite
+func MergeCases(suite types.IntegritySuite, cases []types.IntegrityCase, source string) types.IntegritySuite {
+	if len(cases) == 0 {
+		return suite
+	}
+
+	caseIndex := make(map[string]int, len(suite.Cases))
+	for i := range suite.Cases {
+		caseIndex[suite.Cases[i].ID] = i
+	}
+
+	for _, newCase := range cases {
+		idx, exists := caseIndex[newCase.ID]
+		if exists {
+			// Case 已存在，合并 assertions
+			existingCase := suite.Cases[idx]
+			
+			// 如果新 case 定义了 request，使用新的（优先级更高）
+			if newCase.Request.Prompt != "" {
+				existingCase.Request = newCase.Request
+			}
+			
+			// 更新其他字段（如果新 case 有定义）
+			if newCase.Name != "" {
+				existingCase.Name = newCase.Name
+			}
+			if newCase.Description != "" {
+				existingCase.Description = newCase.Description
+			}
+			if newCase.Category != "" {
+				existingCase.Category = newCase.Category
+			}
+			if newCase.Capability != "" {
+				existingCase.Capability = newCase.Capability
+			}
+			if newCase.TimeoutMS > 0 {
+				existingCase.TimeoutMS = newCase.TimeoutMS
+			}
+			
+			// 合并 assertions
+			for _, assertion := range newCase.Assertions {
+				if assertion.Source == "" {
+					assertion.Source = source
+				}
+				if assertion.CaseID == "" {
+					assertion.CaseID = newCase.ID
+				}
+				
+				// 检查是否已存在相同 ID 的 assertion
+				replaced := false
+				if assertion.ID != "" {
+					for j := range existingCase.Assertions {
+						if existingCase.Assertions[j].ID == assertion.ID {
+							existingCase.Assertions[j] = assertion
+							replaced = true
+							break
+						}
+					}
+				}
+				if !replaced {
+					existingCase.Assertions = append(existingCase.Assertions, assertion)
+				}
+			}
+			
+			suite.Cases[idx] = existingCase
+		} else {
+			// 新的 case，直接添加
+			for i := range newCase.Assertions {
+				if newCase.Assertions[i].Source == "" {
+					newCase.Assertions[i].Source = source
+				}
+				if newCase.Assertions[i].CaseID == "" {
+					newCase.Assertions[i].CaseID = newCase.ID
+				}
+			}
+			suite.Cases = append(suite.Cases, newCase)
+			caseIndex[newCase.ID] = len(suite.Cases) - 1
+		}
+	}
+
+	return suite
 }
 
 func MergeAssertions(suite types.IntegritySuite, assertions []types.Assertion, source string) types.IntegritySuite {

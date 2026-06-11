@@ -1,0 +1,34 @@
+{
+  "version": "ait.integrity.rules/v1",
+  "suite": "*",
+  "description": "通用延迟阈值检查（适用于所有协议）",
+  "assertions": [
+    {
+      "id": "builtin.latency.total.critical",
+      "case_id": "basic-response-shape",
+      "level": "error",
+      "path": "metrics.total_ms",
+      "op": "lte",
+      "value": 30000,
+      "message": "总延迟必须在 30 秒以内（硬性要求）"
+    },
+    {
+      "id": "builtin.latency.total.warning",
+      "case_id": "basic-response-shape",
+      "level": "warn",
+      "path": "metrics.total_ms",
+      "op": "lte",
+      "value": 10000,
+      "message": "总延迟建议在 10 秒以内（性能建议）"
+    },
+    {
+      "id": "builtin.latency.ttft.warning",
+      "case_id": "basic-response-shape",
+      "level": "warn",
+      "path": "metrics.ttft_ms",
+      "op": "lte",
+      "value": 3000,
+      "message": "首 token 时间建议在 3 秒以内"
+    }
+  ]
+}

@@ -4,7 +4,7 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
-	"os"
+	"log/slog"
 	"strings"
 	"time"
 
@@ -34,13 +34,13 @@ func New(svc server.Server) *Server {
 }
 
 func (s *Server) Run(ctx context.Context) error {
-	fmt.Fprintf(os.Stderr, "AIT MCP server starting on stdio; tools=%s\n", strings.Join(toolNames(), ", "))
+	slog.Info("AIT MCP server starting", "transport", "stdio", "tools", strings.Join(toolNames(), ", "))
 	err := s.sdk.Run(ctx, &mcpsdk.StdioTransport{})
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "AIT MCP server stopped with error: %v\n", err)
+		slog.Error("AIT MCP server stopped with error", "error", err)
 		return err
 	}
-	fmt.Fprintln(os.Stderr, "AIT MCP server stopped")
+	slog.Info("AIT MCP server stopped")
 	return nil
 }
 

@@ -1,6 +1,7 @@
 package tui
 
 import (
+	"context"
 	"testing"
 
 	"github.com/yinxulai/ait/internal/server"
@@ -42,6 +43,7 @@ func (s *stubServer) GenerateRunReport(runID server.RunID, fmt server.ReportForm
 }
 func (s *stubServer) GetAppConfig() (*config.Config, error) { return &config.Config{}, nil }
 func (s *stubServer) UpdateProxyURL(proxyURL string) error  { return nil }
+func (s *stubServer) Context() context.Context { return context.Background() }
 
 // ─── NewModel ─────────────────────────────────────────────────────────────────
 
