@@ -202,6 +202,16 @@ func buildStoredRunResult(snap *RunState) store.RunResult {
 			result.MaxStableConcurrency = level
 		}
 	}
+	// 预计算汇总字段（避免任务列表页重复加载 requests.jsonl）
+	result.DoneReqs = snap.DoneReqs
+	result.SuccessReqs = snap.SuccessReqs
+	result.FailedReqs = snap.FailedReqs
+	result.SuccessRate = snap.SuccessRate
+	result.AvgTTFT = snap.AvgTTFT
+	result.AvgTPS = snap.AvgTPS
+	result.CacheHitRate = snap.CacheHitRate
+	result.RPM = snap.RPM
+	result.TPM = snap.TPM
 	return result
 }
 
@@ -814,11 +824,22 @@ func (s *serverImpl) GetRunState(runID RunID) (*RunState, bool) {
 	if err != nil || run == nil {
 		return nil, false
 	}
-	requests, err := runStore.LoadRequests(run.Metadata.TaskID, string(runID))
-	if err != nil {
-		return nil, false
+	// 优先从预存汇总构建状态；若 requests.jsonl 损坏仍可降级展示
+	state := buildRunStateFromStoredRun(run, nil)
+	if state != nil {
+		// requests.jsonl 存在时补充请求明细（供请求详情页使用）
+		if requests, err := runStore.LoadRequests(run.Metadata.TaskID, string(runID)); err == nil {
+			state.Requests = requestPointers(requests)
+			state.DoneReqs = len(requests)
+			for _, r := range requests {
+				if r.Success {
+					state.SuccessReqs++
+				}
+			}
+			state.FailedReqs = state.DoneReqs - state.SuccessReqs
+		}
 	}
-	return buildRunStateFromStoredRun(run, requests), true
+	return state, true
 }
 
 // SubscribeRunEvents 订阅指定运行的事件流。

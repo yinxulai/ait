@@ -39,6 +39,17 @@ type RunResult struct {
 	StandardResult  *types.ReportData      `json:"standard_result,omitempty"`
 	TurboResult     *types.TurboResult     `json:"turbo_result,omitempty"`
 	IntegrityResult *types.IntegrityResult `json:"integrity_result,omitempty"`
+
+	// 预计算汇总字段（避免每次加载任务列表时重新扫描 requests.jsonl）
+	DoneReqs     int           `json:"done_reqs,omitempty"`
+	SuccessReqs  int           `json:"success_reqs,omitempty"`
+	FailedReqs   int           `json:"failed_reqs,omitempty"`
+	SuccessRate  float64       `json:"success_rate,omitempty"`
+	AvgTTFT      time.Duration `json:"avg_ttft,omitempty"`
+	AvgTPS       float64       `json:"avg_tps,omitempty"`
+	CacheHitRate float64       `json:"cache_hit_rate,omitempty"`
+	RPM          float64       `json:"rpm,omitempty"`
+	TPM          float64       `json:"tpm,omitempty"`
 }
 
 type StoredRun struct {
@@ -265,11 +276,8 @@ func (s *RunStore) LoadSummary(taskID, runID string) (*types.TaskRunSummary, err
 	if err != nil || run == nil {
 		return nil, err
 	}
-	requests, err := s.LoadRequests(taskID, runID)
-	if err != nil {
-		return nil, err
-	}
-	summary := run.Summary(requests)
+	// 优先从 result.json 预存字段生成摘要，不依赖 requests.jsonl
+	summary := run.Summary(nil)
 	return &summary, nil
 }
 
@@ -291,11 +299,16 @@ func (s *RunStore) ListSummariesByTask(taskID string, limit int) ([]types.TaskRu
 	}
 	summaries := make([]types.TaskRunSummary, 0, len(runs))
 	for _, run := range runs {
-		requests, err := s.LoadRequests(run.Metadata.TaskID, run.Metadata.RunID)
-		if err != nil {
-			return nil, err
+		// 优先从 result.json 中预存字段生成摘要，避免扫描 requests.jsonl
+		summary := run.Summary(nil)
+		// 对于旧运行，预存字段可能为空；此时回退到加载 requests.jsonl
+		if summary.SuccessRate == 0 && summary.AvgTTFT == 0 && summary.AvgTPS == 0 {
+			if requests, err := s.LoadRequests(run.Metadata.TaskID, run.Metadata.RunID); err == nil {
+				summary = run.Summary(requests)
+			}
+			// 如果 requests.jsonl 损坏或不存在，保持零值，不阻断列表加载
 		}
-		summaries = append(summaries, run.Summary(requests))
+		summaries = append(summaries, summary)
 	}
 	return summaries, nil
 }
@@ -313,34 +326,20 @@ func (r StoredRun) Summary(requests []types.RequestMetrics) types.TaskRunSummary
 	if r.Metadata.FinishedAt != nil {
 		summary.FinishedAt = *r.Metadata.FinishedAt
 	}
-	derived := summarizeRequests(requests)
-	summary.SuccessRate = derived.SuccessRate
-	summary.AvgTTFT = derived.AvgTTFT
-	summary.AvgTPS = derived.AvgTPS
-	summary.CacheHitRate = derived.CacheHitRate
 
-	// 从时间信息计算 RPM/TPM
-	if !r.Metadata.StartedAt.IsZero() {
-		end := time.Now()
-		if r.Metadata.FinishedAt != nil {
-			end = *r.Metadata.FinishedAt
-		}
-		if elapsed := end.Sub(r.Metadata.StartedAt).Minutes(); elapsed > 0 {
-			var totalTokens int64
-			for _, req := range requests {
-				if req.Success {
-					totalTokens += int64(req.CompletionTokens)
-				}
-			}
-			summary.RPM = float64(len(requests)) / elapsed
-			summary.TPM = float64(totalTokens) / elapsed
-		}
-	}
-
+	// 优先使用预计算汇总字段（避免每次加载任务列表时重新扫描 requests.jsonl）
 	if r.Result != nil {
 		summary.ErrorSummary = r.Result.ErrorSummary
 		summary.MaxStableConcurrency = r.Result.MaxStableConcurrency
-		// 优先使用 ModeResult 泛型字段
+		if r.Result.DoneReqs > 0 || r.Result.SuccessReqs > 0 {
+			summary.SuccessRate = r.Result.SuccessRate
+			summary.AvgTTFT = r.Result.AvgTTFT
+			summary.AvgTPS = r.Result.AvgTPS
+			summary.CacheHitRate = r.Result.CacheHitRate
+			summary.RPM = r.Result.RPM
+			summary.TPM = r.Result.TPM
+		}
+		// 模式特定字段（优先级高于预存汇总）
 		if r.Result.ModeResult != nil {
 			switch result := r.Result.ModeResult.(type) {
 			case *types.ReportData:
@@ -383,6 +382,34 @@ func (r StoredRun) Summary(requests []types.RequestMetrics) types.TaskRunSummary
 			}
 		}
 	}
+
+	// 如果既没有预存字段也没有 requests，就返回已填充的基本字段
+	if summary.SuccessRate == 0 && summary.AvgTTFT == 0 && summary.AvgTPS == 0 && len(requests) > 0 {
+		derived := summarizeRequests(requests)
+		summary.SuccessRate = derived.SuccessRate
+		summary.AvgTTFT = derived.AvgTTFT
+		summary.AvgTPS = derived.AvgTPS
+		summary.CacheHitRate = derived.CacheHitRate
+
+		// 从时间信息计算 RPM/TPM
+		if !r.Metadata.StartedAt.IsZero() {
+			end := time.Now()
+			if r.Metadata.FinishedAt != nil {
+				end = *r.Metadata.FinishedAt
+			}
+			if elapsed := end.Sub(r.Metadata.StartedAt).Minutes(); elapsed > 0 {
+				var totalTokens int64
+				for _, req := range requests {
+					if req.Success {
+						totalTokens += int64(req.CompletionTokens)
+					}
+				}
+				summary.RPM = float64(len(requests)) / elapsed
+				summary.TPM = float64(totalTokens) / elapsed
+			}
+		}
+	}
+
 	return summary
 }
 
