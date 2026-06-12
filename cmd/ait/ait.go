@@ -84,7 +84,3 @@ func routeByFlags(mcpEnabled, webEnabled bool) string {
 	}
 	return "tui"
 }
-
-func routeByMCPFlag(enabled bool) string {
-	return routeByFlags(enabled, false)
-}

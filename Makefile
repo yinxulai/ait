@@ -43,6 +43,18 @@ build-web: web-build
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) -tags webembed $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)/
 
+## run-web: 构建并启动 Web UI（监听 127.0.0.1:18180）
+.PHONY: run-web
+run-web: build-web
+	./$(BIN_DIR)/$(BINARY) --web
+
+## test-web: 验证 Web UI、Go 测试与嵌入构建
+.PHONY: test-web
+test-web:
+	cd $(WEB_DIR) && npm ci && npm run lint && npm run build
+	$(GOTEST) ./cmd/$(BINARY) ./internal/web
+	$(GOBUILD) -tags webembed $(BUILD_FLAGS) -o /tmp/$(BINARY)-webembed ./cmd/$(BINARY)/
+
 ## build-all: 交叉编译所有平台
 .PHONY: build-all
 build-all:
