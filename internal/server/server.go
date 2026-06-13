@@ -18,6 +18,7 @@ type Server interface {
 	// --- 任务管理 ---
 	ListTasks() ([]types.TaskOverview, error)
 	GetTask(id string) (types.TaskDefinition, error)
+	ValidateTaskConfig(cfg TaskConfig) (TaskConfig, error)
 	CreateTask(cfg TaskConfig) (types.TaskDefinition, error)
 	UpdateTask(id string, cfg TaskConfig) (types.TaskDefinition, error)
 	DeleteTask(id string) error
@@ -52,6 +53,11 @@ type Server interface {
 
 	// UpdateProxyURL 更新并持久化全局代理 URL。
 	UpdateProxyURL(proxyURL string) error
+
+	// --- 元数据 ---
+	ListProtocols() []ProtocolMeta
+	ListIntegritySuites(protocol string) ([]types.IntegritySuite, error)
+	GetIntegritySuite(protocol, suiteID string) (types.IntegritySuite, error)
 
 	// Context 返回 Server 的生命周期 Context，用于子操作。
 	// 当 Server 关闭时，此 Context 会被取消。
@@ -116,8 +122,8 @@ func NewWithVersion(version string) (Server, error) {
 		bus:          newEventBus(),
 		activeRuns:   make(map[RunID]*activeRun),
 		rulesManager: rulesManager,
-		ctx:         ctx,
-		cancel:      cancel,
+		ctx:          ctx,
+		cancel:       cancel,
 	}
 	srv.scheduler = newRunScheduler(1, srv.dispatchQueuedRun)
 

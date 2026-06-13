@@ -8,6 +8,8 @@ import (
 	"net/http"
 	"strings"
 	"time"
+
+	aitserver "github.com/yinxulai/ait/internal/server"
 )
 
 const defaultAddr = "127.0.0.1:18180"
@@ -20,12 +22,14 @@ func Run(ctx context.Context) error {
 		return err
 	}
 
-	mux := http.NewServeMux()
-	mux.Handle("/", spaHandler(assets))
+	svc, err := aitserver.New()
+	if err != nil {
+		return err
+	}
 
 	srv := &http.Server{
 		Addr:              defaultAddr,
-		Handler:           mux,
+		Handler:           NewHandler(assets, svc),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
 
@@ -41,6 +45,13 @@ func Run(ctx context.Context) error {
 		return err
 	}
 	return nil
+}
+
+func NewHandler(assets fs.FS, svc aitserver.Server) http.Handler {
+	mux := http.NewServeMux()
+	mux.Handle("/api/", newAPIHandler(svc))
+	mux.Handle("/", spaHandler(assets))
+	return mux
 }
 
 func spaHandler(assets fs.FS) http.Handler {

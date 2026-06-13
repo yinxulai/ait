@@ -31,9 +31,14 @@ func (s *serverImpl) GetTask(id string) (types.TaskDefinition, error) {
 
 // CreateTask 新建任务并持久化。
 func (s *serverImpl) CreateTask(cfg TaskConfig) (types.TaskDefinition, error) {
+	validated, err := s.ValidateTaskConfig(cfg)
+	if err != nil {
+		return types.TaskDefinition{}, err
+	}
+
 	created, err := s.taskStore.Create(types.TaskDefinition{
-		Name:  cfg.Name,
-		Input: cfg.Input,
+		Name:  validated.Name,
+		Input: validated.Input,
 	})
 	if err != nil {
 		return types.TaskDefinition{}, fmt.Errorf("create task: %w", err)
@@ -43,6 +48,11 @@ func (s *serverImpl) CreateTask(cfg TaskConfig) (types.TaskDefinition, error) {
 
 // UpdateTask 更新指定任务，任务不存在时返回错误。
 func (s *serverImpl) UpdateTask(id string, cfg TaskConfig) (types.TaskDefinition, error) {
+	validated, err := s.ValidateTaskConfig(cfg)
+	if err != nil {
+		return types.TaskDefinition{}, err
+	}
+
 	existing, err := s.taskStore.Get(id)
 	if err != nil {
 		if errors.Is(err, storepkg.ErrTaskNotFound) {
@@ -51,8 +61,8 @@ func (s *serverImpl) UpdateTask(id string, cfg TaskConfig) (types.TaskDefinition
 		return types.TaskDefinition{}, fmt.Errorf("get task %q: %w", id, err)
 	}
 
-	existing.Name = cfg.Name
-	existing.Input = cfg.Input
+	existing.Name = validated.Name
+	existing.Input = validated.Input
 
 	updated, err := s.taskStore.Update(existing)
 	if err != nil {

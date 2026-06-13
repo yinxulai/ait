@@ -17,6 +17,9 @@ func (s *stubServer) ListTasks() ([]types.TaskOverview, error) { return nil, nil
 func (s *stubServer) GetTask(id string) (types.TaskDefinition, error) {
 	return types.TaskDefinition{}, nil
 }
+func (s *stubServer) ValidateTaskConfig(cfg server.TaskConfig) (server.TaskConfig, error) {
+	return cfg, nil
+}
 func (s *stubServer) CreateTask(cfg server.TaskConfig) (types.TaskDefinition, error) {
 	return types.TaskDefinition{}, nil
 }
@@ -43,6 +46,13 @@ func (s *stubServer) GenerateRunReport(runID server.RunID, fmt server.ReportForm
 }
 func (s *stubServer) GetAppConfig() (*config.Config, error) { return &config.Config{}, nil }
 func (s *stubServer) UpdateProxyURL(proxyURL string) error  { return nil }
+func (s *stubServer) ListProtocols() []server.ProtocolMeta  { return nil }
+func (s *stubServer) ListIntegritySuites(protocol string) ([]types.IntegritySuite, error) {
+	return nil, nil
+}
+func (s *stubServer) GetIntegritySuite(protocol, suiteID string) (types.IntegritySuite, error) {
+	return types.IntegritySuite{}, nil
+}
 func (s *stubServer) Context() context.Context { return context.Background() }
 
 // ─── NewModel ─────────────────────────────────────────────────────────────────

@@ -537,6 +537,64 @@ func TestCreateTask_ReturnsTaskWithID(t *testing.T) {
 	}
 }
 
+func TestCreateTask_ValidatesAndNormalizesConfig(t *testing.T) {
+	s := newTestServer(t)
+	cfg := makeTaskConfig("  turbo-task  ")
+	cfg.Input.Mode = "turbo"
+	cfg.Input.TurboConfig = types.TurboConfig{InitConcurrency: 2}
+
+	created, err := s.CreateTask(cfg)
+	if err != nil {
+		t.Fatalf("CreateTask: %v", err)
+	}
+	if created.Name != "turbo-task" {
+		t.Errorf("Name = %q, want trimmed name", created.Name)
+	}
+	if !created.Input.Turbo || created.Input.Mode != "turbo" {
+		t.Errorf("turbo mode not normalized: mode=%q turbo=%v", created.Input.Mode, created.Input.Turbo)
+	}
+	if created.Input.TurboConfig.MaxConcurrency <= 0 || created.Input.TurboConfig.LevelRequests <= 0 {
+		t.Errorf("turbo defaults were not applied: %+v", created.Input.TurboConfig)
+	}
+}
+
+func TestCreateTask_RejectsInvalidConfig(t *testing.T) {
+	s := newTestServer(t)
+
+	missingPrompt := makeTaskConfig("missing-prompt")
+	missingPrompt.Input.PromptText = ""
+	missingPrompt.Input.PromptFile = ""
+	missingPrompt.Input.PromptLength = 0
+	if _, err := s.CreateTask(missingPrompt); err == nil {
+		t.Fatal("expected missing prompt to be rejected")
+	}
+
+	badProtocol := makeTaskConfig("bad-protocol")
+	badProtocol.Input.Protocol = "unknown-protocol"
+	if _, err := s.CreateTask(badProtocol); err == nil {
+		t.Fatal("expected unsupported protocol to be rejected")
+	}
+}
+
+func TestIntegrityMetadata_LoadsBuiltinSuite(t *testing.T) {
+	s := newTestServer(t)
+	suites, err := s.ListIntegritySuites(types.ProtocolOpenAIResponses)
+	if err != nil {
+		t.Fatalf("ListIntegritySuites: %v", err)
+	}
+	if len(suites) != 1 || suites[0].ID != "openai-responses-smoke" {
+		t.Fatalf("unexpected suites: %+v", suites)
+	}
+
+	suite, err := s.GetIntegritySuite(types.ProtocolOpenAIResponses, "openai-responses-smoke")
+	if err != nil {
+		t.Fatalf("GetIntegritySuite: %v", err)
+	}
+	if len(suite.Cases) == 0 || suite.Cases[0].ID != "basic-response-shape" {
+		t.Fatalf("unexpected suite cases: %+v", suite.Cases)
+	}
+}
+
 func TestCreateTask_AppearsInList(t *testing.T) {
 	s := newTestServer(t)
 	s.CreateTask(makeTaskConfig("task-a"))

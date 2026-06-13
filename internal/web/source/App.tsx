@@ -1,4 +1,4 @@
-import { useId, useMemo, useState } from 'react'
+import { useEffect, useId, useMemo, useState } from 'react'
 import { Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, ClipboardList, Copy, Database, FileJson, Gauge, Hash, ListChecks, Network, Plus, Route, Search, Settings2, ShieldCheck, TrendingUp, XCircle, Zap } from 'lucide-react'
 import { CategoryScale, Chart as ChartJS, Filler, Legend as ChartLegend, LinearScale, LineElement, PointElement, Tooltip as ChartTooltip } from 'chart.js'
 import { Line } from 'react-chartjs-2'
@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { getRunRequests, getTaskRuns, requestDetails, runs, tasks as mockTasks, type PromptMode, type RequestDetail, type RunRecord, type RunStatus, type Task, type TaskMode } from './mock'
+import { createTask as createTaskAPI, getRunRequests, getRunState, listProtocols, listTaskRuns, listTasks, type PromptMode, type ProtocolMeta, type RequestDetail, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
 
 const modeLabel: Record<TaskMode, string> = {
   standard: '标准压测',
@@ -29,6 +29,7 @@ const modeLabel: Record<TaskMode, string> = {
 }
 
 const statusLabel: Record<RunStatus, string> = {
+  queued: '排队中',
   running: '运行中',
   completed: '已完成',
   failed: '失败',
@@ -36,6 +37,7 @@ const statusLabel: Record<RunStatus, string> = {
 }
 
 const statusStyle: Record<RunStatus, string> = {
+  queued: 'border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/40 dark:text-amber-300',
   running: 'border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-300',
   completed: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300',
   failed: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300',
@@ -65,41 +67,104 @@ ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, 
 
 function App() {
   const [query, setQuery] = useState('')
-  const [taskList, setTaskList] = useState<Task[]>(mockTasks)
-  const [selectedTaskId, setSelectedTaskId] = useState(mockTasks[0]?.id ?? '')
-  const [selectedRunId, setSelectedRunId] = useState(getTaskRuns(selectedTaskId)[0]?.id ?? '')
-  const [selectedRequestId, setSelectedRequestId] = useState(getRunRequests(selectedRunId)[0]?.id ?? '')
+  const [taskList, setTaskList] = useState<Task[]>([])
+  const [runsByTask, setRunsByTask] = useState<Record<string, RunSummary[]>>({})
+  const [requestsByRun, setRequestsByRun] = useState<Record<string, RequestDetail[]>>({})
+  const [protocols, setProtocols] = useState<ProtocolMeta[]>([])
+  const [selectedTaskId, setSelectedTaskId] = useState('')
+  const [selectedRunId, setSelectedRunId] = useState('')
+  const [selectedRequestId, setSelectedRequestId] = useState('')
+  const [loadingMessage, setLoadingMessage] = useState('加载任务中...')
+  const [errorMessage, setErrorMessage] = useState('')
+
+  useEffect(() => {
+    let cancelled = false
+    async function loadInitialData() {
+      try {
+        const [tasks, protocolMetas] = await Promise.all([listTasks(), listProtocols()])
+        if (cancelled) return
+        setTaskList(tasks)
+        setProtocols(protocolMetas)
+        setSelectedTaskId((current) => current || tasks[0]?.id || '')
+        setErrorMessage('')
+      } catch (error) {
+        if (!cancelled) setErrorMessage(error instanceof Error ? error.message : '加载任务失败')
+      } finally {
+        if (!cancelled) setLoadingMessage('')
+      }
+    }
+    loadInitialData()
+    return () => { cancelled = true }
+  }, [])
+
+  useEffect(() => {
+    if (!selectedTaskId) return
+    let cancelled = false
+    async function loadRuns() {
+      try {
+        const runList = await listTaskRuns(selectedTaskId)
+        if (cancelled) return
+        setRunsByTask((current) => ({ ...current, [selectedTaskId]: runList }))
+        setSelectedRunId((current) => runList.some((run) => run.run_id === current) ? current : runList[0]?.run_id || '')
+        setSelectedRequestId('')
+        setErrorMessage('')
+      } catch (error) {
+        if (!cancelled) setErrorMessage(error instanceof Error ? error.message : '加载执行记录失败')
+      }
+    }
+    loadRuns()
+    return () => { cancelled = true }
+  }, [selectedTaskId])
+
+  useEffect(() => {
+    if (!selectedRunId) return
+    let cancelled = false
+    async function loadRequests() {
+      try {
+        const state = await getRunState(selectedRunId).catch(() => undefined)
+        const requestList = state?.requests?.length ? state.requests : await getRunRequests(selectedRunId)
+        if (cancelled) return
+        setRequestsByRun((current) => ({ ...current, [selectedRunId]: requestList }))
+        setSelectedRequestId((current) => requestList.some((request) => requestKey(request) === current) ? current : requestKey(requestList[0]))
+        setErrorMessage('')
+      } catch (error) {
+        if (!cancelled) setErrorMessage(error instanceof Error ? error.message : '加载请求样本失败')
+      }
+    }
+    loadRequests()
+    return () => { cancelled = true }
+  }, [selectedRunId])
 
   const filteredTasks = useMemo(() => {
     const keyword = query.trim().toLowerCase()
     if (!keyword) return taskList
-    return taskList.filter((task) => [task.name, task.description, task.model, task.protocol, ...task.tags].some((text) => text.toLowerCase().includes(keyword)))
+    return taskList.filter((task) => [task.name, taskModel(task), taskProtocol(task), taskEndpoint(task), modeLabel[taskMode(task)]].some((text) => text.toLowerCase().includes(keyword)))
   }, [query, taskList])
 
   const selectedTask = taskList.find((task) => task.id === selectedTaskId) ?? taskList[0]
-  const taskRuns = selectedTask ? getTaskRuns(selectedTask.id) : []
-  const selectedRun = taskRuns.find((run) => run.id === selectedRunId) ?? taskRuns[0]
-  const runRequests = selectedRun ? getRunRequests(selectedRun.id) : []
-  const selectedRequest = runRequests.find((request) => request.id === selectedRequestId) ?? runRequests[0]
+  const taskRuns = selectedTask ? runsByTask[selectedTask.id] ?? [] : []
+  const selectedRun = taskRuns.find((run) => run.run_id === selectedRunId) ?? taskRuns[0]
+  const runRequests = selectedRun ? requestsByRun[selectedRun.run_id] ?? [] : []
+  const selectedRequest = runRequests.find((request) => requestKey(request) === selectedRequestId) ?? runRequests[0]
+  const totalRuns = Object.values(runsByTask).reduce((sum, item) => sum + item.length, 0)
+  const totalSamples = Object.values(requestsByRun).reduce((sum, item) => sum + item.length, 0)
+  const protocolOptionsForCreate = protocols.length > 0 ? protocols.map((protocol) => protocol.id) : [...protocolOptions]
 
   function chooseTask(task: Task) {
-    const nextRuns = getTaskRuns(task.id)
-    const nextRun = nextRuns[0]
-    const nextRequest = nextRun ? getRunRequests(nextRun.id)[0] : undefined
     setSelectedTaskId(task.id)
-    setSelectedRunId(nextRun?.id ?? '')
-    setSelectedRequestId(nextRequest?.id ?? '')
   }
 
-  function chooseRun(run: RunRecord) {
-    const nextRequest = getRunRequests(run.id)[0]
-    setSelectedRunId(run.id)
-    setSelectedRequestId(nextRequest?.id ?? '')
+  function chooseRun(run: RunSummary) {
+    setSelectedRunId(run.run_id)
   }
 
-  function createTask(task: Task) {
+  async function createTask(draft: TaskDraft) {
+    const config: TaskConfig = { name: draft.name.trim(), input: inputJsonFromDraft(draft) }
+    const task = await createTaskAPI(config)
     setTaskList((current) => [task, ...current])
-    chooseTask(task)
+    setSelectedTaskId(task.id)
+    setSelectedRunId('')
+    setSelectedRequestId('')
   }
 
   return (
@@ -118,11 +183,14 @@ function App() {
             </div>
             <div className="flex flex-wrap gap-2 text-xs text-muted-foreground sm:justify-end">
               <TopStat icon={<ListChecks className="size-3.5" />} label="任务" value={taskList.length.toString()} />
-              <TopStat icon={<Clock3 className="size-3.5" />} label="执行" value={runs.length.toString()} />
-              <TopStat icon={<Hash className="size-3.5" />} label="样本" value={requestDetails.length.toString()} />
+              <TopStat icon={<Clock3 className="size-3.5" />} label="执行" value={totalRuns.toString()} />
+              <TopStat icon={<Hash className="size-3.5" />} label="样本" value={totalSamples.toString()} />
             </div>
           </div>
         </header>
+
+        {errorMessage && <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{errorMessage}</div>}
+        {!selectedTask && <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40"><CardContent className="flex min-h-80 items-center justify-center p-6 text-sm text-muted-foreground">{loadingMessage || '暂无任务，请先创建任务。'}</CardContent></Card>}
 
         {selectedTask && <section className="grid min-h-[calc(100vh-112px)] gap-4 lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)]">
           <Card className="overflow-hidden rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40 xl:sticky xl:top-6 xl:h-[calc(100vh-170px)]">
@@ -131,35 +199,35 @@ function App() {
                 <CardTitle className="flex items-center gap-2 text-base"><ListChecks className="size-4" />任务列表</CardTitle>
                 <CardDescription>选择任务后先看执行记录。</CardDescription>
               </div>
-              <CreateTaskSheet onCreate={createTask} />
+              <CreateTaskSheet onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
               <div className="relative">
                 <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 rounded-2xl pl-9" placeholder="搜索任务 / 模型 / 协议 / 标签" />
+                <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 rounded-2xl pl-9" placeholder="搜索任务 / 模型 / 协议" />
               </div>
             </CardHeader>
             <CardContent className="p-0">
               <ScrollArea className="h-auto max-h-[460px] xl:h-[calc(100vh-360px)] xl:max-h-none">
                 <div className="space-y-2.5 p-4 pt-0 sm:p-5 sm:pt-0">
                   {filteredTasks.map((task) => {
-                    const taskRuns = getTaskRuns(task.id)
-                    const latestRun = taskRuns[0]
+                    const runs = runsByTask[task.id] ?? []
+                    const latestRun = task.latest_run ?? runs[0]
                     return (
                       <button key={task.id} type="button" onClick={() => chooseTask(task)} className={cn('group w-full rounded-2xl border bg-background/70 px-3.5 py-3 text-left transition hover:border-primary/30 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', selectedTask.id === task.id && 'border-primary bg-accent ring-1 ring-primary/10')}>
                         <div className="flex items-start justify-between gap-3">
                           <div className="min-w-0 flex-1">
                             <div className="flex min-w-0 items-center gap-2">
-                              <ModeIcon mode={task.mode} className="size-3.5 shrink-0 text-muted-foreground" />
+                              <ModeIcon mode={taskMode(task)} className="size-3.5 shrink-0 text-muted-foreground" />
                               <div className="truncate font-medium leading-6">{task.name}</div>
                             </div>
-                            <div className="mt-1 truncate text-xs text-muted-foreground">{modeLabel[task.mode]} · {task.model}</div>
+                            <div className="mt-1 truncate text-xs text-muted-foreground">{modeLabel[taskMode(task)]} · {taskModel(task)}</div>
                           </div>
                           <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:text-foreground" />
                         </div>
                         <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
-                          <span>{taskRuns.length} 次执行</span>
+                          <span>{runs.length} 次执行</span>
                           <span className="inline-flex items-center gap-2">
-                            {latestRun && <span className={cn('tabular-nums', latestRun.status === 'failed' ? 'text-red-600' : 'text-emerald-600')}>{latestRun.successRate}%</span>}
-                            <span>{task.updatedAt}</span>
+                            {latestRun && <span className={cn('tabular-nums', latestRun.status === 'failed' ? 'text-red-600' : 'text-emerald-600')}>{formatPercent(latestRun.success_rate)}</span>}
+                            <span>{formatDate(task.updated_at)}</span>
                           </span>
                         </div>
                       </button>
@@ -171,8 +239,8 @@ function App() {
           </Card>
 
           <div className="flex min-w-0 flex-col gap-4 lg:gap-5">
-            <TaskOverview task={selectedTask} onCreate={createTask} />
-            <TaskRunHistory runs={taskRuns} selectedRun={selectedRun} onChooseRun={chooseRun} />
+            <TaskOverview task={selectedTask} onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
+            <TaskRunHistory runs={taskRuns} selectedRun={selectedRun} onChooseRun={chooseRun} samplesByRun={requestsByRun} />
             <RunDetail run={selectedRun} requests={runRequests} selectedRequest={selectedRequest} onSelectRequest={setSelectedRequestId} />
           </div>
         </section>}
@@ -218,18 +286,21 @@ const createSteps = [
 ] as const
 
 type CreateTaskSheetProps = {
-  onCreate: (task: Task) => void
+  onCreate: (draft: TaskDraft) => Promise<void> | void
   sourceTask?: Task
   variant?: 'create' | 'copy'
+  protocolOptions: string[]
+  protocols: ProtocolMeta[]
 }
 
-function CreateTaskSheet({ onCreate, sourceTask, variant = 'create' }: CreateTaskSheetProps) {
+function CreateTaskSheet({ onCreate, sourceTask, variant = 'create', protocolOptions, protocols }: CreateTaskSheetProps) {
   const [open, setOpen] = useState(false)
-  const [draft, setDraft] = useState<TaskDraft>(() => sourceTask ? draftFromTask(sourceTask) : makeInitialDraft('standard'))
+  const [draft, setDraft] = useState<TaskDraft>(() => sourceTask ? draftFromTask(sourceTask) : makeInitialDraft('standard', protocols))
+  const [submitting, setSubmitting] = useState(false)
   const canSubmit = isDraftValid(draft)
 
   function initialDraft() {
-    return sourceTask ? draftFromTask(sourceTask) : makeInitialDraft('standard')
+    return sourceTask ? draftFromTask(sourceTask) : makeInitialDraft('standard', protocols)
   }
 
   function patch(update: Partial<TaskDraft>) {
@@ -237,19 +308,25 @@ function CreateTaskSheet({ onCreate, sourceTask, variant = 'create' }: CreateTas
   }
 
   function changeMode(mode: TaskMode) {
-    const next = makeInitialDraft(mode)
+    const next = makeInitialDraft(mode, protocols)
     setDraft((current) => ({ ...next, name: current.name || next.name }))
   }
 
   function reset() {
     setDraft(initialDraft())
+    setSubmitting(false)
   }
 
-  function submit() {
-    if (!canSubmit) return
-    onCreate(taskFromDraft(`task-draft-${Date.now().toString(36)}`, draft))
-    setOpen(false)
-    reset()
+  async function submit() {
+    if (!canSubmit || submitting) return
+    setSubmitting(true)
+    try {
+      await onCreate(draft)
+      setOpen(false)
+      reset()
+    } finally {
+      setSubmitting(false)
+    }
   }
 
   return (
@@ -278,15 +355,15 @@ function CreateTaskSheet({ onCreate, sourceTask, variant = 'create' }: CreateTas
               <>
                 <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-6">
                   {current === 0 && <CreateStepType draft={draft} onModeChange={changeMode} />}
-                  {current === 1 && <CreateStepBasics draft={draft} onPatch={patch} />}
+                  {current === 1 && <CreateStepBasics draft={draft} onPatch={patch} protocolOptions={protocolOptions} protocols={protocols} />}
                   {current === 2 && <CreateStepModeConfig draft={draft} onPatch={patch} />}
                   {current === 3 && <CreateStepReview draft={draft} />}
                 </div>
                 <DialogFooter className="shrink-0 gap-3 border-t bg-muted/20 p-0 px-8 py-4 sm:flex-row sm:items-center sm:justify-between">
-                  <div className="min-h-5 text-xs leading-5 text-muted-foreground">{!canGoNext && !isLast ? validationHint : isLast ? '确认无误后创建，当前原型只会写入本地 mock 列表。' : '可以继续下一步，也可以点击上方已完成步骤返回修改。'}</div>
+                  <div className="min-h-5 text-xs leading-5 text-muted-foreground">{!canGoNext && !isLast ? validationHint : isLast ? '确认无误后将调用后端接口创建真实任务。' : '可以继续下一步，也可以点击上方已完成步骤返回修改。'}</div>
                   <div className="flex shrink-0 gap-2">
-                    <Button variant="outline" onClick={previous} disabled={isFirst}>上一步</Button>
-                    {!isLast ? <Button onClick={next} disabled={!canGoNext}>{nextStepLabel(current)}</Button> : <Button onClick={submit} disabled={!canSubmit}>创建任务</Button>}
+                    <Button variant="outline" onClick={previous} disabled={isFirst || submitting}>上一步</Button>
+                    {!isLast ? <Button onClick={next} disabled={!canGoNext}>{nextStepLabel(current)}</Button> : <Button onClick={submit} disabled={!canSubmit || submitting}>{submitting ? '创建中...' : '创建任务'}</Button>}
                   </div>
                 </DialogFooter>
               </>
@@ -323,7 +400,7 @@ function CreateStepType({ draft, onModeChange }: { draft: TaskDraft; onModeChang
   )
 }
 
-function CreateStepBasics({ draft, onPatch }: { draft: TaskDraft; onPatch: (update: Partial<TaskDraft>) => void }) {
+function CreateStepBasics({ draft, onPatch, protocolOptions, protocols }: { draft: TaskDraft; onPatch: (update: Partial<TaskDraft>) => void; protocolOptions: string[]; protocols: ProtocolMeta[] }) {
   return (
     <div className="space-y-6">
       <section className="border-b pb-6">
@@ -336,7 +413,7 @@ function CreateStepBasics({ draft, onPatch }: { draft: TaskDraft; onPatch: (upda
       <section>
         <div className="mb-5 flex items-center gap-2 text-sm font-medium"><Route className="size-4" />请求目标</div>
         <div className="grid gap-4">
-          <FormField label="协议" required description="决定请求体结构和默认地址，切换后会自动带入对应接口地址。"><OptionPicker value={draft.protocol} options={protocolOptions} onChange={(protocol) => onPatch({ protocol, endpoint: defaultEndpoint(protocol) })} /></FormField>
+          <FormField label="协议" required description="决定请求体结构和默认地址，切换后会自动带入对应接口地址。"><OptionPicker value={draft.protocol} options={protocolOptions} onChange={(protocol) => onPatch({ protocol, endpoint: defaultEndpoint(protocol, protocols) })} /></FormField>
           <FormField label="模型名称" required description="填写要压测或校验的模型标识，会写入最终请求配置。"><Input value={draft.model} onChange={(event) => onPatch({ model: event.target.value })} /></FormField>
           <FormField label="请求地址" required description="目标 API 的完整地址；如使用网关或代理，可在这里改为内部地址。"><Input value={draft.endpoint} onChange={(event) => onPatch({ endpoint: event.target.value })} /></FormField>
         </div>
@@ -353,7 +430,7 @@ function CreateStepModeConfig({ draft, onPatch }: { draft: TaskDraft; onPatch: (
           <div className="mb-5 flex items-center gap-2 text-sm font-medium"><ShieldCheck className="size-4" />测试集来源</div>
           <div className="grid gap-4">
             <FormField label="测试集名称" required description="用于选择一组协议兼容性用例；完整性校验以测试集为核心。"><Input value={draft.integritySuite} onChange={(event) => onPatch({ integritySuite: event.target.value })} /></FormField>
-            <FormField label="规则文件" required description="每行一个规则文件路径，用于描述测试用例、断言和必需能力。"><Textarea value={draft.integrityRuleFiles} onChange={(event) => onPatch({ integrityRuleFiles: event.target.value })} className="min-h-32" placeholder="data/integrity/openai-completions.json" /></FormField>
+            <FormField label="规则文件" description="可选；每行一个规则文件路径，用于覆盖或补充内置测试集规则。"><Textarea value={draft.integrityRuleFiles} onChange={(event) => onPatch({ integrityRuleFiles: event.target.value })} className="min-h-32" placeholder="data/integrity/openai-completions.json" /></FormField>
           </div>
         </section>
         <section>
@@ -448,7 +525,7 @@ function CreateStepReview({ draft }: { draft: TaskDraft }) {
   )
 }
 
-function TaskRunHistory({ runs, selectedRun, onChooseRun }: { runs: RunRecord[]; selectedRun?: RunRecord; onChooseRun: (run: RunRecord) => void }) {
+function TaskRunHistory({ runs, selectedRun, onChooseRun, samplesByRun }: { runs: RunSummary[]; selectedRun?: RunSummary; onChooseRun: (run: RunSummary) => void; samplesByRun: Record<string, RequestDetail[]> }) {
   return (
     <Card className="min-h-0 rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40">
       <CardHeader className="p-4 pb-3 sm:p-5">
@@ -461,41 +538,35 @@ function TaskRunHistory({ runs, selectedRun, onChooseRun }: { runs: RunRecord[];
         </div>
       </CardHeader>
       <CardContent className="space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
-        <ExecutionTrend runs={runs} />
+        <ExecutionTrend runs={runs} samplesByRun={samplesByRun} />
         <div className="overflow-x-auto rounded-2xl border bg-background/70">
-          <Table className="min-w-[940px]">
+          <Table className="min-w-[760px]">
             <TableHeader>
               <TableRow>
                 <TableHead>开始时间</TableHead>
                 <TableHead>状态</TableHead>
-                <TableHead>完成</TableHead>
                 <TableHead>成功率</TableHead>
-                <TableHead>错误率</TableHead>
-                <TableHead>总耗时</TableHead>
                 <TableHead>TTFT</TableHead>
                 <TableHead>TPS</TableHead>
                 <TableHead>RPM</TableHead>
+                <TableHead>TPM</TableHead>
                 <TableHead>缓存</TableHead>
-                <TableHead>Token</TableHead>
               </TableRow>
             </TableHeader>
             <TableBody>
               {runs.map((run) => (
-                <TableRow key={run.id} onClick={() => onChooseRun(run)} className={cn('cursor-pointer transition-colors', selectedRun?.id === run.id && 'bg-accent')}>
+                <TableRow key={run.run_id} onClick={() => onChooseRun(run)} className={cn('cursor-pointer transition-colors', selectedRun?.run_id === run.run_id && 'bg-accent')}>
                   <TableCell>
-                    <div className="font-medium">{run.startedAt}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">耗时 {run.duration}</div>
+                    <div className="font-medium">{formatDate(run.started_at)}</div>
+                    <div className="mt-1 text-xs text-muted-foreground">{run.run_id}</div>
                   </TableCell>
                   <TableCell><StatusBadge status={run.status} /></TableCell>
-                  <TableCell className="tabular-nums">{run.success + run.failed}/{run.requests}</TableCell>
-                  <TableCell><RunRate value={run.successRate} /></TableCell>
-                  <TableCell className={cn('tabular-nums', run.errorRate > 5 ? 'text-red-600' : 'text-muted-foreground')}>{run.errorRate}%</TableCell>
-                  <TableCell>{run.avgTotalTime}</TableCell>
-                  <TableCell>{run.avgTTFT}</TableCell>
-                  <TableCell className="tabular-nums">{run.avgTPS}</TableCell>
-                  <TableCell className="tabular-nums">{run.rpm}</TableCell>
-                  <TableCell className="tabular-nums">{run.cacheHitRate}%</TableCell>
-                  <TableCell className="text-xs text-muted-foreground">in {run.promptTokens} / out {run.outputTokens}</TableCell>
+                  <TableCell><RunRate value={run.success_rate} /></TableCell>
+                  <TableCell>{run.avg_ttft || '-'}</TableCell>
+                  <TableCell className="tabular-nums">{formatNumber(run.avg_tps)}</TableCell>
+                  <TableCell className="tabular-nums">{formatNumber(run.rpm)}</TableCell>
+                  <TableCell className="tabular-nums">{formatNumber(run.tpm)}</TableCell>
+                  <TableCell className="tabular-nums">{formatPercent(run.cache_hit_rate)}</TableCell>
                 </TableRow>
               ))}
             </TableBody>
@@ -507,20 +578,21 @@ function TaskRunHistory({ runs, selectedRun, onChooseRun }: { runs: RunRecord[];
 }
 
 function DraftTaskPreview({ task }: { task: Task }) {
+  const prompt = promptSpec(task.input)
   return (
     <div className="space-y-4 rounded-3xl border bg-background/70 p-4 shadow-xs">
       <div className="flex items-start gap-3">
-        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><ModeIcon mode={task.mode} className="size-5" /></div>
+        <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground"><ModeIcon mode={taskMode(task)} className="size-5" /></div>
         <div className="min-w-0">
           <div className="font-medium">{task.name}</div>
-          <div className="mt-1 text-sm leading-5 text-muted-foreground">{task.description}</div>
+          <div className="mt-1 text-sm leading-5 text-muted-foreground">{modeLabel[taskMode(task)]} · {taskModel(task)}</div>
         </div>
       </div>
       <div className="grid gap-2 text-sm sm:grid-cols-2">
-        <KeyValue label="模型名称" value={task.model} />
-        <KeyValue label="协议类型" value={task.protocol} />
-        <KeyValue label={task.mode === 'integrity' ? '测试集' : 'Prompt'} value={task.mode === 'integrity' ? task.integrity?.suite ?? '-' : `${promptModeLabel[task.promptSpec!.mode]} · ${task.promptSpec!.summary}`} />
-        <KeyValue label="请求地址" value={task.endpoint} />
+        <KeyValue label="模型名称" value={taskModel(task)} />
+        <KeyValue label="协议类型" value={taskProtocol(task)} />
+        <KeyValue label={taskMode(task) === 'integrity' ? '测试集' : 'Prompt'} value={taskMode(task) === 'integrity' ? task.input.integrity?.suite ?? '-' : prompt ? `${promptModeLabel[prompt.mode]} · ${prompt.summary}` : '-'} />
+        <KeyValue label="请求地址" value={taskEndpoint(task)} />
       </div>
       <TaskModeConfigPreview task={task} />
     </div>
@@ -537,31 +609,31 @@ function TopStat({ icon, label, value }: { icon: React.ReactNode; label: string;
   )
 }
 
-function TaskOverview({ task, onCreate }: { task: Task; onCreate: (task: Task) => void }) {
+function TaskOverview({ task, onCreate, protocolOptions, protocols }: { task: Task; onCreate: (draft: TaskDraft) => Promise<void> | void; protocolOptions: string[]; protocols: ProtocolMeta[] }) {
+  const mode = taskMode(task)
   return (
     <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40">
       <CardHeader className="p-4 sm:p-5">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <div className="mb-2 flex flex-wrap items-center gap-2">
-              <Badge className="gap-1.5"><ModeIcon mode={task.mode} className="size-3.5" />{modeLabel[task.mode]}</Badge>
-              <Badge variant="outline" className="gap-1.5"><Network className="size-3.5" />{task.protocol}</Badge>
+              <Badge className="gap-1.5"><ModeIcon mode={mode} className="size-3.5" />{modeLabel[mode]}</Badge>
+              <Badge variant="outline" className="gap-1.5"><Network className="size-3.5" />{taskProtocol(task)}</Badge>
             </div>
             <CardTitle className="text-xl sm:text-2xl">{task.name}</CardTitle>
-            <CardDescription className="mt-2 max-w-2xl leading-6">{task.description}</CardDescription>
+            <CardDescription className="mt-2 max-w-2xl leading-6">创建于 {formatDate(task.created_at)}，最近更新 {formatDate(task.updated_at)}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
-            {task.tags.map((tag) => <Badge key={tag} variant="outline">{tag}</Badge>)}
-            <CreateTaskSheet onCreate={onCreate} sourceTask={task} variant="copy" />
+            <CreateTaskSheet onCreate={onCreate} sourceTask={task} variant="copy" protocolOptions={protocolOptions} protocols={protocols} />
             <TaskConfigSheet task={task} />
           </div>
         </div>
       </CardHeader>
       <CardContent className="grid gap-2 p-4 pt-0 text-sm sm:grid-cols-2 lg:grid-cols-4 sm:p-5 sm:pt-0">
-        <KeyValue label="模型名称" value={task.model} />
-        <KeyValue label="协议类型" value={task.protocol} />
-        <KeyValue label={task.mode === 'turbo' ? '每级请求 × 级数' : '请求总数'} value={task.requests.toString()} />
-        <KeyValue label={task.mode === 'turbo' ? '起始并发' : '并发数'} value={task.concurrency.toString()} />
+        <KeyValue label="模型名称" value={taskModel(task)} />
+        <KeyValue label="协议类型" value={taskProtocol(task)} />
+        <KeyValue label={mode === 'turbo' ? '每级请求' : mode === 'integrity' ? '测试集' : '请求总数'} value={mode === 'integrity' ? task.input.integrity?.suite ?? '-' : String(taskRequests(task))} />
+        <KeyValue label={mode === 'turbo' ? '起始并发' : '并发数'} value={String(taskConcurrency(task))} />
       </CardContent>
     </Card>
   )
@@ -578,16 +650,16 @@ function TaskConfigSheet({ task }: { task: Task }) {
       <SheetContent className="!w-[min(96vw,1040px)] !max-w-none overflow-y-auto">
         <SheetHeader className="border-b bg-muted/30 px-6 py-5">
           <SheetTitle className="flex items-center gap-2"><Settings2 className="size-4" />请求配置</SheetTitle>
-          <SheetDescription>这些参数用于定位任务输入，不占用主执行视图。</SheetDescription>
+          <SheetDescription>这些参数来自后端任务配置。</SheetDescription>
         </SheetHeader>
         <div className="space-y-5 px-6">
           <div className="rounded-2xl border bg-background/70 p-4 shadow-xs">
             <div className="mb-3 flex items-center gap-2 text-sm font-medium"><Route className="size-4" />请求目标</div>
             <div className="grid gap-2 text-sm sm:grid-cols-2">
-              <KeyValue label="请求地址" value={task.endpoint} />
-              <KeyValue label="模型名称" value={task.model} />
-              <KeyValue label="协议类型" value={task.protocol} />
-              <KeyValue label="任务类型" value={modeLabel[task.mode]} />
+              <KeyValue label="请求地址" value={taskEndpoint(task)} />
+              <KeyValue label="模型名称" value={taskModel(task)} />
+              <KeyValue label="协议类型" value={taskProtocol(task)} />
+              <KeyValue label="任务类型" value={modeLabel[taskMode(task)]} />
             </div>
           </div>
           <TaskModeDetails task={task} />
@@ -601,14 +673,17 @@ function TaskModeDetails({ task }: { task: Task }) {
   return (
     <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
       <ModeSpecificPanel task={task} />
-      {task.mode !== 'integrity' && <PromptPanel task={task} />}
+      {taskMode(task) !== 'integrity' && <PromptPanel task={task} />}
     </div>
   )
 }
 
 function ModeSpecificPanel({ task }: { task: Task }) {
-  if (task.mode === 'turbo') {
-    const levels = task.turbo?.levels ?? []
+  const mode = taskMode(task)
+  const input = task.input
+  if (mode === 'turbo') {
+    const cfg = input.turbo_config
+    const levels = turboLevelsFromConfig(cfg)
     return (
       <div className="rounded-2xl border bg-background/70 p-4 shadow-xs">
         <div className="mb-4 flex items-center justify-between gap-3">
@@ -616,12 +691,12 @@ function ModeSpecificPanel({ task }: { task: Task }) {
           <Badge variant="outline">{levels.length} 个级别</Badge>
         </div>
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
-          <KeyValue label="起始并发" value={(task.turbo?.initConcurrency ?? '-').toString()} />
-          <KeyValue label="最大并发" value={(task.turbo?.maxConcurrency ?? '-').toString()} />
-          <KeyValue label="每级递增" value={(task.turbo?.stepSize ?? '-').toString()} />
-          <KeyValue label="每级请求数" value={(task.turbo?.levelRequests ?? '-').toString()} />
-          <KeyValue label="最低成功率" value={(task.turbo?.minSuccessRate ?? '-').toString()} />
-          <KeyValue label="最大延迟" value={task.turbo?.maxLatency ?? '-'} />
+          <KeyValue label="起始并发" value={String(cfg?.init_concurrency ?? '-')} />
+          <KeyValue label="最大并发" value={String(cfg?.max_concurrency ?? '-')} />
+          <KeyValue label="每级递增" value={String(cfg?.step_size ?? '-')} />
+          <KeyValue label="每级请求数" value={String(cfg?.level_requests ?? input.count ?? '-')} />
+          <KeyValue label="最低成功率" value={String(cfg?.min_success_rate ?? '-')} />
+          <KeyValue label="最大延迟" value={cfg?.max_latency ?? '-'} />
         </div>
         <div className="mt-4 rounded-2xl bg-muted/50 px-4 py-3 text-xs leading-5 text-muted-foreground">
           并发级别：{levels.length > 0 ? levels.join(' → ') : '-'}
@@ -630,45 +705,22 @@ function ModeSpecificPanel({ task }: { task: Task }) {
     )
   }
 
-  if (task.mode === 'integrity') {
-    const cases = task.integrity?.cases ?? []
+  if (mode === 'integrity') {
+    const integrity = input.integrity
+    const ruleFiles = integrity?.rule_files ?? []
     return (
       <div className="xl:col-span-2 rounded-2xl border bg-background/70 p-4 shadow-xs">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="size-4" />完整性测试集</div>
-          <Badge variant="outline">{cases.length} 个用例</Badge>
+          <Badge variant="outline">suite</Badge>
         </div>
         <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
-          <KeyValue label="测试集名称" value={task.integrity?.suite ?? '-'} />
-          <KeyValue label="规则文件" value={task.integrity?.ruleFiles.join(', ') ?? '-'} />
-          <InlineSwitch label="失败时立即停止" enabled={task.integrity?.failFast ?? false} />
-          <KeyValue label="单个用例超时" value={task.integrity?.caseTimeout ?? '-'} />
+          <KeyValue label="测试集名称" value={integrity?.suite ?? '-'} />
+          <KeyValue label="规则文件" value={ruleFiles.length ? ruleFiles.join(', ') : '未配置'} />
+          <InlineSwitch label="失败时立即停止" enabled={integrity?.fail_fast ?? false} />
+          <KeyValue label="单个用例超时" value={integrity?.case_timeout_ms ? `${integrity.case_timeout_ms}ms` : '-'} />
         </div>
-        <div className="mt-4 overflow-hidden rounded-2xl border bg-background/70">
-          <Table>
-            <TableHeader>
-              <TableRow>
-                <TableHead>用例</TableHead>
-                <TableHead>能力</TableHead>
-                <TableHead>断言</TableHead>
-                <TableHead>必需</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {cases.map((item) => (
-                <TableRow key={item.id}>
-                  <TableCell>
-                    <div className="font-medium">{item.name}</div>
-                    <div className="mt-1 max-w-[360px] truncate text-xs text-muted-foreground" title={item.prompt}>{item.prompt}</div>
-                  </TableCell>
-                  <TableCell>{item.capability}</TableCell>
-                  <TableCell>{item.assertions.length}</TableCell>
-                  <TableCell>{item.required ? '是' : '否'}</TableCell>
-                </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+        <div className="mt-4 rounded-2xl bg-muted/50 px-4 py-3 text-xs leading-5 text-muted-foreground">完整性校验由后端根据协议和测试集加载用例；任务配置本身只保存 suite 与执行控制。</div>
       </div>
     )
   }
@@ -680,18 +732,18 @@ function ModeSpecificPanel({ task }: { task: Task }) {
         <div className="rounded-2xl bg-muted/50 p-4">
           <div className="text-xs text-muted-foreground">执行队列</div>
           <div className="mt-3 grid grid-cols-2 gap-4">
-            <NumberStat label="并发数" value={task.concurrency.toString()} />
-            <NumberStat label="请求总数" value={task.requests.toString()} />
+            <NumberStat label="并发数" value={String(input.concurrency ?? 0)} />
+            <NumberStat label="请求总数" value={String(input.count ?? 0)} />
           </div>
           <p className="mt-4 text-xs leading-5 text-muted-foreground">按请求总数生成请求，最多同时运行指定并发数。</p>
         </div>
         <div className="grid gap-2 sm:grid-cols-2 xl:grid-cols-3">
-          <KeyValue label="请求超时" value={task.standard?.timeout ?? '-'} />
-          <InlineSwitch label="流式响应" enabled={task.standard?.stream ?? false} />
-          <InlineSwitch label="启用思考" enabled={task.standard?.thinking ?? false} />
-          <InlineSwitch label="生成报告" enabled={task.standard?.report ?? false} />
-          <InlineSwitch label="记录日志" enabled={task.standard?.log ?? false} />
-          <KeyValue label="Prompt 来源" value={task.promptSpec ? promptModeLabel[task.promptSpec.mode] : '-'} />
+          <KeyValue label="请求超时" value={input.timeout ?? '-'} />
+          <InlineSwitch label="流式响应" enabled={input.stream ?? false} />
+          <InlineSwitch label="启用思考" enabled={input.thinking ?? false} />
+          <InlineSwitch label="生成报告" enabled={input.report ?? false} />
+          <InlineSwitch label="记录日志" enabled={input.log ?? false} />
+          <KeyValue label="Prompt 来源" value={promptSpec(input) ? promptModeLabel[promptSpec(input)!.mode] : '-'} />
         </div>
       </div>
     </div>
@@ -699,7 +751,7 @@ function ModeSpecificPanel({ task }: { task: Task }) {
 }
 
 function PromptPanel({ task }: { task: Task }) {
-  const prompt = task.promptSpec
+  const prompt = promptSpec(task.input)
   if (!prompt) return null
 
   return (
@@ -800,18 +852,17 @@ function InlineSwitch({ label, enabled }: { label: string; enabled: boolean }) {
   )
 }
 
-function ExecutionTrend({ runs }: { runs: RunRecord[] }) {
+function ExecutionTrend({ runs, samplesByRun }: { runs: RunSummary[]; samplesByRun: Record<string, RequestDetail[]> }) {
   if (runs.length === 0) return null
 
   const latestRun = runs[0]
-  const samples = getRunRequests(latestRun.id).sort((a, b) => a.index - b.index)
-  const completed = latestRun.success + latestRun.failed
+  const samples = [...(samplesByRun[latestRun.run_id] ?? [])].sort((a, b) => a.index - b.index)
   const maxTps = Math.max(...samples.map((request) => request.tps), 1)
-  const maxLatency = Math.max(...samples.map((request) => parseDurationMs(request.latency)), 1)
+  const maxLatency = Math.max(...samples.map((request) => parseDurationMs(request.total_time)), 1)
   const maxTTFT = Math.max(...samples.map((request) => parseDurationMs(request.ttft)), 1)
-  const maxOutputTokens = Math.max(...samples.map((request) => request.completionTokens), 1)
+  const maxOutputTokens = Math.max(...samples.map((request) => request.completion_tokens), 1)
   const maxNetwork = Math.max(...samples.map((request) => requestNetworkMs(request)), 1)
-  const cacheRates = samples.map((request) => request.promptTokens > 0 ? Math.round((request.cachedTokens / request.promptTokens) * 100) : 0)
+  const cacheRates = samples.map((request) => request.cache_hit_rate || (request.prompt_tokens > 0 ? Math.round((request.cached_tokens / request.prompt_tokens) * 100) : 0))
   const maxCache = Math.max(...cacheRates, 1)
   const failedSamples = samples.filter((request) => request.status === 'failed').length
 
@@ -821,7 +872,7 @@ function ExecutionTrend({ runs }: { runs: RunRecord[] }) {
         <div className="mb-4 flex items-center justify-between gap-3">
           <div>
             <div className="flex items-center gap-2 text-sm font-medium"><TrendingUp className="size-4" />最新执行样本曲线</div>
-            <div className="mt-1 text-xs text-muted-foreground">{latestRun.id} 内部请求的吞吐、延迟、TTFT、Token、网络和缓存变化。</div>
+            <div className="mt-1 text-xs text-muted-foreground">{latestRun.run_id} 内部请求的吞吐、延迟、TTFT、Token、网络和缓存变化。</div>
           </div>
           <Badge variant="outline" className="gap-1.5"><BarChart3 className="size-3.5" />{samples.length} 个样本</Badge>
         </div>
@@ -839,14 +890,14 @@ function ExecutionTrend({ runs }: { runs: RunRecord[] }) {
       <div className="rounded-2xl border bg-background/70 p-4 shadow-xs">
         <div className="mb-3 text-sm font-medium">最近表现</div>
         <div className="grid grid-cols-2 gap-3">
-          <NumberStat compact label="完成" value={`${completed}/${latestRun.requests}`} />
-          <NumberStat compact label="成功率" value={`${latestRun.successRate}%`} />
-          <NumberStat compact label="错误率" value={`${latestRun.errorRate}%`} />
-          <NumberStat compact label="平均耗时" value={latestRun.avgTotalTime} />
-          <NumberStat compact label="TTFT" value={latestRun.avgTTFT} />
-          <NumberStat compact label="TPS" value={latestRun.avgTPS.toString()} />
-          <NumberStat compact label="RPM" value={latestRun.rpm.toString()} />
-          <NumberStat compact label="缓存" value={`${latestRun.cacheHitRate}%`} />
+          <NumberStat compact label="成功率" value={formatPercent(latestRun.success_rate)} />
+          <NumberStat compact label="状态" value={statusLabel[latestRun.status]} />
+          <NumberStat compact label="TTFT" value={latestRun.avg_ttft || '-'} />
+          <NumberStat compact label="TPS" value={formatNumber(latestRun.avg_tps)} />
+          <NumberStat compact label="RPM" value={formatNumber(latestRun.rpm)} />
+          <NumberStat compact label="TPM" value={formatNumber(latestRun.tpm)} />
+          <NumberStat compact label="缓存" value={formatPercent(latestRun.cache_hit_rate)} />
+          <NumberStat compact label="稳定并发" value={String(latestRun.max_stable_concurrency || '-')} />
         </div>
       </div>
     </div>
@@ -857,9 +908,9 @@ function SampleLineChart({ samples, cacheRates, maxTps, maxLatency, maxTTFT, max
   const labels = samples.map((request) => `#${request.index}`)
   const datasets = [
     chartDataset('TPS', samples.map((request) => normalizeChartValue(request.tps, maxTps)), '#18181b', 3, true),
-    chartDataset('总耗时', samples.map((request) => normalizeChartValue(parseDurationMs(request.latency), maxLatency)), '#71717a'),
+    chartDataset('总耗时', samples.map((request) => normalizeChartValue(parseDurationMs(request.total_time), maxLatency)), '#71717a'),
     chartDataset('TTFT', samples.map((request) => normalizeChartValue(parseDurationMs(request.ttft), maxTTFT)), '#0ea5e9'),
-    chartDataset('输出 Token', samples.map((request) => normalizeChartValue(request.completionTokens, maxOutputTokens)), '#8b5cf6'),
+    chartDataset('输出 Token', samples.map((request) => normalizeChartValue(request.completion_tokens, maxOutputTokens)), '#8b5cf6'),
     chartDataset('网络', samples.map((request) => normalizeChartValue(requestNetworkMs(request), maxNetwork)), '#f59e0b'),
     chartDataset('缓存命中', samples.map((_, index) => normalizeChartValue(cacheRates[index], maxCache)), '#10b981'),
   ]
@@ -904,7 +955,7 @@ function normalizeChartValue(value: number, max: number) {
 }
 
 function requestNetworkMs(request: RequestDetail) {
-  return parseDurationMs(request.dns) + parseDurationMs(request.connect) + parseDurationMs(request.tls)
+  return parseDurationMs(request.dns_time) + parseDurationMs(request.connect_time) + parseDurationMs(request.tls_time)
 }
 
 function parseDurationMs(value: string) {
@@ -930,10 +981,15 @@ function RunRate({ value }: { value: number }) {
   )
 }
 
-function RunDetail({ run, requests, selectedRequest, onSelectRequest }: { run?: RunRecord; requests: RequestDetail[]; selectedRequest?: RequestDetail; onSelectRequest: (id: string) => void }) {
+function RunDetail({ run, requests, selectedRequest, onSelectRequest }: { run?: RunSummary; requests: RequestDetail[]; selectedRequest?: RequestDetail; onSelectRequest: (id: string) => void }) {
   if (!run) {
     return <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40"><CardContent className="flex min-h-60 items-center justify-center p-6 text-sm text-muted-foreground"><Clock3 className="mr-2 size-4" />当前任务暂无执行记录。</CardContent></Card>
   }
+
+  const successCount = requests.filter((request) => request.success).length
+  const failedCount = requests.filter((request) => request.status === 'failed' || !request.success).length
+  const doneCount = successCount + failedCount
+  const progress = requests.length > 0 ? Math.round((doneCount / requests.length) * 100) : Math.round(run.success_rate || 0)
 
   return (
     <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40">
@@ -941,25 +997,25 @@ function RunDetail({ run, requests, selectedRequest, onSelectRequest }: { run?: 
         <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
           <div className="min-w-0">
             <CardTitle className="flex items-center gap-2 text-base"><FileJson className="size-4" />执行详情</CardTitle>
-            <CardDescription className="truncate">{run.id} · {run.startedAt} · {run.summary}</CardDescription>
+            <CardDescription className="truncate">{run.run_id} · {formatDate(run.started_at)} · {run.protocol} · {run.model}</CardDescription>
           </div>
           <StatusBadge status={run.status} />
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-4 pt-0 sm:p-5 sm:pt-0">
         <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard icon={<CheckCircle2 className="size-4" />} label="成功率" value={`${run.successRate}%`} sub={`${run.success} 成功 / ${run.failed} 失败`} />
-          <KpiCard icon={<Gauge className="size-4" />} label="平均总耗时" value={run.avgTotalTime} sub={`TTFT ${run.avgTTFT} · TPOT ${run.avgTPOT}`} />
-          <KpiCard icon={<TrendingUp className="size-4" />} label="平均 TPS" value={run.avgTPS.toString()} sub={`RPM ${run.rpm} · TPM ${run.tpm}`} />
-          <KpiCard icon={<Database className="size-4" />} label="缓存命中" value={`${run.cacheHitRate}%`} sub={`${run.cachedTokens} cached tokens`} />
+          <KpiCard icon={<CheckCircle2 className="size-4" />} label="成功率" value={formatPercent(run.success_rate)} sub={`${successCount} 成功 / ${failedCount} 失败`} />
+          <KpiCard icon={<Gauge className="size-4" />} label="平均 TTFT" value={run.avg_ttft || '-'} sub={`缓存 ${formatPercent(run.cache_hit_rate)}`} />
+          <KpiCard icon={<TrendingUp className="size-4" />} label="平均 TPS" value={formatNumber(run.avg_tps)} sub={`RPM ${formatNumber(run.rpm)} · TPM ${formatNumber(run.tpm)}`} />
+          <KpiCard icon={<Database className="size-4" />} label="稳定并发" value={String(run.max_stable_concurrency || '-')} sub={run.error_summary || '暂无错误摘要'} />
         </div>
 
         <div className="rounded-2xl border bg-background/70 p-4">
           <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="font-medium">完成进度</span>
-            <span className="text-muted-foreground">{run.success + run.failed} / {run.requests}</span>
+            <span className="font-medium">样本进度</span>
+            <span className="text-muted-foreground">{doneCount} / {requests.length}</span>
           </div>
-          <Progress value={Math.round(((run.success + run.failed) / run.requests) * 100)} />
+          <Progress value={progress} />
         </div>
 
         <Tabs defaultValue="overview">
@@ -968,33 +1024,36 @@ function RunDetail({ run, requests, selectedRequest, onSelectRequest }: { run?: 
             <TabsTrigger value="requests">请求样本</TabsTrigger>
           </TabsList>
           <TabsContent value="overview" className="mt-4 grid gap-3 lg:grid-cols-3">
-            <CompactMetricList title="延迟分布" icon={<Clock3 className="size-4" />} items={[
-              ['总耗时', `${run.minTotalTime} / ${run.avgTotalTime} / ${run.maxTotalTime}`],
-              ['TTFT', `${run.minTTFT} / ${run.avgTTFT} / ${run.maxTTFT}`],
-              ['TPOT', run.avgTPOT],
-              ['标准差', `total ${run.stddevTotalTime} · ttft ${run.stddevTTFT}`],
+            <CompactMetricList title="运行摘要" icon={<Clock3 className="size-4" />} items={[
+              ['开始时间', formatDate(run.started_at)],
+              ['结束时间', formatDate(run.finished_at)],
+              ['状态', statusLabel[run.status]],
+              ['错误摘要', run.error_summary || '-'],
             ]} />
-            <CompactMetricList title="吞吐与 Token" icon={<TrendingUp className="size-4" />} items={[
-              ['TPS', `${run.minTPS} / ${run.avgTPS} / ${run.maxTPS}`],
-              ['总吞吐 TPS', run.totalThroughputTPS.toString()],
-              ['Token', `in ${run.promptTokens} · out ${run.outputTokens}`],
-              ['thinking', run.thinkingTokens.toString()],
+            <CompactMetricList title="吞吐" icon={<TrendingUp className="size-4" />} items={[
+              ['平均 TPS', formatNumber(run.avg_tps)],
+              ['RPM', formatNumber(run.rpm)],
+              ['TPM', formatNumber(run.tpm)],
+              ['稳定并发', String(run.max_stable_concurrency || '-')],
             ]} />
-            <CompactMetricList title="网络" icon={<Network className="size-4" />} items={[
-              ['DNS', run.avgDNS],
-              ['Connect', run.avgConnect],
-              ['TLS', run.avgTLS],
-              ['Target IP', run.targetIP],
+            <CompactMetricList title="请求样本" icon={<Network className="size-4" />} items={[
+              ['总样本', String(requests.length)],
+              ['成功', String(successCount)],
+              ['失败', String(failedCount)],
+              ['缓存命中', formatPercent(run.cache_hit_rate)],
             ]} />
           </TabsContent>
           <TabsContent value="requests" className="mt-4 grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
             <div className="space-y-2">
-              {requests.map((request) => (
-                <button key={request.id} type="button" onClick={() => onSelectRequest(request.id)} className={cn('flex w-full items-center justify-between rounded-2xl border bg-background/70 p-3 text-left text-sm hover:bg-accent', selectedRequest?.id === request.id && 'border-primary bg-accent')}>
-                  <span className="font-medium">#{request.index} · {request.id}</span>
-                  <span className="flex items-center gap-2 text-muted-foreground">{request.status === 'failed' ? <XCircle className="size-4 text-red-500" /> : <CheckCircle2 className="size-4 text-emerald-500" />}{request.latency}</span>
-                </button>
-              ))}
+              {requests.map((request) => {
+                const key = requestKey(request)
+                return (
+                  <button key={key} type="button" onClick={() => onSelectRequest(key)} className={cn('flex w-full items-center justify-between rounded-2xl border bg-background/70 p-3 text-left text-sm hover:bg-accent', selectedRequest && requestKey(selectedRequest) === key && 'border-primary bg-accent')}>
+                    <span className="font-medium">#{request.index} · {request.status}</span>
+                    <span className="flex items-center gap-2 text-muted-foreground">{request.status === 'failed' ? <XCircle className="size-4 text-red-500" /> : <CheckCircle2 className="size-4 text-emerald-500" />}{request.total_time}</span>
+                  </button>
+                )
+              })}
             </div>
             {selectedRequest && <RequestPanel request={selectedRequest} />}
           </TabsContent>
@@ -1035,19 +1094,19 @@ function RequestPanel({ request }: { request: RequestDetail }) {
     <div className="rounded-2xl border bg-background p-4">
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="font-medium">请求详情 #{request.index}</div>
-        {request.error ? <Badge className="bg-red-600"><AlertTriangle className="size-3" />{request.error}</Badge> : <Badge className="bg-emerald-600">OK</Badge>}
+        {request.error_message ? <Badge className="bg-red-600"><AlertTriangle className="size-3" />{request.error_message}</Badge> : <Badge className="bg-emerald-600">OK</Badge>}
       </div>
       <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
         <CompactMetricList title="本次指标" icon={<Gauge className="size-4" />} items={[
-          ['延迟', `${request.latency} · TTFT ${request.ttft}`],
-          ['TPS', request.tps.toString()],
-          ['Token', `in ${request.promptTokens} · out ${request.completionTokens} · cached ${request.cachedTokens}`],
-          ['网络', `DNS ${request.dns} · Conn ${request.connect} · TLS ${request.tls}`],
-          ['Target IP', request.targetIP],
+          ['延迟', `${request.total_time} · TTFT ${request.ttft}`],
+          ['TPS', formatNumber(request.tps)],
+          ['Token', `in ${request.prompt_tokens} · out ${request.completion_tokens} · cached ${request.cached_tokens}`],
+          ['网络', `DNS ${request.dns_time} · Conn ${request.connect_time} · TLS ${request.tls_time}`],
+          ['Target IP', request.target_ip || '-'],
         ]} />
         <div className="space-y-3">
-          <CodeBlock label="请求内容" value={request.request} icon={<Network className="size-3.5" />} />
-          <CodeBlock label="响应内容" value={request.response} icon={<FileJson className="size-3.5" />} />
+          <CodeBlock label="请求内容" value={request.request_body || '-'} icon={<Network className="size-3.5" />} />
+          <CodeBlock label="响应内容" value={request.response_body || request.error_message || '-'} icon={<FileJson className="size-3.5" />} />
         </div>
       </div>
     </div>
@@ -1085,25 +1144,13 @@ function TaskModeConfigPreview({ task }: { task: Task }) {
 const createModeHint: Record<TaskMode, string> = {
   standard: '固定并发与请求总数',
   turbo: '起始并发、最大并发、递增步长',
-  integrity: '测试集与规则文件',
+  integrity: '测试集与执行控制',
 }
 
 const draftName: Record<TaskMode, string> = {
   standard: '新建标准压测任务',
   turbo: '新建 Turbo 爬坡任务',
   integrity: '新建完整性校验任务',
-}
-
-const draftDescription: Record<TaskMode, string> = {
-  standard: '固定并发性能基线任务。',
-  turbo: '并发爬坡压力任务。',
-  integrity: '协议完整性校验任务。',
-}
-
-const draftTags: Record<TaskMode, string[]> = {
-  standard: ['standard', 'mock'],
-  turbo: ['turbo', 'mock'],
-  integrity: ['integrity', 'mock'],
 }
 
 const draftModel: Record<TaskMode, string> = {
@@ -1126,15 +1173,18 @@ const draftPrompt: Record<Exclude<TaskMode, 'integrity'>, string> = {
 const protocolOptions = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
 const promptModeOptions = ['text', 'file', 'generated', 'raw'] as const
 
-function makeInitialDraft(mode: TaskMode): TaskDraft {
+type PromptSpec = { mode: PromptMode; label: string; summary: string; content: string }
+
+function makeInitialDraft(mode: TaskMode, protocols: ProtocolMeta[] = []): TaskDraft {
+  const protocol = draftProtocol[mode]
   return {
     mode,
     name: draftName[mode],
-    protocol: draftProtocol[mode],
-    endpoint: defaultEndpoint(draftProtocol[mode]),
+    protocol,
+    endpoint: defaultEndpoint(protocol, protocols),
     model: draftModel[mode],
     concurrency: mode === 'integrity' ? 1 : mode === 'turbo' ? 4 : 8,
-    requests: mode === 'integrity' ? 3 : mode === 'turbo' ? 360 : 120,
+    requests: mode === 'integrity' ? 1 : mode === 'turbo' ? 60 : 120,
     promptMode: mode === 'turbo' ? 'generated' : 'text',
     promptText: mode === 'integrity' ? '' : draftPrompt[mode],
     promptFile: '',
@@ -1150,71 +1200,61 @@ function makeInitialDraft(mode: TaskMode): TaskDraft {
     turboLevelRequests: 60,
     turboMinSuccessRate: 0.9,
     turboMaxLatency: '10s',
-    integritySuite: defaultSuite(draftProtocol[mode]),
-    integrityRuleFiles: 'data/integrity/openai-completions.json',
+    integritySuite: defaultSuite(protocol),
+    integrityRuleFiles: '',
     integrityFailFast: true,
     integrityCaseTimeout: '30000',
   }
 }
 
 function draftFromTask(task: Task): TaskDraft {
-  const draft = makeInitialDraft(task.mode)
-  const promptMode = task.promptSpec?.mode ?? draft.promptMode
+  const input = task.input
+  const draft = makeInitialDraft(taskMode(task))
+  const promptMode = input.prompt_mode ?? draft.promptMode
   return {
     ...draft,
-    mode: task.mode,
+    mode: taskMode(task),
     name: `${task.name} 副本`,
-    protocol: task.protocol,
-    endpoint: task.endpoint,
-    model: task.model,
-    concurrency: task.concurrency,
-    requests: task.requests,
+    protocol: input.protocol || draft.protocol,
+    endpoint: input.endpoint_url || draft.endpoint,
+    model: input.model || draft.model,
+    concurrency: input.concurrency ?? draft.concurrency,
+    requests: input.count ?? draft.requests,
     promptMode,
-    promptText: promptMode === 'generated' ? draft.promptText : task.promptSpec?.content ?? task.prompt ?? draft.promptText,
-    promptFile: promptMode === 'file' ? task.promptSpec?.content ?? '' : '',
-    promptLength: promptMode === 'generated' ? numberFromText(task.promptSpec?.content ?? '', draft.promptLength) : draft.promptLength,
-    timeout: task.standard?.timeout ?? draft.timeout,
-    stream: task.standard?.stream ?? true,
-    thinking: task.standard?.thinking ?? false,
-    report: task.standard?.report ?? true,
-    log: task.standard?.log ?? false,
-    turboInitConcurrency: task.turbo?.initConcurrency ?? task.turbo?.levels[0] ?? draft.turboInitConcurrency,
-    turboMaxConcurrency: task.turbo?.maxConcurrency ?? draft.turboMaxConcurrency,
-    turboStepSize: task.turbo?.stepSize ?? inferStepSize(task.turbo?.levels) ?? draft.turboStepSize,
-    turboLevelRequests: task.turbo?.levelRequests ?? (task.turbo ? Math.max(1, Math.round(task.requests / Math.max(task.turbo.levels.length, 1))) : draft.turboLevelRequests),
-    turboMinSuccessRate: task.turbo?.minSuccessRate ?? draft.turboMinSuccessRate,
-    turboMaxLatency: task.turbo?.maxLatency ?? draft.turboMaxLatency,
-    integritySuite: task.integrity?.suite ?? draft.integritySuite,
-    integrityRuleFiles: task.integrity?.ruleFiles.join('\n') ?? draft.integrityRuleFiles,
-    integrityFailFast: task.integrity?.failFast ?? draft.integrityFailFast,
-    integrityCaseTimeout: task.integrity?.caseTimeout ? String(durationToMs(task.integrity.caseTimeout)) : draft.integrityCaseTimeout,
+    promptText: input.prompt_text ?? draft.promptText,
+    promptFile: input.prompt_file ?? '',
+    promptLength: input.prompt_length ?? draft.promptLength,
+    timeout: input.timeout ?? draft.timeout,
+    stream: input.stream ?? draft.stream,
+    thinking: input.thinking ?? draft.thinking,
+    report: input.report ?? draft.report,
+    log: input.log ?? draft.log,
+    turboInitConcurrency: input.turbo_config?.init_concurrency ?? draft.turboInitConcurrency,
+    turboMaxConcurrency: input.turbo_config?.max_concurrency ?? draft.turboMaxConcurrency,
+    turboStepSize: input.turbo_config?.step_size ?? draft.turboStepSize,
+    turboLevelRequests: input.turbo_config?.level_requests ?? input.count ?? draft.turboLevelRequests,
+    turboMinSuccessRate: input.turbo_config?.min_success_rate ?? draft.turboMinSuccessRate,
+    turboMaxLatency: input.turbo_config?.max_latency ?? draft.turboMaxLatency,
+    integritySuite: input.integrity?.suite ?? draft.integritySuite,
+    integrityRuleFiles: input.integrity?.rule_files?.join('\n') ?? '',
+    integrityFailFast: input.integrity?.fail_fast ?? draft.integrityFailFast,
+    integrityCaseTimeout: input.integrity?.case_timeout_ms ? String(input.integrity.case_timeout_ms) : draft.integrityCaseTimeout,
   }
 }
 
 function taskFromDraft(id: string, draft: TaskDraft): Task {
-  const base = {
+  return {
     id,
     name: draft.name.trim() || draftName[draft.mode],
-    description: draftDescription[draft.mode],
     mode: draft.mode,
-    protocol: draft.protocol,
-    model: draft.model.trim(),
-    endpoint: draft.endpoint.trim(),
-    concurrency: draft.mode === 'turbo' ? draft.turboInitConcurrency : draft.concurrency,
-    requests: draft.mode === 'turbo' ? draft.turboLevelRequests * turboLevelsFromDraft(draft).length : draft.requests,
-    updatedAt: '刚刚',
-    tags: draftTags[draft.mode],
+    input: inputJsonFromDraft(draft),
+    created_at: new Date().toISOString(),
+    updated_at: new Date().toISOString(),
   }
-
-  if (draft.mode === 'integrity') return { ...base, integrity: { suite: draft.integritySuite.trim(), ruleFiles: parseList(draft.integrityRuleFiles), failFast: draft.integrityFailFast, caseTimeout: `${durationToMs(draft.integrityCaseTimeout)}ms`, cases: draftIntegrityCases(draft) } }
-
-  const promptSpec = promptSpecFromDraft(draft)
-  if (draft.mode === 'turbo') return { ...base, prompt: promptSpec.content, promptSpec, turbo: { levels: turboLevelsFromDraft(draft), initConcurrency: draft.turboInitConcurrency, maxConcurrency: draft.turboMaxConcurrency, stepSize: draft.turboStepSize, levelRequests: draft.turboLevelRequests, minSuccessRate: draft.turboMinSuccessRate, maxLatency: draft.turboMaxLatency.trim() } }
-  return { ...base, prompt: promptSpec.content, promptSpec, standard: { timeout: draft.timeout.trim(), stream: draft.stream, thinking: draft.thinking, report: draft.report, log: draft.log } }
 }
 
-function inputJsonFromDraft(draft: TaskDraft) {
-  const input = {
+function inputJsonFromDraft(draft: TaskDraft): TaskInput {
+  const input: TaskInput = {
     mode: draft.mode,
     protocol: draft.protocol,
     endpoint_url: draft.endpoint.trim(),
@@ -1226,6 +1266,7 @@ function inputJsonFromDraft(draft: TaskDraft) {
   }
 
   if (draft.mode === 'integrity') {
+    const ruleFiles = parseList(draft.integrityRuleFiles)
     return {
       ...input,
       concurrency: 1,
@@ -1235,7 +1276,7 @@ function inputJsonFromDraft(draft: TaskDraft) {
         suite: draft.integritySuite.trim(),
         fail_fast: draft.integrityFailFast,
         case_timeout_ms: durationToMs(draft.integrityCaseTimeout),
-        rule_files: parseList(draft.integrityRuleFiles),
+        ...(ruleFiles.length > 0 ? { rule_files: ruleFiles } : {}),
       },
     }
   }
@@ -1267,20 +1308,76 @@ function inputJsonFromDraft(draft: TaskDraft) {
   }
 }
 
-function promptInputFromDraft(draft: TaskDraft) {
+function promptInputFromDraft(draft: TaskDraft): Partial<TaskInput> {
   if (draft.promptMode === 'file') return { prompt_mode: 'file', prompt_file: draft.promptFile.trim() }
   if (draft.promptMode === 'generated') return { prompt_mode: 'generated', prompt_length: draft.promptLength }
   return { prompt_mode: draft.promptMode, prompt_text: draft.promptText }
 }
 
-function promptSpecFromDraft(draft: TaskDraft) {
-  if (draft.promptMode === 'file') return { mode: 'file' as const, label: 'prompt_file', summary: `从文件读取 Prompt：${draft.promptFile}`, content: draft.promptFile }
-  if (draft.promptMode === 'generated') return { mode: 'generated' as const, label: 'prompt_length', summary: `按长度生成 ${draft.promptLength} token Prompt。`, content: `Prompt 长度：${draft.promptLength}` }
-  if (draft.promptMode === 'raw') return { mode: 'raw' as const, label: 'prompt_text', summary: '原始 JSON 请求体。', content: draft.promptText }
-  return { mode: 'text' as const, label: 'prompt_text', summary: '直接使用文本 Prompt。', content: draft.promptText }
+function promptSpec(input: TaskInput): PromptSpec | undefined {
+  if (input.mode === 'integrity') return undefined
+  if (input.prompt_mode === 'file') return { mode: 'file', label: 'prompt_file', summary: `从文件读取 Prompt：${input.prompt_file || '-'}`, content: input.prompt_file || '-' }
+  if (input.prompt_mode === 'generated') return { mode: 'generated', label: 'prompt_length', summary: `按长度生成 ${input.prompt_length || 0} token Prompt。`, content: `Prompt 长度：${input.prompt_length || 0}` }
+  if (input.prompt_mode === 'raw') return { mode: 'raw', label: 'prompt_text', summary: '原始 JSON 请求体。', content: input.prompt_text || '-' }
+  return { mode: 'text', label: 'prompt_text', summary: '直接使用文本 Prompt。', content: input.prompt_text || '-' }
 }
 
-function defaultEndpoint(protocol: string) {
+function taskMode(task: Task) {
+  return task.input.mode || task.mode
+}
+
+function taskModel(task: Task) {
+  return task.input.model || '-'
+}
+
+function taskProtocol(task: Task) {
+  return task.input.protocol || '-'
+}
+
+function taskEndpoint(task: Task) {
+  return task.input.endpoint_url || task.input.base_url || task.input.proxy_url || '-'
+}
+
+function taskConcurrency(task: Task) {
+  return task.input.turbo_config?.init_concurrency ?? task.input.concurrency ?? 0
+}
+
+function taskRequests(task: Task) {
+  return task.input.count ?? 0
+}
+
+function requestKey(request?: RequestDetail) {
+  return request ? `${request.index}-${request.level ?? 0}` : ''
+}
+
+function formatDate(value?: string) {
+  if (!value) return '-'
+  const date = new Date(value)
+  if (Number.isNaN(date.getTime())) return value
+  return date.toLocaleString()
+}
+
+function formatNumber(value?: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return Number.isInteger(value) ? value.toString() : value.toFixed(2)
+}
+
+function formatPercent(value?: number) {
+  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
+  return `${Math.round(value)}%`
+}
+
+function turboLevelsFromConfig(config?: TaskInput['turbo_config']) {
+  if (!config) return []
+  const levels: number[] = []
+  const stepSize = Math.max(1, config.step_size || 1)
+  for (let value = Math.max(1, config.init_concurrency); value <= Math.max(config.init_concurrency, config.max_concurrency); value += stepSize) levels.push(value)
+  return levels
+}
+
+function defaultEndpoint(protocol: string, protocols: ProtocolMeta[] = []) {
+  const meta = protocols.find((item) => item.id === protocol)
+  if (meta?.default_endpoint_url) return meta.default_endpoint_url
   if (protocol === 'openai-responses') return 'https://api.openai.com/v1/responses'
   if (protocol === 'anthropic-messages') return 'https://api.anthropic.com/v1/messages'
   return 'https://api.openai.com/v1/chat/completions'
@@ -1301,7 +1398,7 @@ function nextStepLabel(step: number) {
 
 function createStepHint(draft: TaskDraft, step: number) {
   if (step === 1) return '请先填写任务名称、协议、模型名称和请求地址。'
-  if (step === 2 && draft.mode === 'integrity') return '请补充测试集名称、规则文件和单个用例超时。'
+  if (step === 2 && draft.mode === 'integrity') return '请补充测试集名称和单个用例超时。'
   if (step === 2 && draft.mode === 'turbo') return '请确认 Prompt、并发爬坡参数、请求超时和停止条件均已填写。'
   if (step === 2) return '请确认 Prompt、并发数、请求总数和请求超时均已填写。'
   return '请先完成当前步骤。'
@@ -1323,7 +1420,7 @@ function isBasicConfigValid(draft: TaskDraft): boolean {
 }
 
 function isModeConfigValid(draft: TaskDraft): boolean {
-  if (draft.mode === 'integrity') return Boolean(draft.integritySuite.trim() && draft.integrityRuleFiles.trim() && durationToMs(draft.integrityCaseTimeout) > 0)
+  if (draft.mode === 'integrity') return Boolean(draft.integritySuite.trim() && durationToMs(draft.integrityCaseTimeout) > 0)
   if (draft.mode === 'turbo' && (draft.turboInitConcurrency <= 0 || draft.turboMaxConcurrency <= 0 || draft.turboStepSize <= 0 || draft.turboLevelRequests <= 0 || draft.turboMinSuccessRate <= 0 || !draft.turboMaxLatency.trim())) return false
   if (draft.mode === 'standard' && (draft.concurrency <= 0 || draft.requests <= 0)) return false
   if (!draft.timeout.trim()) return false
@@ -1347,30 +1444,6 @@ function durationToMs(value: string) {
   if (normalized.endsWith('ms')) return Math.round(amount)
   if (normalized.endsWith('s')) return Math.round(amount * 1000)
   return Math.round(amount)
-}
-
-function numberFromText(value: string, fallback: number) {
-  const match = value.match(/\d+/)
-  return match ? Number.parseInt(match[0], 10) : fallback
-}
-
-function inferStepSize(levels?: number[]) {
-  if (!levels || levels.length < 2) return undefined
-  return Math.max(1, levels[1] - levels[0])
-}
-
-function turboLevelsFromDraft(draft: TaskDraft) {
-  const levels: number[] = []
-  const stepSize = Math.max(1, draft.turboStepSize)
-  for (let value = Math.max(1, draft.turboInitConcurrency); value <= Math.max(draft.turboInitConcurrency, draft.turboMaxConcurrency); value += stepSize) levels.push(value)
-  return levels
-}
-
-function draftIntegrityCases(draft: TaskDraft) {
-  return [
-    { id: 'basic-response-shape', name: '基础响应结构', capability: 'basic_request', prompt: 'Reply with a short greeting.', assertions: ['response.body exists', 'response.body.choices exists'], timeout: draft.integrityCaseTimeout, required: true },
-    { id: 'usage-metrics', name: '用量字段', capability: 'usage', prompt: 'Reply with one short sentence.', assertions: ['metrics.total_ms >= 0', 'usage exists'], timeout: draft.integrityCaseTimeout, required: false },
-  ]
 }
 
 export default App

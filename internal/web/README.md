@@ -1,6 +1,6 @@
 # AIT Web 接口需求分析
 
-当前 `internal/web` 只负责启动本地静态 SPA：`web.Run` 挂载 `/` 到前端产物，尚未注册任何 `/api` 接口。前端原型的数据来源是 `internal/web/source/mock.ts`，本文件根据当前 Web 页面反推接口需求，并对照 `internal/server.Server` 已有业务能力标记缺口。
+`internal/web` 已注册 `/api` HTTP 接口，并通过 `internal/server.Server` 复用真实业务逻辑。前端原型当前仍使用 `internal/web/source/mock.ts`，本文件记录 Web 页面需要的数据、已实现接口与后续前端接入注意事项。
 
 ## 页面与数据需求
 
@@ -63,7 +63,7 @@ Web 当前是任务中心结构：任务列表 → 任务详情 → 执行记录
 - 通用字段：`name`、`input.mode`、`input.protocol`、`input.endpoint_url`、`input.model`
 - standard：`input.concurrency`、`input.count`、`input.prompt_*`、`input.timeout`、`input.stream`、`input.thinking`、`input.report`、`input.log`
 - turbo：`input.mode=turbo`、`input.turbo=true`、`input.count`、`input.prompt_*`、`input.turbo_config`
-- integrity：`input.mode=integrity`、`input.integrity.enabled=true`、`suite`、`rule_files`、`fail_fast`、`case_timeout_ms`
+- integrity：`input.mode=integrity`、`input.integrity.enabled=true`、`suite`、可选 `rule_files`、`fail_fast`、`case_timeout_ms`
 
 任务没有“标签”和“任务说明”这两个用户配置项；Web 不应提交这两个字段。
 
@@ -73,25 +73,26 @@ Web 当前是任务中心结构：任务列表 → 任务详情 → 执行记录
 
 | 方法 | 路径 | Web 用途 | 后端业务能力 | 状态 |
 | --- | --- | --- | --- | --- |
-| `GET` | `/api/tasks` | 任务列表 + 最近执行摘要 | `Server.ListTasks()` | 业务层已有，HTTP 缺失 |
-| `GET` | `/api/tasks/{taskID}` | 任务详情/复制任务预填 | `Server.GetTask(id)` | 业务层已有，HTTP 缺失 |
-| `POST` | `/api/tasks` | 创建任务 | `Server.CreateTask(TaskConfig)` | 业务层已有，HTTP 缺失 |
-| `PUT` | `/api/tasks/{taskID}` | 更新任务 | `Server.UpdateTask(id, TaskConfig)` | 业务层已有，HTTP 缺失 |
-| `DELETE` | `/api/tasks/{taskID}` | 删除任务 | `Server.DeleteTask(id)` | 业务层已有，HTTP 缺失 |
-| `POST` | `/api/tasks/{taskID}/duplicate` | 快速复制任务 | `Server.DuplicateTask(id)` | 业务层已有，HTTP 缺失 |
-| `POST` | `/api/tasks/{taskID}/runs` | 启动运行 | `Server.StartRun(taskID)` | 业务层已有，HTTP 缺失 |
-| `GET` | `/api/tasks/{taskID}/runs?limit=20` | 任务执行记录 | `Server.ListTaskRunHistory(taskID, limit)` | 业务层已有，HTTP 缺失 |
-| `GET` | `/api/runs/{runID}` | 运行状态/历史运行详情 | `Server.GetRunState(runID)` | 业务层已有，HTTP 缺失 |
-| `POST` | `/api/runs/{runID}/stop` | 停止运行 | `Server.StopRun(runID)` | 业务层已有，HTTP 缺失 |
-| `GET` | `/api/runs/{runID}/events` | 运行实时更新 | `Server.SubscribeRunEvents(runID)` | 业务层已有，HTTP 缺失 |
-| `GET` | `/api/runs/{runID}/requests` | 请求明细表/曲线样本 | 可通过 `GetRunState(runID).Requests` 获得 | 业务层间接已有，HTTP 缺失 |
-| `GET` | `/api/runs/{runID}/requests/{index}` | 单请求详情 | 可从 `RunState.Requests` 查找 | 业务层间接已有，HTTP 缺失 |
-| `GET` | `/api/runs/{runID}/report?format=json|csv` | 下载报告 | `Server.GenerateRunReport(runID, format)` | 业务层已有，HTTP 缺失 |
-| `GET` | `/api/config` | 全局配置，如代理 | `Server.GetAppConfig()` | 业务层已有，HTTP 缺失 |
-| `PUT` | `/api/config/proxy` | 更新代理 | `Server.UpdateProxyURL(proxyURL)` | 业务层已有，HTTP 缺失 |
-| `GET` | `/api/integrity/suites` | 创建完整性任务时选择测试集 | `RulesManager` 内部有加载能力 | Web 需要，公开查询接口缺失 |
-| `GET` | `/api/integrity/suites/{suiteID}` | 查看 suite/case/assertion 元数据 | `integrity.LoadSuiteWithManager` 可加载 | Web 需要，公开查询接口缺失 |
-| `GET` | `/api/meta/protocols` | 创建任务协议选项、默认 endpoint | `types.NormalizeProtocol` / `DefaultEndpointURL` | 可静态实现，HTTP 缺失 |
+| `GET` | `/api/tasks` | 任务列表 + 最近执行摘要 | `Server.ListTasks()` | 已实现 |
+| `GET` | `/api/tasks/{taskID}` | 任务详情/复制任务预填 | `Server.GetTask(id)` | 已实现 |
+| `POST` | `/api/tasks` | 创建任务 | `Server.CreateTask(TaskConfig)` + `ValidateTaskConfig` | 已实现 |
+| `PUT` | `/api/tasks/{taskID}` | 更新任务 | `Server.UpdateTask(id, TaskConfig)` + `ValidateTaskConfig` | 已实现 |
+| `DELETE` | `/api/tasks/{taskID}` | 删除任务 | `Server.DeleteTask(id)` | 已实现 |
+| `POST` | `/api/tasks/{taskID}/duplicate` | 快速复制任务 | `Server.DuplicateTask(id)` | 已实现 |
+| `POST` | `/api/tasks/{taskID}/runs` | 启动运行 | `Server.StartRun(taskID)` | 已实现 |
+| `GET` | `/api/tasks/{taskID}/runs?limit=20` | 任务执行记录 | `Server.ListTaskRunHistory(taskID, limit)` | 已实现 |
+| `GET` | `/api/runs/{runID}` | 运行状态/历史运行详情 | `Server.GetRunState(runID)` | 已实现 |
+| `POST` | `/api/runs/{runID}/stop` | 停止运行 | `Server.StopRun(runID)` | 已实现 |
+| `GET` | `/api/runs/{runID}/events` | 运行实时更新 | `Server.SubscribeRunEvents(runID)` | 已实现 |
+| `GET` | `/api/runs/{runID}/requests` | 请求明细表/曲线样本 | `GetRunState(runID).Requests` + Web 分页/筛选 | 已实现 |
+| `GET` | `/api/runs/{runID}/requests/{index}` | 单请求详情 | 从 `RunState.Requests` 查找 | 已实现 |
+| `GET` | `/api/runs/{runID}/report?format=json|csv` | 下载报告 | `Server.GenerateRunReport(runID, format)` | 已实现 |
+| `GET` | `/api/config` | 全局配置，如代理 | `Server.GetAppConfig()` | 已实现 |
+| `PUT` | `/api/config/proxy` | 更新代理 | `Server.UpdateProxyURL(proxyURL)` | 已实现 |
+| `POST` | `/api/tasks/validate` | 创建前校验并返回归一化配置 | `Server.ValidateTaskConfig(TaskConfig)` | 已实现 |
+| `GET` | `/api/integrity/suites` | 创建完整性任务时选择测试集 | `Server.ListIntegritySuites(protocol)` | 已实现 |
+| `GET` | `/api/integrity/suites/{suiteID}` | 查看 suite/case/assertion 元数据 | `Server.GetIntegritySuite(protocol, suiteID)` | 已实现 |
+| `GET` | `/api/meta/protocols` | 创建任务协议选项、默认 endpoint | `Server.ListProtocols()` | 已实现 |
 
 ## 数据模型映射
 
@@ -206,7 +207,7 @@ Web 建议用 SSE：`GET /api/runs/{runID}/events`，事件 payload 直接使用
 - `name` 非空
 - `protocol/model/endpoint` 合法
 - standard/turbo 必须有 Prompt
-- integrity 必须有 suite/rule files
+- integrity 必须有 suite
 - duration 字符串可解析
 - turbo 并发参数关系合法
 
