@@ -63,6 +63,8 @@ func (ar *activeRun) snapshotState() *RunState {
 				copied := make([]types.TurboLevelResult, len(val))
 				copy(copied, val)
 				snap.ModeState[k] = copied
+			case integrity.RulesStatus:
+				snap.ModeState[k] = val
 			case []types.IntegrityCaseResult:
 				copied := make([]types.IntegrityCaseResult, len(val))
 				copy(copied, val)
@@ -148,6 +150,33 @@ func uploadRequest(taskID string, metrics *client.ResponseMetrics, input types.I
 		return
 	}
 	upload.New().UploadReport(taskID, metrics, input)
+}
+
+func (s *serverImpl) handleRulesStatus(status integrity.RulesStatus) {
+	s.mu.Lock()
+	statusCopy := status
+	s.rulesStatus = &statusCopy
+	active := make(map[RunID]*activeRun, len(s.activeRuns))
+	for runID, ar := range s.activeRuns {
+		ar.mu.RLock()
+		isIntegrity := ar.state != nil && ar.state.Mode == "integrity"
+		ar.mu.RUnlock()
+		if isIntegrity {
+			active[runID] = ar
+		}
+	}
+	s.mu.Unlock()
+
+	for runID, ar := range active {
+		ar.mu.Lock()
+		if ar.state.ModeState == nil {
+			ar.state.ModeState = map[string]any{}
+		}
+		ar.state.ModeState["rules_status"] = status
+		snap := ar.snapshotState()
+		ar.mu.Unlock()
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegrityRulesStatus, Payload: snap})
+	}
 }
 
 func (s *serverImpl) startProgressTicker(ar *activeRun, runID RunID) chan struct{} {
@@ -473,8 +502,44 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 
 // runIntegrity 在 goroutine 中执行接口完整性测试。
 func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
+	s.mu.RLock()
+	var rulesStatus *integrity.RulesStatus
+	if s.rulesStatus != nil {
+		statusCopy := *s.rulesStatus
+		rulesStatus = &statusCopy
+	}
+	s.mu.RUnlock()
+
+	ar.mu.Lock()
+	ar.state.ModeState = map[string]any{
+		"suite_status": map[string]any{
+			"phase":   "loading",
+			"message": "正在加载完整性测试集",
+			"suite":   input.Integrity.Suite,
+		},
+	}
+	if rulesStatus != nil {
+		ar.state.ModeState["rules_status"] = *rulesStatus
+	}
+	snap := ar.snapshotState()
+	ar.mu.Unlock()
+	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegritySuiteLoading, Payload: snap})
+
 	suite, err := integrity.LoadSuiteWithManager(input, s.rulesManager)
 	if err != nil {
+		ar.mu.Lock()
+		if ar.state.ModeState == nil {
+			ar.state.ModeState = map[string]any{}
+		}
+		ar.state.ModeState["suite_status"] = map[string]any{
+			"phase":   "error",
+			"message": "完整性测试集加载失败",
+			"suite":   input.Integrity.Suite,
+			"error":   err.Error(),
+		}
+		snap := ar.snapshotState()
+		ar.mu.Unlock()
+		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegritySuiteLoaded, Payload: snap})
 		s.failRun(ar, runID, taskDef, runStore, err)
 		return
 	}
@@ -505,12 +570,23 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 	ar.state.TotalReqs = len(suite.Cases)
 	// 初始化模式状态
 	ar.state.ModeState = map[string]any{
-		"suite":             suite,
+		"suite": suite,
+		"suite_status": map[string]any{
+			"phase":      "ready",
+			"message":    "完整性测试集已加载",
+			"suite":      suite.ID,
+			"case_count": len(suite.Cases),
+		},
 		"cases":             []types.IntegrityCaseResult{},
 		"current_case_id":   "",
 		"assertion_results": []types.AssertionResult{},
 	}
+	if rulesStatus != nil {
+		ar.state.ModeState["rules_status"] = *rulesStatus
+	}
+	snap = ar.snapshotState()
 	ar.mu.Unlock()
+	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegritySuiteLoaded, Payload: snap})
 	executor.OnCaseStarted = func(c types.IntegrityCase) {
 		ar.mu.Lock()
 		if ar.state.ModeState == nil {

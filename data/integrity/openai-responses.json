@@ -1,59 +1,610 @@
 {
   "version": "ait.integrity.rules/v1",
   "suite": "openai-responses-smoke",
-  "description": "OpenAI Responses API 协议完整性验证规则",
-  "assertions": [
+  "description": "OpenAI Responses API 基础能力验证规则：覆盖 AIT 当前 integrity 执行器可观测的非流式 response 对象、流式 SSE 事件、output、status、usage 和基础 latency 指标。来源：https://developers.openai.com/api/reference/resources/responses/methods/create/index.md",
+  "cases": [
     {
-      "id": "builtin.responses.http_status",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.status_code",
-      "op": "between",
-      "value": [200, 299],
-      "message": "HTTP 状态码必须在 200-299 范围内"
+      "id": "responses-basic-non-stream",
+      "name": "Responses 非流式基础响应",
+      "description": "发送最小文本输入，验证非流式响应返回 response 对象、assistant message、output_text 和 usage。",
+      "category": "protocol",
+      "capability": "basic_request",
+      "required": true,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "input": [
+            {
+              "role": "user",
+              "content": "Reply with exactly one short greeting."
+            }
+          ],
+          "store": true
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.body.exists",
+          "level": "error",
+          "path": "response.body",
+          "op": "exists",
+          "message": "响应体必须是可解析的 JSON 对象。"
+        },
+        {
+          "id": "response.id.exists",
+          "level": "error",
+          "path": "response.body.id",
+          "op": "exists",
+          "message": "Responses 响应必须包含 id。"
+        },
+        {
+          "id": "response.object.response",
+          "level": "error",
+          "path": "response.body.object",
+          "op": "eq",
+          "value": "response",
+          "message": "非流式响应 object 必须是 response。"
+        },
+        {
+          "id": "response.created_at.exists",
+          "level": "warn",
+          "path": "response.body.created_at",
+          "op": "exists",
+          "message": "响应建议包含 created_at Unix 时间戳。"
+        },
+        {
+          "id": "response.status.valid",
+          "level": "error",
+          "path": "response.body.status",
+          "op": "in",
+          "value": [
+            "completed",
+            "failed",
+            "in_progress",
+            "cancelled",
+            "queued",
+            "incomplete"
+          ],
+          "message": "Responses status 必须是文档定义的取值之一。"
+        },
+        {
+          "id": "response.model.exists",
+          "level": "error",
+          "path": "response.body.model",
+          "op": "exists",
+          "message": "响应必须包含实际使用的 model。"
+        },
+        {
+          "id": "response.output.exists",
+          "level": "error",
+          "path": "response.body.output",
+          "op": "exists",
+          "message": "响应必须包含 output 数组。"
+        },
+        {
+          "id": "response.first_output.type.message",
+          "level": "error",
+          "path": "response.body.output[0].type",
+          "op": "eq",
+          "value": "message",
+          "message": "基础文本响应的第一个 output item 应是 message。"
+        },
+        {
+          "id": "response.first_output.role.assistant",
+          "level": "error",
+          "path": "response.body.output[0].role",
+          "op": "eq",
+          "value": "assistant",
+          "message": "基础文本响应的 output message role 必须是 assistant。"
+        },
+        {
+          "id": "response.first_output.content.exists",
+          "level": "error",
+          "path": "response.body.output[0].content",
+          "op": "exists",
+          "message": "output message 必须包含 content。"
+        },
+        {
+          "id": "response.first_output_text.type",
+          "level": "error",
+          "path": "response.body.output[0].content[0].type",
+          "op": "eq",
+          "value": "output_text",
+          "message": "基础文本响应 content block 类型应为 output_text。"
+        },
+        {
+          "id": "response.first_output_text.text.exists",
+          "level": "error",
+          "path": "response.body.output[0].content[0].text",
+          "op": "exists",
+          "message": "基础文本响应必须包含 output_text.text。"
+        },
+        {
+          "id": "response.usage.exists",
+          "level": "warn",
+          "path": "response.body.usage",
+          "op": "exists",
+          "message": "响应建议包含 usage 统计。"
+        },
+        {
+          "id": "response.usage.input_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.input_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "usage.input_tokens 应为非负数。"
+        },
+        {
+          "id": "response.usage.output_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.output_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "usage.output_tokens 应为非负数。"
+        },
+        {
+          "id": "response.usage.total_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.total_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "usage.total_tokens 应为非负数。"
+        },
+        {
+          "id": "metrics.total_ms.gte_zero",
+          "level": "warn",
+          "path": "metrics.total_ms",
+          "op": "gte",
+          "value": 0,
+          "message": "请求总耗时必须可观测。"
+        },
+        {
+          "id": "metrics.input_tokens.gte_zero",
+          "level": "warn",
+          "path": "metrics.input_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "AIT 应能从 Responses usage 中提取输入 token 数。"
+        },
+        {
+          "id": "metrics.output_tokens.gte_zero",
+          "level": "warn",
+          "path": "metrics.output_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "AIT 应能从 Responses usage 中提取输出 token 数。"
+        }
+      ]
     },
     {
-      "id": "builtin.responses.id.format",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.id",
-      "op": "matches",
-      "value": "^resp_[a-zA-Z0-9]+$",
-      "message": "Responses API ID 必须符合 resp_xxx 格式"
+      "id": "responses-stream-basic",
+      "name": "Responses 流式基础响应",
+      "description": "发送 stream=true 的基础请求，验证 SSE 事件可以解析，并覆盖 response.created / response.output_text.delta / response.completed 等 Responses 流式事件序列的基础结构。",
+      "category": "protocol",
+      "capability": "streaming",
+      "required": true,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "input": [
+            {
+              "role": "user",
+              "content": "Count from 1 to 3, separated by commas."
+            }
+          ],
+          "store": true,
+          "stream": true
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.stream_events.exists",
+          "level": "error",
+          "path": "response.body[0]",
+          "op": "exists",
+          "message": "流式响应必须至少包含一个可解析的 SSE data 事件。"
+        },
+        {
+          "id": "response.first_event.type.created",
+          "level": "error",
+          "path": "response.body[0].type",
+          "op": "eq",
+          "value": "response.created",
+          "message": "Responses 流式响应第一个事件应为 response.created。"
+        },
+        {
+          "id": "response.first_event.response.id.exists",
+          "level": "error",
+          "path": "response.body[0].response.id",
+          "op": "exists",
+          "message": "response.created 事件应包含 response.id。"
+        },
+        {
+          "id": "response.first_event.response.object.response",
+          "level": "error",
+          "path": "response.body[0].response.object",
+          "op": "eq",
+          "value": "response",
+          "message": "response.created 事件中的 response.object 必须是 response。"
+        },
+        {
+          "id": "metrics.ttft_ms.gte_zero",
+          "level": "warn",
+          "path": "metrics.ttft_ms",
+          "op": "gte",
+          "value": 0,
+          "message": "流式请求应可观测 TTFT。"
+        },
+        {
+          "id": "metrics.total_ms.gte_zero",
+          "level": "warn",
+          "path": "metrics.total_ms",
+          "op": "gte",
+          "value": 0,
+          "message": "流式请求总耗时必须可观测。"
+        }
+      ]
     },
     {
-      "id": "builtin.responses.output.exists",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.output",
-      "op": "exists",
-      "message": "Responses API 必须包含 output 字段"
+      "id": "responses-string-input-controls",
+      "name": "Responses 字符串输入与现代控制参数",
+      "description": "覆盖文档中的字符串 input、instructions、max_output_tokens、metadata、temperature、top_p、truncation、parallel_tool_calls、prompt_cache_key、safety_identifier、service_tier、text.format 与 tool_choice。该用例为可选，以兼容不支持部分新参数的模型或代理。",
+      "category": "protocol",
+      "capability": "modern_request_parameters",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "instructions": "You are a concise assistant. Answer in plain text.",
+          "input": "Reply with exactly one short greeting.",
+          "max_output_tokens": 32,
+          "metadata": {
+            "suite": "ait-integrity",
+            "case": "responses-string-controls"
+          },
+          "temperature": 0,
+          "top_p": 1,
+          "truncation": "disabled",
+          "parallel_tool_calls": false,
+          "prompt_cache_key": "ait-integrity-responses-modern",
+          "safety_identifier": "ait-integrity-user",
+          "service_tier": "default",
+          "store": false,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          },
+          "tool_choice": "auto"
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.object.response",
+          "level": "error",
+          "path": "response.body.object",
+          "op": "eq",
+          "value": "response",
+          "message": "现代参数用例应返回 response 对象。"
+        },
+        {
+          "id": "response.status.valid",
+          "level": "error",
+          "path": "response.body.status",
+          "op": "in",
+          "value": [
+            "completed",
+            "failed",
+            "in_progress",
+            "cancelled",
+            "queued",
+            "incomplete"
+          ],
+          "message": "Responses status 必须是文档定义的取值之一。"
+        },
+        {
+          "id": "response.output.exists",
+          "level": "error",
+          "path": "response.body.output",
+          "op": "exists",
+          "message": "现代参数用例仍应返回 output 数组。"
+        }
+      ]
     },
     {
-      "id": "builtin.responses.output.not_empty",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.output",
-      "op": "neq",
-      "value": "",
-      "message": "output 字段不能为空"
+      "id": "responses-json-schema-output",
+      "name": "Responses JSON Schema 结构化输出",
+      "description": "请求 JSON Schema 结构化输出，验证服务端返回 response 对象、合法 status、output 数组，并用宽松断言检查输出文本类似 JSON 对象。",
+      "category": "protocol",
+      "capability": "structured_output",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "input": "Return JSON with fields ok and message. Do not include markdown.",
+          "max_output_tokens": 120,
+          "temperature": 0,
+          "store": false,
+          "text": {
+            "format": {
+              "type": "json_schema",
+              "name": "ait_integrity_response",
+              "schema": {
+                "type": "object",
+                "properties": {
+                  "ok": {
+                    "type": "boolean"
+                  },
+                  "message": {
+                    "type": "string"
+                  }
+                },
+                "required": [
+                  "ok",
+                  "message"
+                ],
+                "additionalProperties": false
+              },
+              "strict": true
+            }
+          }
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.object.response",
+          "level": "error",
+          "path": "response.body.object",
+          "op": "eq",
+          "value": "response",
+          "message": "结构化输出用例应返回 response 对象。"
+        },
+        {
+          "id": "response.status.valid",
+          "level": "error",
+          "path": "response.body.status",
+          "op": "in",
+          "value": [
+            "completed",
+            "failed",
+            "in_progress",
+            "cancelled",
+            "queued",
+            "incomplete"
+          ],
+          "message": "结构化输出响应必须包含合法 status。"
+        },
+        {
+          "id": "response.output.exists",
+          "level": "error",
+          "path": "response.body.output",
+          "op": "exists",
+          "message": "结构化输出响应必须包含 output 数组。"
+        },
+        {
+          "id": "response.output_text.looks_like_json_object",
+          "level": "warn",
+          "path": "response.body.output[0].content[0].text",
+          "op": "matches",
+          "value": "^\\s*\\{[\\s\\S]*\\}\\s*$",
+          "message": "支持 json_schema 的模型应返回 JSON 对象文本。"
+        }
+      ]
     },
     {
-      "id": "builtin.responses.usage.exists",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.usage",
-      "op": "exists",
-      "message": "必须返回 usage 信息"
+      "id": "responses-function-tool-auto",
+      "name": "Responses 函数工具定义",
+      "description": "提供 Responses function 工具定义，验证服务端仍返回合法 response 对象和 output 数组；不强制断言模型一定发起工具调用。",
+      "category": "protocol",
+      "capability": "tools_request_shape",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "input": "Answer in plain text: what is 2 plus 2?",
+          "tools": [
+            {
+              "type": "function",
+              "name": "lookup_number_fact",
+              "description": "Look up a short fact about a number.",
+              "parameters": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "number"
+                ],
+                "additionalProperties": false
+              },
+              "strict": true
+            }
+          ],
+          "tool_choice": "auto",
+          "parallel_tool_calls": false,
+          "max_output_tokens": 64,
+          "store": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.object.response",
+          "level": "error",
+          "path": "response.body.object",
+          "op": "eq",
+          "value": "response",
+          "message": "工具定义用例应返回 response 对象。"
+        },
+        {
+          "id": "response.output.exists",
+          "level": "error",
+          "path": "response.body.output",
+          "op": "exists",
+          "message": "工具定义用例必须返回 output 数组。"
+        },
+        {
+          "id": "response.status.valid",
+          "level": "warn",
+          "path": "response.body.status",
+          "op": "in",
+          "value": [
+            "completed",
+            "failed",
+            "in_progress",
+            "cancelled",
+            "queued",
+            "incomplete"
+          ],
+          "message": "工具定义响应应包含合法 status。"
+        }
+      ]
     },
     {
-      "id": "builtin.responses.usage.total_tokens",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.usage.total_tokens",
-      "op": "gt",
-      "value": 0,
-      "message": "total_tokens 必须大于 0"
+      "id": "responses-cache-usage",
+      "name": "Responses 缓存统计响应",
+      "description": "发送稳定输入和 prompt_cache_key，验证服务端返回 response 对象，并观察 usage.input_tokens_details.cached_tokens 缓存统计。",
+      "category": "protocol",
+      "capability": "cache_usage",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "input": "AIT cache probe stable prefix. Repeatable context for prompt caching validation. Keep this prefix identical across runs. Reply with one short greeting.",
+          "prompt_cache_key": "ait-integrity-responses-cache",
+          "max_output_tokens": 32,
+          "store": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.object.response",
+          "level": "error",
+          "path": "response.body.object",
+          "op": "eq",
+          "value": "response",
+          "message": "缓存用例应返回 response 对象。"
+        },
+        {
+          "id": "response.cached_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.input_tokens_details.cached_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "支持 prompt cache 的服务应在 usage.input_tokens_details.cached_tokens 暴露缓存 token 数。"
+        }
+      ]
+    },
+    {
+      "id": "responses-reasoning-enabled",
+      "name": "Responses 思考返回",
+      "description": "发送 reasoning 配置，验证服务端返回合法 response，并观察 output 中的 reasoning/message 项与 reasoning token 统计。",
+      "category": "protocol",
+      "capability": "thinking_response",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "input": "Solve 17 plus 25, then answer with only the number.",
+          "reasoning": {
+            "effort": "low",
+            "summary": "auto"
+          },
+          "max_output_tokens": 128,
+          "store": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.object.response",
+          "level": "error",
+          "path": "response.body.object",
+          "op": "eq",
+          "value": "response",
+          "message": "思考用例应返回 response 对象。"
+        },
+        {
+          "id": "response.output.exists",
+          "level": "error",
+          "path": "response.body.output",
+          "op": "exists",
+          "message": "思考用例必须返回 output 数组。"
+        },
+        {
+          "id": "response.first_output.type.valid",
+          "level": "warn",
+          "path": "response.body.output[0].type",
+          "op": "in",
+          "value": [
+            "reasoning",
+            "message"
+          ],
+          "message": "思考用例的 output 应包含 reasoning 或 message 项。"
+        },
+        {
+          "id": "response.reasoning_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.output_tokens_details.reasoning_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "支持 reasoning 的服务应在 output_tokens_details.reasoning_tokens 暴露思考 token 数。"
+        }
+      ]
+    },
+    {
+      "id": "responses-non-reasoning-text",
+      "name": "Responses 非思考文本返回",
+      "description": "发送普通文本输入，验证服务端直接返回 assistant message 与 output_text。",
+      "category": "protocol",
+      "capability": "non_thinking_response",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "input": "Answer in one short sentence: ready.",
+          "max_output_tokens": 32,
+          "store": false,
+          "text": {
+            "format": {
+              "type": "text"
+            }
+          }
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.object.response",
+          "level": "error",
+          "path": "response.body.object",
+          "op": "eq",
+          "value": "response",
+          "message": "非思考文本用例应返回 response 对象。"
+        },
+        {
+          "id": "response.first_output.type.message",
+          "level": "error",
+          "path": "response.body.output[0].type",
+          "op": "eq",
+          "value": "message",
+          "message": "非思考文本用例应返回 message output。"
+        },
+        {
+          "id": "response.first_output_text.text.exists",
+          "level": "error",
+          "path": "response.body.output[0].content[0].text",
+          "op": "exists",
+          "message": "非思考文本用例应返回 output_text.text。"
+        }
+      ]
     }
   ]
 }

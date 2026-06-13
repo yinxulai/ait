@@ -74,6 +74,7 @@ type serverImpl struct {
 	activeRuns   map[RunID]*activeRun
 	scheduler    *RunScheduler
 	rulesManager *integrity.RulesManager
+	rulesStatus  *integrity.RulesStatus
 
 	// 生命周期 Context，用于优雅关闭
 	ctx    context.Context
@@ -126,6 +127,9 @@ func NewWithVersion(version string) (Server, error) {
 		cancel:       cancel,
 	}
 	srv.scheduler = newRunScheduler(1, srv.dispatchQueuedRun)
+	if rulesManager != nil {
+		rulesManager.SetStatusHandler(srv.handleRulesStatus)
+	}
 
 	// 后台初始化规则（使用生命周期 Context）
 	if rulesManager != nil {

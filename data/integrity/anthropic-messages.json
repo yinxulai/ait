@@ -1,49 +1,582 @@
 {
   "version": "ait.integrity.rules/v1",
   "suite": "anthropic-messages-smoke",
-  "description": "Anthropic Messages API 协议完整性验证规则",
-  "assertions": [
+  "description": "Anthropic Claude Messages API 基础能力验证规则：覆盖 AIT 当前 integrity 执行器可观测的非流式 message 响应、流式 SSE 事件、assistant content、stop_reason、usage 和基础 latency 指标。来源：https://platform.claude.com/docs/en/api/messages/create",
+  "cases": [
     {
-      "id": "builtin.anthropic.http_status",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.status_code",
-      "op": "between",
-      "value": [200, 299],
-      "message": "HTTP 状态码必须在 200-299 范围内"
+      "id": "anthropic-messages-basic-non-stream",
+      "name": "Anthropic Messages 非流式基础响应",
+      "description": "发送最小文本消息，验证非流式响应返回 message 对象、assistant content、stop_reason 和 usage。",
+      "category": "protocol",
+      "capability": "basic_request",
+      "required": true,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with exactly one short greeting."
+                }
+              ]
+            }
+          ],
+          "max_tokens": 128,
+          "stream": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.body.exists",
+          "level": "error",
+          "path": "response.body",
+          "op": "exists",
+          "message": "响应体必须是可解析的 JSON 对象。"
+        },
+        {
+          "id": "response.id.exists",
+          "level": "error",
+          "path": "response.body.id",
+          "op": "exists",
+          "message": "Anthropic Messages 响应必须包含 id。"
+        },
+        {
+          "id": "response.type.message",
+          "level": "error",
+          "path": "response.body.type",
+          "op": "eq",
+          "value": "message",
+          "message": "非流式响应 type 必须是 message。"
+        },
+        {
+          "id": "response.role.assistant",
+          "level": "error",
+          "path": "response.body.role",
+          "op": "eq",
+          "value": "assistant",
+          "message": "模型回复 role 必须是 assistant。"
+        },
+        {
+          "id": "response.model.exists",
+          "level": "error",
+          "path": "response.body.model",
+          "op": "exists",
+          "message": "响应必须包含实际使用的 model。"
+        },
+        {
+          "id": "response.content.exists",
+          "level": "error",
+          "path": "response.body.content",
+          "op": "exists",
+          "message": "响应必须包含 content 数组。"
+        },
+        {
+          "id": "response.first_content.type.text",
+          "level": "error",
+          "path": "response.body.content[0].type",
+          "op": "eq",
+          "value": "text",
+          "message": "基础文本响应的 content block 类型应为 text。"
+        },
+        {
+          "id": "response.first_content.text.exists",
+          "level": "error",
+          "path": "response.body.content[0].text",
+          "op": "exists",
+          "message": "基础文本响应必须包含 content[0].text。"
+        },
+        {
+          "id": "response.stop_reason.valid",
+          "level": "error",
+          "path": "response.body.stop_reason",
+          "op": "in",
+          "value": [
+            "end_turn",
+            "max_tokens",
+            "stop_sequence",
+            "tool_use",
+            "pause_turn",
+            "refusal"
+          ],
+          "message": "stop_reason 必须是 Anthropic Messages 文档定义的取值之一。"
+        },
+        {
+          "id": "response.usage.exists",
+          "level": "warn",
+          "path": "response.body.usage",
+          "op": "exists",
+          "message": "响应建议包含 usage 统计。"
+        },
+        {
+          "id": "response.usage.input_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.input_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "usage.input_tokens 应为非负数。"
+        },
+        {
+          "id": "response.usage.output_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.output_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "usage.output_tokens 应为非负数。"
+        },
+        {
+          "id": "metrics.total_ms.gte_zero",
+          "level": "warn",
+          "path": "metrics.total_ms",
+          "op": "gte",
+          "value": 0,
+          "message": "请求总耗时必须可观测。"
+        },
+        {
+          "id": "metrics.input_tokens.gte_zero",
+          "level": "warn",
+          "path": "metrics.input_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "AIT 应能从 Anthropic usage 中提取输入 token 数。"
+        },
+        {
+          "id": "metrics.output_tokens.gte_zero",
+          "level": "warn",
+          "path": "metrics.output_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "AIT 应能从 Anthropic usage 中提取输出 token 数。"
+        }
+      ]
     },
     {
-      "id": "builtin.anthropic.id.format",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.id",
-      "op": "matches",
-      "value": "^msg_[a-zA-Z0-9]+$",
-      "message": "Anthropic Messages ID 必须符合 msg_xxx 格式"
+      "id": "anthropic-messages-stream-basic",
+      "name": "Anthropic Messages 流式基础响应",
+      "description": "发送 stream=true 的基础请求，验证 SSE 数据可以解析为 Anthropic message_start / content_block_delta 等事件结构。",
+      "category": "protocol",
+      "capability": "streaming",
+      "required": true,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Count from 1 to 3, separated by commas."
+                }
+              ]
+            }
+          ],
+          "max_tokens": 128,
+          "stream": true
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.stream_events.exists",
+          "level": "error",
+          "path": "response.body[0]",
+          "op": "exists",
+          "message": "流式响应必须至少包含一个可解析的 SSE data 事件。"
+        },
+        {
+          "id": "response.first_event.type.message_start",
+          "level": "error",
+          "path": "response.body[0].type",
+          "op": "eq",
+          "value": "message_start",
+          "message": "Anthropic 流式响应第一个 data 事件应为 message_start。"
+        },
+        {
+          "id": "response.first_event.message.id.exists",
+          "level": "error",
+          "path": "response.body[0].message.id",
+          "op": "exists",
+          "message": "message_start 事件应包含 message.id。"
+        },
+        {
+          "id": "response.first_event.message.type.message",
+          "level": "error",
+          "path": "response.body[0].message.type",
+          "op": "eq",
+          "value": "message",
+          "message": "message_start 事件中的 message.type 必须是 message。"
+        },
+        {
+          "id": "response.first_event.message.role.assistant",
+          "level": "error",
+          "path": "response.body[0].message.role",
+          "op": "eq",
+          "value": "assistant",
+          "message": "message_start 事件中的 message.role 必须是 assistant。"
+        },
+        {
+          "id": "metrics.ttft_ms.gte_zero",
+          "level": "warn",
+          "path": "metrics.ttft_ms",
+          "op": "gte",
+          "value": 0,
+          "message": "流式请求应可观测 TTFT。"
+        },
+        {
+          "id": "metrics.total_ms.gte_zero",
+          "level": "warn",
+          "path": "metrics.total_ms",
+          "op": "gte",
+          "value": 0,
+          "message": "流式请求总耗时必须可观测。"
+        }
+      ]
     },
     {
-      "id": "builtin.anthropic.content.exists",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.content",
-      "op": "exists",
-      "message": "响应必须包含 content 数组"
+      "id": "anthropic-messages-system-sampling-controls",
+      "name": "Anthropic Messages system 与采样控制参数",
+      "description": "发送包含 system 与采样控制参数的消息，验证服务端仍返回合法 message、assistant role 与 stop_reason；该用例为可选，以兼容不支持部分参数的代理或模型。",
+      "category": "protocol",
+      "capability": "modern_request_parameters",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "system": "You are a concise assistant. Answer in plain text.",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Say ready in one short sentence."
+                }
+              ]
+            }
+          ],
+          "max_tokens": 64,
+          "metadata": {
+            "user_id": "ait-integrity-user"
+          },
+          "stop_sequences": [
+            "STOP"
+          ],
+          "temperature": 0,
+          "top_p": 1,
+          "top_k": 50,
+          "service_tier": "auto",
+          "stream": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.type.message",
+          "level": "error",
+          "path": "response.body.type",
+          "op": "eq",
+          "value": "message",
+          "message": "system 与采样控制用例应返回 message。"
+        },
+        {
+          "id": "response.role.assistant",
+          "level": "error",
+          "path": "response.body.role",
+          "op": "eq",
+          "value": "assistant",
+          "message": "模型回复 role 必须是 assistant。"
+        },
+        {
+          "id": "response.content.exists",
+          "level": "error",
+          "path": "response.body.content",
+          "op": "exists",
+          "message": "system 与采样控制用例必须返回 content 数组。"
+        },
+        {
+          "id": "response.stop_reason.valid",
+          "level": "warn",
+          "path": "response.body.stop_reason",
+          "op": "in",
+          "value": [
+            "end_turn",
+            "max_tokens",
+            "stop_sequence",
+            "tool_use",
+            "pause_turn",
+            "refusal"
+          ],
+          "message": "stop_reason 应是 Anthropic Messages 文档定义的取值之一。"
+        }
+      ]
     },
     {
-      "id": "builtin.anthropic.content.not_empty",
-      "case_id": "basic-response-shape",
-      "level": "error",
-      "path": "response.body.content[0]",
-      "op": "exists",
-      "message": "content 数组不能为空"
+      "id": "anthropic-messages-tools-auto",
+      "name": "Anthropic Messages 工具定义",
+      "description": "提供 Anthropic tools 定义，验证服务端仍返回合法 message、content 与 stop_reason；不强制断言模型实际发起工具调用。",
+      "category": "protocol",
+      "capability": "tools_request_shape",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Answer in plain text: what is 2 plus 2?"
+                }
+              ]
+            }
+          ],
+          "max_tokens": 128,
+          "tools": [
+            {
+              "name": "lookup_number_fact",
+              "description": "Look up a short fact about a number.",
+              "input_schema": {
+                "type": "object",
+                "properties": {
+                  "number": {
+                    "type": "integer"
+                  }
+                },
+                "required": [
+                  "number"
+                ]
+              }
+            }
+          ],
+          "tool_choice": {
+            "type": "auto"
+          },
+          "stream": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.type.message",
+          "level": "error",
+          "path": "response.body.type",
+          "op": "eq",
+          "value": "message",
+          "message": "工具定义用例应返回 message。"
+        },
+        {
+          "id": "response.content.exists",
+          "level": "error",
+          "path": "response.body.content",
+          "op": "exists",
+          "message": "工具定义用例必须返回 content 数组。"
+        },
+        {
+          "id": "response.stop_reason.valid",
+          "level": "warn",
+          "path": "response.body.stop_reason",
+          "op": "in",
+          "value": [
+            "end_turn",
+            "max_tokens",
+            "stop_sequence",
+            "tool_use",
+            "pause_turn",
+            "refusal"
+          ],
+          "message": "工具定义响应的 stop_reason 应是文档定义的取值之一。"
+        }
+      ]
     },
     {
-      "id": "builtin.anthropic.usage.exists",
-      "case_id": "basic-response-shape",
-      "level": "warn",
-      "path": "response.body.usage",
-      "op": "exists",
-      "message": "建议返回 usage 信息"
+      "id": "anthropic-messages-cache-usage",
+      "name": "Anthropic Messages 缓存统计响应",
+      "description": "发送带 cache_control 的稳定内容块，验证服务端返回 message，并观察 usage 中的缓存创建或读取 token 统计。",
+      "category": "protocol",
+      "capability": "cache_usage",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "system": [
+            {
+              "type": "text",
+              "text": "AIT cache probe stable prefix. Repeatable context for prompt caching validation. Keep this prefix identical across runs.",
+              "cache_control": {
+                "type": "ephemeral"
+              }
+            }
+          ],
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Reply with exactly one short greeting."
+                }
+              ]
+            }
+          ],
+          "max_tokens": 128,
+          "stream": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.type.message",
+          "level": "error",
+          "path": "response.body.type",
+          "op": "eq",
+          "value": "message",
+          "message": "缓存用例应返回 message。"
+        },
+        {
+          "id": "response.usage.cache_creation_input_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.cache_creation_input_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "支持 prompt cache 的 Anthropic 响应应暴露 cache_creation_input_tokens。"
+        },
+        {
+          "id": "response.usage.cache_read_input_tokens.gte_zero",
+          "level": "warn",
+          "path": "response.body.usage.cache_read_input_tokens",
+          "op": "gte",
+          "value": 0,
+          "message": "命中 prompt cache 时 Anthropic 响应应暴露 cache_read_input_tokens。"
+        }
+      ]
+    },
+    {
+      "id": "anthropic-messages-thinking-enabled",
+      "name": "Anthropic Messages 思考返回",
+      "description": "启用 extended thinking，验证服务端返回 message，并观察 thinking content block 与 stop_reason。",
+      "category": "protocol",
+      "capability": "thinking_response",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Solve 17 plus 25, then answer with only the number."
+                }
+              ]
+            }
+          ],
+          "thinking": {
+            "type": "enabled",
+            "budget_tokens": 1024
+          },
+          "max_tokens": 2048,
+          "stream": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.type.message",
+          "level": "error",
+          "path": "response.body.type",
+          "op": "eq",
+          "value": "message",
+          "message": "思考用例应返回 message。"
+        },
+        {
+          "id": "response.first_content.type.thinking",
+          "level": "error",
+          "path": "response.body.content[0].type",
+          "op": "eq",
+          "value": "thinking",
+          "message": "启用 thinking 后首个 content block 应为 thinking。"
+        },
+        {
+          "id": "response.first_content.thinking.exists",
+          "level": "error",
+          "path": "response.body.content[0].thinking",
+          "op": "exists",
+          "message": "thinking content block 必须包含 thinking 文本。"
+        },
+        {
+          "id": "response.stop_reason.valid",
+          "level": "warn",
+          "path": "response.body.stop_reason",
+          "op": "in",
+          "value": [
+            "end_turn",
+            "max_tokens",
+            "stop_sequence",
+            "tool_use",
+            "pause_turn",
+            "refusal"
+          ],
+          "message": "思考响应应返回合法 stop_reason。"
+        }
+      ]
+    },
+    {
+      "id": "anthropic-messages-non-thinking-text",
+      "name": "Anthropic Messages 非思考文本返回",
+      "description": "发送普通文本消息，验证服务端返回 text content block，且首个内容块不暴露 thinking 字段。",
+      "category": "protocol",
+      "capability": "non_thinking_response",
+      "required": false,
+      "request": {
+        "body": {
+          "model": "{{model}}",
+          "messages": [
+            {
+              "role": "user",
+              "content": [
+                {
+                  "type": "text",
+                  "text": "Answer in one short sentence: ready."
+                }
+              ]
+            }
+          ],
+          "max_tokens": 128,
+          "stream": false
+        }
+      },
+      "timeout_ms": 30000,
+      "assertions": [
+        {
+          "id": "response.type.message",
+          "level": "error",
+          "path": "response.body.type",
+          "op": "eq",
+          "value": "message",
+          "message": "非思考文本用例应返回 message。"
+        },
+        {
+          "id": "response.first_content.type.text",
+          "level": "error",
+          "path": "response.body.content[0].type",
+          "op": "eq",
+          "value": "text",
+          "message": "非思考文本用例首个 content block 应为 text。"
+        },
+        {
+          "id": "response.first_content.thinking.not_exists",
+          "level": "warn",
+          "path": "response.body.content[0].thinking",
+          "op": "not_exists",
+          "message": "非思考文本用例不应在首个 content block 暴露 thinking 字段。"
+        }
+      ]
     }
   ]
 }

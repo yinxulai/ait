@@ -136,6 +136,12 @@ const (
 	EventProgressTick EventKind = "progress_tick"
 	// EventLevelDone Turbo 模式下一个并发级别探测完成。
 	EventLevelDone EventKind = "level_done"
+	// EventIntegrityRulesStatus Integrity 规则加载、检查或更新状态变化。
+	EventIntegrityRulesStatus EventKind = "integrity_rules_status"
+	// EventIntegritySuiteLoading Integrity 测试集开始加载。
+	EventIntegritySuiteLoading EventKind = "integrity_suite_loading"
+	// EventIntegritySuiteLoaded Integrity 测试集加载完成。
+	EventIntegritySuiteLoaded EventKind = "integrity_suite_loaded"
 	// EventIntegrityCaseStarted Integrity 模式下一个测试用例开始。
 	EventIntegrityCaseStarted EventKind = "integrity_case_started"
 	// EventIntegrityCaseDone Integrity 模式下一个测试用例完成。
@@ -155,6 +161,9 @@ const (
 //   - EventRequestDone            → *RunState（含最新请求结果的完整快照）
 //   - EventProgressTick           → *RunState（定时聚合快照）
 //   - EventLevelDone              → *RunState
+//   - EventIntegrityRulesStatus   → *RunState
+//   - EventIntegritySuiteLoading  → *RunState
+//   - EventIntegritySuiteLoaded   → *RunState
 //   - EventIntegrityCaseStarted   → *RunState
 //   - EventIntegrityCaseDone      → *RunState
 //   - EventAssertionResult        → []types.AssertionResult

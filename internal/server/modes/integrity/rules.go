@@ -15,13 +15,13 @@ import (
 
 // RuleIndex 规则索引结构
 type RuleIndex struct {
-	Version       string                 `json:"version"`
-	Repository    string                 `json:"repository"`
-	Description   string                 `json:"description"`
-	Compatibility VersionRange           `json:"compatibility"`
-	Rules         map[string]RuleEntry   `json:"rules"`
-	UpdateSources map[string]string      `json:"update_sources"`
-	LastUpdated   string                 `json:"last_updated"`
+	Version       string               `json:"version"`
+	Repository    string               `json:"repository"`
+	Description   string               `json:"description"`
+	Compatibility VersionRange         `json:"compatibility"`
+	Rules         map[string]RuleEntry `json:"rules"`
+	UpdateSources map[string]string    `json:"update_sources"`
+	LastUpdated   string               `json:"last_updated"`
 }
 
 // VersionRange 版本范围
@@ -38,6 +38,17 @@ type RuleEntry struct {
 	Description string `json:"description"`
 }
 
+// RulesStatus 描述规则管理器当前加载、检查和更新状态。
+type RulesStatus struct {
+	Phase       string    `json:"phase"`
+	Message     string    `json:"message"`
+	Version     string    `json:"version,omitempty"`
+	LastUpdated string    `json:"last_updated,omitempty"`
+	Source      string    `json:"source,omitempty"`
+	Error       string    `json:"error,omitempty"`
+	At          time.Time `json:"at"`
+}
+
 // RulesManager 规则管理器（从 AIT 仓库加载）
 type RulesManager struct {
 	version      string
@@ -45,6 +56,7 @@ type RulesManager struct {
 	index        *RuleIndex
 	httpClient   *http.Client
 	updateSource string // stable | latest | dev
+	onStatus     func(RulesStatus)
 }
 
 // NewRulesManager 创建规则管理器
@@ -60,11 +72,35 @@ func NewRulesManager(version string) (*RulesManager, error) {
 	}
 
 	return &RulesManager{
-		version:    version,
-		cacheDir:   cacheDir,
-		httpClient: &http.Client{Timeout: 10 * time.Second},
+		version:      version,
+		cacheDir:     cacheDir,
+		httpClient:   &http.Client{Timeout: 10 * time.Second},
 		updateSource: determineUpdateSource(version),
 	}, nil
+}
+
+// SetStatusHandler 设置规则状态变化回调。
+func (m *RulesManager) SetStatusHandler(handler func(RulesStatus)) {
+	m.onStatus = handler
+}
+
+func (m *RulesManager) emitStatus(phase, message string, err error) {
+	status := RulesStatus{
+		Phase:   phase,
+		Message: message,
+		Source:  m.updateSource,
+		At:      time.Now(),
+	}
+	if m.index != nil {
+		status.Version = m.index.Version
+		status.LastUpdated = m.index.LastUpdated
+	}
+	if err != nil {
+		status.Error = err.Error()
+	}
+	if m.onStatus != nil {
+		m.onStatus(status)
+	}
 }
 
 // determineUpdateSource 根据版本决定更新源
@@ -121,33 +157,47 @@ func (m *RulesManager) buildSourceURL() string {
 
 // Initialize 初始化规则（在程序启动时调用）
 func (m *RulesManager) Initialize(ctx context.Context) error {
+	m.emitStatus("loading_cache", "正在从本地缓存加载完整性测试集规则", nil)
 	// 1. 尝试从缓存加载
 	if err := m.loadFromCache(); err == nil {
 		// 检查版本兼容性
 		if m.isCompatible() {
+			m.emitStatus("ready", "已加载本地完整性测试集规则，后台检查更新中", nil)
 			// 缓存有效，后台检查是否有新版本
 			go m.checkAndUpdate(context.Background())
 			return nil
 		}
+		m.emitStatus("cache_incompatible", "本地完整性测试集规则与当前版本不兼容，准备联网更新", nil)
+	} else {
+		m.emitStatus("cache_missing", "未找到可用的本地完整性测试集规则，准备联网下载", err)
 	}
 
 	// 2. 缓存不存在、过期或不兼容，尝试从网络更新
+	m.emitStatus("updating", "正在联网更新完整性测试集规则", nil)
 	if err := m.updateFromNetwork(ctx); err == nil {
 		if m.isCompatible() {
+			m.emitStatus("ready", "完整性测试集规则已更新并加载", nil)
 			return nil
 		}
 		// 网络版本也不兼容
-		return fmt.Errorf("downloaded rules version incompatible with current version %s", m.version)
+		err := fmt.Errorf("downloaded rules version incompatible with current version %s", m.version)
+		m.emitStatus("error", "下载的完整性测试集规则与当前版本不兼容", err)
+		return err
+	} else {
+		m.emitStatus("update_failed", "联网更新完整性测试集规则失败", err)
 	}
 
 	// 3. 网络更新失败，如果有缓存（即使过期），仍然使用
 	if m.index != nil {
 		slog.Warn("using expired rules cache due to network failure", "version", m.version)
+		m.emitStatus("ready", "联网更新失败，继续使用本地缓存的完整性测试集规则", nil)
 		return nil
 	}
 
 	// 4. 完全没有数据
-	return fmt.Errorf("failed to load rules: no cache available and network update failed")
+	err := fmt.Errorf("failed to load rules: no cache available and network update failed")
+	m.emitStatus("error", "完整性测试集规则加载失败，没有可用缓存", err)
+	return err
 }
 
 // loadFromCache 从缓存加载索引
@@ -174,7 +224,7 @@ func (m *RulesManager) hasNewerVersion(ctx context.Context) bool {
 	}
 
 	sourceURL := m.buildSourceURL()
-	
+
 	req, err := http.NewRequestWithContext(ctx, http.MethodGet, sourceURL, nil)
 	if err != nil {
 		return false
@@ -295,16 +345,22 @@ func (m *RulesManager) downloadRuleFiles(ctx context.Context, index *RuleIndex) 
 
 // checkAndUpdate 检查并更新规则（后台运行）
 func (m *RulesManager) checkAndUpdate(ctx context.Context) {
+	m.emitStatus("checking_update", "正在检查完整性测试集规则更新", nil)
 	// 检查是否有新版本
 	if !m.hasNewerVersion(ctx) {
+		m.emitStatus("ready", "完整性测试集规则已是最新", nil)
 		return // 没有新版本
 	}
 
+	m.emitStatus("updating", "发现新的完整性测试集规则，正在更新", nil)
 	// 有新版本，尝试更新
 	if err := m.updateFromNetwork(ctx); err != nil {
 		// 更新失败，静默处理（继续使用本地缓存）
 		slog.Info("failed to update rules in background, using cached", "error", err)
+		m.emitStatus("update_failed", "后台更新完整性测试集规则失败，继续使用本地缓存", err)
+		return
 	}
+	m.emitStatus("ready", "完整性测试集规则已更新", nil)
 }
 
 // isCompatible 检查当前版本是否兼容
@@ -367,7 +423,7 @@ func (m *RulesManager) GetRuleFiles(protocol, suite string) ([]string, error) {
 		// 匹配协议和套件
 		if (rule.Protocol == protocol || rule.Protocol == "*") &&
 			(rule.Suite == suite || rule.Suite == "*") {
-			
+
 			// 从缓存读取文件
 			cachedPath := filepath.Join(m.cacheDir, rule.File)
 			if _, err := os.Stat(cachedPath); err == nil {

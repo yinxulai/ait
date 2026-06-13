@@ -1,6 +1,7 @@
 package integrity
 
 import (
+	"strings"
 	"sync"
 	"time"
 
@@ -112,11 +113,10 @@ func (e *Executor) runCase(c types.IntegrityCase) (types.IntegrityCaseResult, er
 	caseInput.Turbo = false
 	caseInput.Concurrency = 1
 	caseInput.Count = 1
-	if c.Request.Prompt != "" {
-		caseInput.PromptMode = "text"
-		caseInput.PromptText = c.Request.Prompt
+	if len(c.Request.Body) > 0 {
+		caseInput.PromptMode = "raw"
+		caseInput.PromptText = strings.ReplaceAll(string(c.Request.Body), "{{model}}", caseInput.Model)
 	}
-	caseInput.Stream = c.Request.Stream
 	if c.TimeoutMS > 0 {
 		caseInput.Timeout = time.Duration(c.TimeoutMS) * time.Millisecond
 	} else if caseInput.Integrity.CaseTimeoutMS > 0 {

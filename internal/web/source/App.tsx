@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { createTask as createTaskAPI, getRunRequests, getRunState, listProtocols, listTaskRuns, listTasks, type PromptMode, type ProtocolMeta, type RequestDetail, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
+import { createTask as createTaskAPI, getRunRequests, getRunState, listIntegritySuites, listProtocols, listTaskRuns, listTasks, type IntegritySuite, type PromptMode, type ProtocolMeta, type RequestDetail, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
 
 const modeLabel: Record<TaskMode, string> = {
   standard: '标准压测',
@@ -254,6 +254,7 @@ type TaskDraft = {
   name: string
   protocol: string
   endpoint: string
+  apiKey: string
   model: string
   concurrency: number
   requests: number
@@ -273,7 +274,6 @@ type TaskDraft = {
   turboMinSuccessRate: number
   turboMaxLatency: string
   integritySuite: string
-  integrityRuleFiles: string
   integrityFailFast: boolean
   integrityCaseTimeout: string
 }
@@ -297,7 +297,40 @@ function CreateTaskSheet({ onCreate, sourceTask, variant = 'create', protocolOpt
   const [open, setOpen] = useState(false)
   const [draft, setDraft] = useState<TaskDraft>(() => sourceTask ? draftFromTask(sourceTask) : makeInitialDraft('standard', protocols))
   const [submitting, setSubmitting] = useState(false)
-  const canSubmit = isDraftValid(draft)
+  const [integritySuites, setIntegritySuites] = useState<IntegritySuite[]>([])
+  const [integritySuitesLoading, setIntegritySuitesLoading] = useState(false)
+  const [integritySuitesError, setIntegritySuitesError] = useState('')
+  const canSubmit = isDraftValid(draft) && (draft.mode !== 'integrity' || (!integritySuitesLoading && !integritySuitesError && integritySuites.length > 0))
+
+  useEffect(() => {
+    if (!open || draft.mode !== 'integrity' || !draft.protocol) return
+    let cancelled = false
+    const protocol = draft.protocol
+    async function loadSuites() {
+      await Promise.resolve()
+      if (cancelled) return
+      setIntegritySuitesLoading(true)
+      setIntegritySuitesError('')
+      try {
+        const suites = await listIntegritySuites(protocol)
+        if (cancelled) return
+        setIntegritySuites(suites)
+        setDraft((current) => {
+          if (current.mode !== 'integrity' || current.protocol !== protocol) return current
+          if (suites.some((suite) => suite.id === current.integritySuite)) return current
+          return { ...current, integritySuite: suites[0]?.id ?? '' }
+        })
+      } catch (error) {
+        if (cancelled) return
+        setIntegritySuites([])
+        setIntegritySuitesError(error instanceof Error ? error.message : '加载测试集失败')
+      } finally {
+        if (!cancelled) setIntegritySuitesLoading(false)
+      }
+    }
+    loadSuites()
+    return () => { cancelled = true }
+  }, [open, draft.mode, draft.protocol])
 
   function initialDraft() {
     return sourceTask ? draftFromTask(sourceTask) : makeInitialDraft('standard', protocols)
@@ -348,15 +381,19 @@ function CreateTaskSheet({ onCreate, sourceTask, variant = 'create', protocolOpt
           <DialogTitle className="flex items-center gap-2 text-lg">{variant === 'copy' ? <Copy className="size-4" /> : <Plus className="size-4" />}{variant === 'copy' ? '复制任务' : '创建任务'}</DialogTitle>
           <DialogDescription>{variant === 'copy' && sourceTask ? `已基于「${sourceTask.name}」带入配置，可直接微调。` : '按任务类型分步填写最少必要配置。'}</DialogDescription>
         </DialogHeader>
-        <Stepper key={`${open}-${sourceTask?.id ?? 'new'}`} steps={createSteps} rootClassName="flex min-h-0 flex-1 flex-col space-y-0" className="shrink-0 px-8 pt-6 pb-5" canAdvance={(current) => isStepValid(draft, current)}>
+        <Stepper key={`${open}-${sourceTask?.id ?? 'new'}`} steps={createSteps} rootClassName="flex min-h-0 flex-1 flex-col space-y-0" className="shrink-0 px-8 pt-6 pb-5" canAdvance={(current) => isStepValid(draft, current) && (current !== 2 || draft.mode !== 'integrity' || (!integritySuitesLoading && !integritySuitesError && integritySuites.length > 0))}>
           {({ current, isFirst, isLast, canGoNext, next, previous }) => {
-            const validationHint = createStepHint(draft, current)
+            const validationHint = current === 2 && draft.mode === 'integrity' && integritySuitesLoading
+              ? '正在加载当前协议的测试集。'
+              : current === 2 && draft.mode === 'integrity' && integritySuitesError
+                ? integritySuitesError
+                : createStepHint(draft, current)
             return (
               <>
                 <div className="min-h-0 flex-1 overflow-y-auto px-8 pb-6">
                   {current === 0 && <CreateStepType draft={draft} onModeChange={changeMode} />}
                   {current === 1 && <CreateStepBasics draft={draft} onPatch={patch} protocolOptions={protocolOptions} protocols={protocols} />}
-                  {current === 2 && <CreateStepModeConfig draft={draft} onPatch={patch} />}
+                  {current === 2 && <CreateStepModeConfig draft={draft} onPatch={patch} integritySuites={integritySuites} integritySuitesLoading={integritySuitesLoading} integritySuitesError={integritySuitesError} />}
                   {current === 3 && <CreateStepReview draft={draft} />}
                 </div>
                 <DialogFooter className="shrink-0 gap-3 border-t bg-muted/20 p-0 px-8 py-4 sm:flex-row sm:items-center sm:justify-between">
@@ -416,21 +453,32 @@ function CreateStepBasics({ draft, onPatch, protocolOptions, protocols }: { draf
           <FormField label="协议" required description="决定请求体结构和默认地址，切换后会自动带入对应接口地址。"><OptionPicker value={draft.protocol} options={protocolOptions} onChange={(protocol) => onPatch({ protocol, endpoint: defaultEndpoint(protocol, protocols) })} /></FormField>
           <FormField label="模型名称" required description="填写要压测或校验的模型标识，会写入最终请求配置。"><Input value={draft.model} onChange={(event) => onPatch({ model: event.target.value })} /></FormField>
           <FormField label="请求地址" required description="目标 API 的完整地址；如使用网关或代理，可在这里改为内部地址。"><Input value={draft.endpoint} onChange={(event) => onPatch({ endpoint: event.target.value })} /></FormField>
+          <FormField label="API Key" description="可选；OpenAI/Anthropic 等云服务通常需要，本地或已鉴权代理可留空。"><Input type="password" autoComplete="off" value={draft.apiKey} onChange={(event) => onPatch({ apiKey: event.target.value })} placeholder="sk-..." /></FormField>
         </div>
       </section>
     </div>
   )
 }
 
-function CreateStepModeConfig({ draft, onPatch }: { draft: TaskDraft; onPatch: (update: Partial<TaskDraft>) => void }) {
+function CreateStepModeConfig({ draft, onPatch, integritySuites, integritySuitesLoading, integritySuitesError }: { draft: TaskDraft; onPatch: (update: Partial<TaskDraft>) => void; integritySuites: IntegritySuite[]; integritySuitesLoading: boolean; integritySuitesError: string }) {
   if (draft.mode === 'integrity') {
+    const selectedSuite = integritySuites.find((suite) => suite.id === draft.integritySuite)
     return (
       <div className="space-y-6">
         <section className="border-b pb-6">
           <div className="mb-5 flex items-center gap-2 text-sm font-medium"><ShieldCheck className="size-4" />测试集来源</div>
           <div className="grid gap-4">
-            <FormField label="测试集名称" required description="用于选择一组协议兼容性用例；完整性校验以测试集为核心。"><Input value={draft.integritySuite} onChange={(event) => onPatch({ integritySuite: event.target.value })} /></FormField>
-            <FormField label="规则文件" description="可选；每行一个规则文件路径，用于覆盖或补充内置测试集规则。"><Textarea value={draft.integrityRuleFiles} onChange={(event) => onPatch({ integrityRuleFiles: event.target.value })} className="min-h-32" placeholder="data/integrity/openai-completions.json" /></FormField>
+            <FormField label="测试集" required description="测试集来自当前已加载的完整性规则，不能手动填写不存在的名称。">
+              <Select value={draft.integritySuite} onValueChange={(integritySuite) => onPatch({ integritySuite })} disabled={integritySuitesLoading || integritySuites.length === 0}>
+                <SelectTrigger><SelectValue placeholder={integritySuitesLoading ? '加载测试集中...' : '选择测试集'} /></SelectTrigger>
+                <SelectContent>
+                  {integritySuites.map((suite) => <SelectItem key={suite.id} value={suite.id}>{suite.name || suite.id} · {suite.cases?.length ?? 0} 个用例</SelectItem>)}
+                </SelectContent>
+              </Select>
+              {integritySuitesError ? <p className="mt-2 text-xs text-destructive">{integritySuitesError}</p> : null}
+              {!integritySuitesLoading && !integritySuitesError && integritySuites.length === 0 ? <p className="mt-2 text-xs text-destructive">当前协议没有已加载的测试集，请先等待规则加载完成或检查规则缓存。</p> : null}
+              {selectedSuite ? <p className="mt-2 text-xs leading-5 text-muted-foreground">{selectedSuite.description || selectedSuite.id}，包含 {selectedSuite.cases?.length ?? 0} 个用例。</p> : null}
+            </FormField>
           </div>
         </section>
         <section>
@@ -518,8 +566,8 @@ function CreateStepReview({ draft }: { draft: TaskDraft }) {
       <DraftTaskPreview task={task} />
       <section>
         <div className="mb-2 flex items-center gap-2 text-sm font-medium"><FileJson className="size-4" />将要提交的 Input</div>
-        <p className="mb-4 text-xs leading-5 text-muted-foreground">这里展示的是最终会进入任务配置的真实结构，因此保留实际字段名，便于与 CLI 或配置文件对应。</p>
-        <CodeBlock label="TaskConfig.Input" value={JSON.stringify(inputJsonFromDraft(draft), null, 2)} icon={<FileJson className="size-3.5" />} />
+        <p className="mb-4 text-xs leading-5 text-muted-foreground">这里展示的是最终会进入任务配置的真实结构，因此保留实际字段名；敏感字段会脱敏显示。</p>
+        <CodeBlock label="TaskConfig.Input" value={JSON.stringify(redactSecretInput(inputJsonFromDraft(draft)), null, 2)} icon={<FileJson className="size-3.5" />} />
       </section>
     </div>
   )
@@ -593,6 +641,7 @@ function DraftTaskPreview({ task }: { task: Task }) {
         <KeyValue label="协议类型" value={taskProtocol(task)} />
         <KeyValue label={taskMode(task) === 'integrity' ? '测试集' : 'Prompt'} value={taskMode(task) === 'integrity' ? task.input.integrity?.suite ?? '-' : prompt ? `${promptModeLabel[prompt.mode]} · ${prompt.summary}` : '-'} />
         <KeyValue label="请求地址" value={taskEndpoint(task)} />
+        <KeyValue label="API Key" value={maskSecret(task.input.api_key)} />
       </div>
       <TaskModeConfigPreview task={task} />
     </div>
@@ -660,6 +709,7 @@ function TaskConfigSheet({ task }: { task: Task }) {
               <KeyValue label="模型名称" value={taskModel(task)} />
               <KeyValue label="协议类型" value={taskProtocol(task)} />
               <KeyValue label="任务类型" value={modeLabel[taskMode(task)]} />
+              <KeyValue label="API Key" value={maskSecret(task.input.api_key)} />
             </div>
           </div>
           <TaskModeDetails task={task} />
@@ -707,16 +757,14 @@ function ModeSpecificPanel({ task }: { task: Task }) {
 
   if (mode === 'integrity') {
     const integrity = input.integrity
-    const ruleFiles = integrity?.rule_files ?? []
     return (
       <div className="xl:col-span-2 rounded-2xl border bg-background/70 p-4 shadow-xs">
         <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
           <div className="flex items-center gap-2 text-sm font-medium"><ClipboardList className="size-4" />完整性测试集</div>
           <Badge variant="outline">suite</Badge>
         </div>
-        <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-4">
+        <div className="grid gap-2 text-sm sm:grid-cols-2 lg:grid-cols-3">
           <KeyValue label="测试集名称" value={integrity?.suite ?? '-'} />
-          <KeyValue label="规则文件" value={ruleFiles.length ? ruleFiles.join(', ') : '未配置'} />
           <InlineSwitch label="失败时立即停止" enabled={integrity?.fail_fast ?? false} />
           <KeyValue label="单个用例超时" value={integrity?.case_timeout_ms ? `${integrity.case_timeout_ms}ms` : '-'} />
         </div>
@@ -1182,6 +1230,7 @@ function makeInitialDraft(mode: TaskMode, protocols: ProtocolMeta[] = []): TaskD
     name: draftName[mode],
     protocol,
     endpoint: defaultEndpoint(protocol, protocols),
+    apiKey: '',
     model: draftModel[mode],
     concurrency: mode === 'integrity' ? 1 : mode === 'turbo' ? 4 : 8,
     requests: mode === 'integrity' ? 1 : mode === 'turbo' ? 60 : 120,
@@ -1201,7 +1250,6 @@ function makeInitialDraft(mode: TaskMode, protocols: ProtocolMeta[] = []): TaskD
     turboMinSuccessRate: 0.9,
     turboMaxLatency: '10s',
     integritySuite: defaultSuite(protocol),
-    integrityRuleFiles: '',
     integrityFailFast: true,
     integrityCaseTimeout: '30000',
   }
@@ -1217,6 +1265,7 @@ function draftFromTask(task: Task): TaskDraft {
     name: `${task.name} 副本`,
     protocol: input.protocol || draft.protocol,
     endpoint: input.endpoint_url || draft.endpoint,
+    apiKey: input.api_key ?? '',
     model: input.model || draft.model,
     concurrency: input.concurrency ?? draft.concurrency,
     requests: input.count ?? draft.requests,
@@ -1236,7 +1285,6 @@ function draftFromTask(task: Task): TaskDraft {
     turboMinSuccessRate: input.turbo_config?.min_success_rate ?? draft.turboMinSuccessRate,
     turboMaxLatency: input.turbo_config?.max_latency ?? draft.turboMaxLatency,
     integritySuite: input.integrity?.suite ?? draft.integritySuite,
-    integrityRuleFiles: input.integrity?.rule_files?.join('\n') ?? '',
     integrityFailFast: input.integrity?.fail_fast ?? draft.integrityFailFast,
     integrityCaseTimeout: input.integrity?.case_timeout_ms ? String(input.integrity.case_timeout_ms) : draft.integrityCaseTimeout,
   }
@@ -1258,6 +1306,7 @@ function inputJsonFromDraft(draft: TaskDraft): TaskInput {
     mode: draft.mode,
     protocol: draft.protocol,
     endpoint_url: draft.endpoint.trim(),
+    ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}),
     model: draft.model.trim(),
     stream: draft.stream,
     report: draft.report,
@@ -1266,7 +1315,6 @@ function inputJsonFromDraft(draft: TaskDraft): TaskInput {
   }
 
   if (draft.mode === 'integrity') {
-    const ruleFiles = parseList(draft.integrityRuleFiles)
     return {
       ...input,
       concurrency: 1,
@@ -1276,7 +1324,6 @@ function inputJsonFromDraft(draft: TaskDraft): TaskInput {
         suite: draft.integritySuite.trim(),
         fail_fast: draft.integrityFailFast,
         case_timeout_ms: durationToMs(draft.integrityCaseTimeout),
-        ...(ruleFiles.length > 0 ? { rule_files: ruleFiles } : {}),
       },
     }
   }
@@ -1336,6 +1383,16 @@ function taskProtocol(task: Task) {
 
 function taskEndpoint(task: Task) {
   return task.input.endpoint_url || task.input.base_url || task.input.proxy_url || '-'
+}
+
+function maskSecret(value?: string) {
+  if (!value) return '未配置或已隐藏'
+  if (value.length <= 8) return '••••••••'
+  return `${value.slice(0, 4)}••••${value.slice(-4)}`
+}
+
+function redactSecretInput(input: TaskInput): TaskInput {
+  return input.api_key ? { ...input, api_key: maskSecret(input.api_key) } : input
 }
 
 function taskConcurrency(task: Task) {
@@ -1398,7 +1455,7 @@ function nextStepLabel(step: number) {
 
 function createStepHint(draft: TaskDraft, step: number) {
   if (step === 1) return '请先填写任务名称、协议、模型名称和请求地址。'
-  if (step === 2 && draft.mode === 'integrity') return '请补充测试集名称和单个用例超时。'
+  if (step === 2 && draft.mode === 'integrity') return '请选择当前协议已加载的测试集，并填写单个用例超时。'
   if (step === 2 && draft.mode === 'turbo') return '请确认 Prompt、并发爬坡参数、请求超时和停止条件均已填写。'
   if (step === 2) return '请确认 Prompt、并发数、请求总数和请求超时均已填写。'
   return '请先完成当前步骤。'
@@ -1427,10 +1484,6 @@ function isModeConfigValid(draft: TaskDraft): boolean {
   if (draft.promptMode === 'file') return Boolean(draft.promptFile.trim())
   if (draft.promptMode === 'generated') return draft.promptLength > 0
   return Boolean(draft.promptText.trim())
-}
-
-function parseList(value: string) {
-  return value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean)
 }
 
 function toNumber(value: string) {

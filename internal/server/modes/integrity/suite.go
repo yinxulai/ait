@@ -18,11 +18,11 @@ const (
 )
 
 type RuleFile struct {
-	Version     string              `json:"version"`
-	Suite       string              `json:"suite"`
-	Description string              `json:"description"`
-	Cases       []types.IntegrityCase `json:"cases"`       // 新：完整的测试用例
-	Assertions  []types.Assertion     `json:"assertions"`  // 旧：兼容性保留
+	Version     string                `json:"version"`
+	Suite       string                `json:"suite"`
+	Description string                `json:"description"`
+	Cases       []types.IntegrityCase `json:"cases"`      // 新：完整的测试用例
+	Assertions  []types.Assertion     `json:"assertions"` // 旧：兼容性保留
 }
 
 func LoadSuite(input types.Input) (types.IntegritySuite, error) {
@@ -31,7 +31,7 @@ func LoadSuite(input types.Input) (types.IntegritySuite, error) {
 
 func LoadSuiteWithManager(input types.Input, rulesManager *RulesManager) (types.IntegritySuite, error) {
 	suite := BuiltinSuite(input.NormalizedProtocol(), input.Integrity.Suite)
-	
+
 	// 自动加载内置规则
 	if rulesManager != nil {
 		builtinFiles, err := rulesManager.GetRuleFiles(input.NormalizedProtocol(), suite.ID)
@@ -49,7 +49,7 @@ func LoadSuiteWithManager(input types.Input, rulesManager *RulesManager) (types.
 			}
 		}
 	}
-	
+
 	// 加载用户自定义规则
 	for _, file := range input.Integrity.RuleFiles {
 		rules, err := LoadRuleFile(file)
@@ -84,14 +84,14 @@ func LoadRuleFileWithContext(ctx context.Context, path string) (RuleFile, error)
 	if rules.Version != "" && rules.Version != DefaultRuleVersion {
 		return RuleFile{}, fmt.Errorf("unsupported integrity rule version %q in %q", rules.Version, path)
 	}
-	
+
 	// 设置 assertions 的 source（兼容旧格式）
 	for i := range rules.Assertions {
 		if strings.TrimSpace(rules.Assertions[i].Source) == "" {
 			rules.Assertions[i].Source = path
 		}
 	}
-	
+
 	// 设置 cases 中 assertions 的 source（新格式）
 	for i := range rules.Cases {
 		for j := range rules.Cases[i].Assertions {
@@ -104,7 +104,7 @@ func LoadRuleFileWithContext(ctx context.Context, path string) (RuleFile, error)
 			}
 		}
 	}
-	
+
 	return rules, nil
 }
 
@@ -124,12 +124,12 @@ func MergeCases(suite types.IntegritySuite, cases []types.IntegrityCase, source 
 		if exists {
 			// Case 已存在，合并 assertions
 			existingCase := suite.Cases[idx]
-			
+
 			// 如果新 case 定义了 request，使用新的（优先级更高）
-			if newCase.Request.Prompt != "" {
+			if len(newCase.Request.Body) > 0 || len(newCase.Request.Headers) > 0 {
 				existingCase.Request = newCase.Request
 			}
-			
+
 			// 更新其他字段（如果新 case 有定义）
 			if newCase.Name != "" {
 				existingCase.Name = newCase.Name
@@ -146,7 +146,7 @@ func MergeCases(suite types.IntegritySuite, cases []types.IntegrityCase, source 
 			if newCase.TimeoutMS > 0 {
 				existingCase.TimeoutMS = newCase.TimeoutMS
 			}
-			
+
 			// 合并 assertions
 			for _, assertion := range newCase.Assertions {
 				if assertion.Source == "" {
@@ -155,7 +155,7 @@ func MergeCases(suite types.IntegritySuite, cases []types.IntegrityCase, source 
 				if assertion.CaseID == "" {
 					assertion.CaseID = newCase.ID
 				}
-				
+
 				// 检查是否已存在相同 ID 的 assertion
 				replaced := false
 				if assertion.ID != "" {
@@ -171,7 +171,7 @@ func MergeCases(suite types.IntegritySuite, cases []types.IntegrityCase, source 
 					existingCase.Assertions = append(existingCase.Assertions, assertion)
 				}
 			}
-			
+
 			suite.Cases[idx] = existingCase
 		} else {
 			// 新的 case，直接添加
@@ -265,12 +265,23 @@ func BuiltinSuite(protocol, requested string) types.IntegritySuite {
 		Category:   "protocol",
 		Capability: "basic_request",
 		Required:   true,
-		Request:    types.IntegrityRequest{Prompt: "Reply with a short greeting.", Stream: false},
+		Request:    types.IntegrityRequest{Body: defaultRequestBody(protocol)},
 		TimeoutMS:  30000,
 		Assertions: baseAssertions(protocol),
 	}
 	suite.Cases = []types.IntegrityCase{caseDef}
 	return suite
+}
+
+func defaultRequestBody(protocol string) json.RawMessage {
+	switch types.NormalizeProtocol(protocol) {
+	case types.ProtocolOpenAIResponses:
+		return json.RawMessage(`{"model":"{{model}}","input":[{"role":"user","content":"Reply with a short greeting."}],"store":true}`)
+	case types.ProtocolAnthropicMessages:
+		return json.RawMessage(`{"model":"{{model}}","messages":[{"role":"user","content":[{"type":"text","text":"Reply with a short greeting."}]}],"max_tokens":128,"stream":false}`)
+	default:
+		return json.RawMessage(`{"model":"{{model}}","messages":[{"role":"user","content":"Reply with a short greeting."}]}`)
+	}
 }
 
 func baseAssertions(protocol string) []types.Assertion {

@@ -83,3 +83,23 @@ func TestLoadRuleFile_RejectsUnsupportedVersion(t *testing.T) {
 		t.Fatal("expected unsupported version error")
 	}
 }
+func TestDataIntegrityRuleFilesParse(t *testing.T) {
+	paths, err := filepath.Glob(filepath.Join("..", "..", "..", "..", "data", "integrity", "*.json"))
+	if err != nil {
+		t.Fatalf("glob data integrity rules: %v", err)
+	}
+	if len(paths) == 0 {
+		t.Fatal("expected at least one data integrity rule file")
+	}
+	for _, path := range paths {
+		t.Run(filepath.Base(path), func(t *testing.T) {
+			rules, err := LoadRuleFile(path)
+			if err != nil {
+				t.Fatalf("LoadRuleFile(%q): %v", path, err)
+			}
+			if len(rules.Cases) == 0 && len(rules.Assertions) == 0 {
+				t.Fatalf("rule file %q does not define cases or assertions", path)
+			}
+		})
+	}
+}

@@ -35,6 +35,7 @@ export type TaskInput = {
   endpoint_url: string
   base_url?: string
   proxy_url?: string
+  api_key?: string
   model: string
   concurrency?: number
   count?: number

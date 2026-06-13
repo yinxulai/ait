@@ -350,9 +350,9 @@ type TurboResult struct {
 }
 
 type IntegrityConfig struct {
-	Enabled      bool     `json:"enabled,omitempty"`
-	Suite        string   `json:"suite,omitempty"`
-	FailFast     bool     `json:"fail_fast,omitempty"`
+	Enabled       bool     `json:"enabled,omitempty"`
+	Suite         string   `json:"suite,omitempty"`
+	FailFast      bool     `json:"fail_fast,omitempty"`
 	CaseTimeoutMS int      `json:"case_timeout_ms,omitempty"`
 	RuleFiles     []string `json:"rule_files,omitempty"`
 }
@@ -382,8 +382,8 @@ type AssertionResult struct {
 }
 
 type IntegrityRequest struct {
-	Prompt string `json:"prompt,omitempty"`
-	Stream bool   `json:"stream,omitempty"`
+	Body    json.RawMessage   `json:"body,omitempty"`
+	Headers map[string]string `json:"headers,omitempty"`
 }
 
 type IntegritySuite struct {
