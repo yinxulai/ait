@@ -1,6 +1,7 @@
 package server
 
 import (
+	"log/slog"
 	"time"
 
 	"github.com/yinxulai/ait/internal/server/store"
@@ -76,7 +77,9 @@ func (a *RunAggregator) MarkSkipped(job RequestJob) {
 func (a *RunAggregator) Complete(result RequestResult) *types.RequestMetrics {
 	rm := mapRequestMetrics(result.Metrics, result.Job.Index, result.Err)
 	rm.Level = result.Job.Level
-	_ = a.runStore.AppendRequest(a.taskDef.ID, string(a.runID), *rm)
+	if err := a.runStore.AppendRequest(a.taskDef.ID, string(a.runID), *rm); err != nil {
+		slog.Error("AppendRequest failed", "run_id", a.runID, "task_id", a.taskDef.ID, "error", err)
+	}
 
 	now := time.Now()
 	a.active.mu.Lock()

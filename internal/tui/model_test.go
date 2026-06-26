@@ -3,6 +3,7 @@ package tui
 import (
 	"context"
 	"testing"
+	"time"
 
 	"github.com/yinxulai/ait/internal/server"
 	"github.com/yinxulai/ait/internal/server/config"
@@ -54,6 +55,7 @@ func (s *stubServer) GetIntegritySuite(protocol, suiteID string) (types.Integrit
 	return types.IntegritySuite{}, nil
 }
 func (s *stubServer) Context() context.Context { return context.Background() }
+func (s *stubServer) Shutdown(timeout time.Duration) error        { return nil }
 
 // ─── NewModel ─────────────────────────────────────────────────────────────────
 

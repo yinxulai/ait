@@ -62,6 +62,9 @@ type Server interface {
 	// Context 返回 Server 的生命周期 Context，用于子操作。
 	// 当 Server 关闭时，此 Context 会被取消。
 	Context() context.Context
+
+	// Shutdown 优雅关闭 Server，等待正在运行的请求完成。
+	Shutdown(timeout time.Duration) error
 }
 
 // serverImpl 是 Server 的具体实现。

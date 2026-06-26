@@ -443,12 +443,15 @@ func TestLoadRequests_ReturnsErrorForCorruptJSONL(t *testing.T) {
 		t.Fatalf("write corrupt requests file: %v", err)
 	}
 
-	_, err := s.runStore.LoadRequests(taskID, runID)
-	if err == nil {
-		t.Fatal("expected LoadRequests() to return an error for corrupt JSONL")
+	requests, err := s.runStore.LoadRequests(taskID, runID)
+	if err != nil {
+		t.Fatalf("LoadRequests() returned unexpected error: %v", err)
 	}
-	if !strings.Contains(err.Error(), "line 2") {
-		t.Fatalf("expected error to include corrupt line number, got %v", err)
+	if len(requests) != 1 {
+		t.Fatalf("expected 1 valid request, got %d", len(requests))
+	}
+	if requests[0].Index != 0 || !requests[0].Success {
+		t.Fatalf("unexpected request data: %+v", requests[0])
 	}
 }
 

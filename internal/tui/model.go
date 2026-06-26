@@ -4,6 +4,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/yinxulai/ait/internal/i18n"
@@ -64,6 +65,9 @@ func NewModel(srv server.Server) *Model {
 
 // Run 启动 BubbleTea 全屏程序。是此包的主要外部入口。
 func Run(srv server.Server) error {
+	defer func() {
+		_ = srv.Shutdown(5 * time.Second)
+	}()
 	m := NewModel(srv)
 	p := tea.NewProgram(m, tea.WithAltScreen())
 	_, err := p.Run()

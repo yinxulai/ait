@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"log/slog"
 	"sync"
 	"time"
 
@@ -46,15 +47,14 @@ func (ar *activeRun) snapshotState() *RunState {
 		copy(snap.Requests, s.Requests)
 	}
 	// 深拷贝模式状态
+	stateProvided := false
 	if ar.runner != nil {
 		if provider, ok := ar.runner.(modes.StateProvider); ok {
-			// 通过 runner 获取最新快照
 			snap.ModeState = map[string]any{"state": provider.GetState()}
-			return &snap
+			stateProvided = true
 		}
 	}
-	// 如果没有 StateProvider，手动深拷贝 ModeState
-	if len(s.ModeState) > 0 {
+	if !stateProvided && len(s.ModeState) > 0 {
 		snap.ModeState = make(map[string]any, len(s.ModeState))
 		for k, v := range s.ModeState {
 			// 对已知的 slice 类型进行深拷贝
@@ -84,6 +84,22 @@ func (ar *activeRun) snapshotState() *RunState {
 		snap.RequestStates = make(map[int]RequestState, len(s.RequestStates))
 		for k, v := range s.RequestStates {
 			snap.RequestStates[k] = v
+		}
+	}
+	// 深拷贝 ModeResult（any 类型，存储的是指针）
+	if s.ModeResult != nil {
+		switch v := s.ModeResult.(type) {
+		case *types.ReportData:
+			copied := *v
+			snap.ModeResult = &copied
+		case *types.TurboResult:
+			copied := *v
+			snap.ModeResult = &copied
+		case *types.IntegrityResult:
+			copied := *v
+			snap.ModeResult = &copied
+		default:
+			snap.ModeResult = v
 		}
 	}
 	return &snap
@@ -478,6 +494,8 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 	}
 
 	stopTick := s.startProgressTicker(ar, runID)
+	defer close(stopTick)
+
 	results := make([]*client.ResponseMetrics, input.Count)
 	start := time.Now()
 	launched := RunRequestBatch(ctx, jobs, input.Concurrency, NewRequestExecutor(modelClient), RequestQueueHooks{
@@ -494,7 +512,6 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 			}
 		},
 	})
-	close(stopTick)
 
 	reportData := standard.CalculateResult(input, results, time.Since(start), launched)
 	s.completeStandardRun(ar, runID, taskDef, runStore, reportData)
@@ -830,7 +847,11 @@ func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefin
 }
 
 func (s *serverImpl) persistFinalRun(runStore *store.RunStore, taskDef types.TaskDefinition, snap *RunState) error {
-	return runStore.SaveFinalRun(buildStoredRunMetadata(taskDef, snap), buildStoredRunResult(snap))
+	err := runStore.SaveFinalRun(buildStoredRunMetadata(taskDef, snap), buildStoredRunResult(snap))
+	if err != nil {
+		slog.Error("persist final run failed", "run_id", snap.RunID, "task_id", snap.TaskID, "error", err)
+	}
+	return err
 }
 
 func (s *serverImpl) removeActiveRun(runID RunID) {
@@ -865,6 +886,8 @@ func (s *serverImpl) StopRun(runID RunID) error {
 		s.bus.closeRunEvents(runID)
 		if taskDef, err := s.taskStore.Get(snap.TaskID); err == nil {
 			_ = s.persistFinalRun(s.runStore, taskDef, snap)
+		} else {
+			slog.Warn("StopRun: cannot persist, task not found", "task_id", snap.TaskID, "run_id", runID, "error", err)
 		}
 		s.removeActiveRun(runID)
 		return nil

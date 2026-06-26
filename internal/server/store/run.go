@@ -4,6 +4,7 @@ import (
 	"bufio"
 	"encoding/json"
 	"fmt"
+	"log/slog"
 	"os"
 	"path/filepath"
 	"sort"
@@ -112,6 +113,10 @@ func (s *RunStore) AppendRequest(taskID, runID string, request types.RequestMetr
 		_ = f.Close()
 		return err
 	}
+	if err := f.Sync(); err != nil {
+		_ = f.Close()
+		return err
+	}
 	return f.Close()
 }
 
@@ -132,6 +137,7 @@ func (s *RunStore) LoadRequests(taskID, runID string) ([]types.RequestMetrics, e
 
 	requests := make([]types.RequestMetrics, 0)
 	lineNo := 0
+	corruptLines := 0
 	for scanner.Scan() {
 		lineNo++
 		line := scanner.Bytes()
@@ -140,9 +146,22 @@ func (s *RunStore) LoadRequests(taskID, runID string) ([]types.RequestMetrics, e
 		}
 		var request types.RequestMetrics
 		if err := json.Unmarshal(line, &request); err != nil {
-			return nil, fmt.Errorf("parse requests jsonl line %d: %w", lineNo, err)
+			corruptLines++
+			slog.Warn("skipping corrupt line in requests jsonl",
+				"path", s.RequestsPath(taskID, runID),
+				"line", lineNo,
+				"error", err,
+			)
+			continue
 		}
 		requests = append(requests, request)
+	}
+	if corruptLines > 0 {
+		slog.Warn("some requests jsonl lines were skipped",
+			"path", s.RequestsPath(taskID, runID),
+			"corrupt_count", corruptLines,
+			"total_lines", lineNo,
+		)
 	}
 	if err := scanner.Err(); err != nil {
 		return nil, err
@@ -161,10 +180,17 @@ func (s *RunStore) SaveFinalRun(meta RunMetadata, result RunResult) error {
 	if err := os.MkdirAll(s.RunDir(meta.TaskID, meta.RunID), 0o755); err != nil {
 		return err
 	}
-	if err := NewJSONStore[RunMetadata](s.MetadataPath(meta.TaskID, meta.RunID)).Save(meta); err != nil {
+	metaPath := s.MetadataPath(meta.TaskID, meta.RunID)
+	resultPath := s.ResultPath(meta.TaskID, meta.RunID)
+	if err := NewJSONStore[RunMetadata](metaPath).Save(meta); err != nil {
 		return err
 	}
-	return NewJSONStore[RunResult](s.ResultPath(meta.TaskID, meta.RunID)).Save(result)
+	if err := NewJSONStore[RunResult](resultPath).Save(result); err != nil {
+		// 回滚：删除已写入的 run.json，避免半状态
+		_ = os.Remove(metaPath)
+		return err
+	}
+	return nil
 }
 
 func (s *RunStore) Load(taskID, runID string) (*StoredRun, error) {

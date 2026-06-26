@@ -44,6 +44,7 @@ func newRunScheduler(maxRunning int, dispatchRun func(runQueueItem)) *RunSchedul
 		ctx:         ctx,
 		cancel:      cancel,
 	}
+	s.wg.Add(1)
 	go s.loop()
 	return s
 }

@@ -238,6 +238,7 @@ func (s *stubServer) GetIntegritySuite(protocol, suiteID string) (types.Integrit
 	return types.IntegritySuite{ID: suiteID, Cases: []types.IntegrityCase{{ID: "basic-response-shape"}}}, nil
 }
 func (s *stubServer) Context() context.Context { return context.Background() }
+func (s *stubServer) Shutdown(timeout time.Duration) error        { return nil }
 
 type errNotFound string
 
