@@ -133,6 +133,11 @@ func (e *Executor) runCase(c types.IntegrityCase) (types.IntegrityCaseResult, er
 		body := interpolateRequest(string(req.Body), caseInput.Model, extracted)
 		reqInput := caseInput
 		reqInput.PromptText = body
+		reqInput.PromptSource = nil
+		reqInput, err = task.HydrateInput(reqInput)
+		if err != nil {
+			return failedCase(c, started, err.Error()), err
+		}
 
 		r, err := e.RunnerFactory(reqInput, c)
 		if err != nil {

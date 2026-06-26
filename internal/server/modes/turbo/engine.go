@@ -2,6 +2,7 @@ package turbo
 
 import (
 	"fmt"
+	"math"
 	"sync"
 	"time"
 
@@ -168,7 +169,7 @@ func (e *Engine) Run(input types.Input) (*types.TurboResult, error) {
 }
 
 func buildLevelResult(report *types.ReportData, concurrency int) types.TurboLevelResult {
-	successCount := int(float64(report.TotalRequests) * report.SuccessRate / 100)
+	successCount := int(math.Round(float64(report.TotalRequests) * report.SuccessRate / 100))
 	return types.TurboLevelResult{
 		Concurrency:   concurrency,
 		TotalRequests: report.TotalRequests,
