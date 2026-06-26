@@ -17,7 +17,7 @@ type runQueueItem struct {
 	TaskID  string
 	TaskDef types.TaskDefinition
 	Input   types.Input
-	Mode    string
+	Mode    RunMode
 }
 
 // RunScheduler 负责按 FIFO 调度运行，并限制全局同时运行数量。

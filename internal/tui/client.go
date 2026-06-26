@@ -179,7 +179,7 @@ func summaryToRunState(s *types.TaskRunSummary) *server.RunState {
 		RunID:        server.RunID(s.RunID),
 		TaskID:       s.TaskID,
 		Status:       status,
-		Mode:         s.Mode,
+		Mode:         server.RunMode(s.Mode),
 		StartedAt:    s.StartedAt,
 		FinishedAt:   finished,
 		AvgTPS:       s.AvgTPS,

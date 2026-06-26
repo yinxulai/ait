@@ -27,6 +27,15 @@ type TaskConfig struct {
 	Input types.Input
 }
 
+// RunMode 运行模式类型。
+type RunMode string
+
+const (
+	ModeTurbo     RunMode = "turbo"
+	ModeStandard  RunMode = "standard"
+	ModeIntegrity RunMode = "integrity"
+)
+
 // RunStatus 运行的生命周期状态。
 type RunStatus string
 
@@ -64,10 +73,10 @@ type RequestState struct {
 // RunState 一次运行的完整快照，由 GetRunState 返回。
 // 字段为只读快照，不持有锁，TUI 层可安全读取。
 type RunState struct {
+	Mode       RunMode
 	RunID      RunID
 	TaskID     string
 	Status     RunStatus
-	Mode       string // "standard" | "turbo" | "integrity"
 	StartedAt  time.Time
 	FinishedAt *time.Time
 
@@ -87,7 +96,6 @@ type RunState struct {
 	CacheHitRate float64
 
 	// 吞吐量指标（基于整体运行时长，最终稳定值）
-	// RPM = 每分钟完成请求数；TPM = 每分钟输出 Token 数
 	RPM float64
 	TPM float64
 
@@ -97,22 +105,31 @@ type RunState struct {
 	// 请求队列状态（按 index 记录）
 	RequestStates map[int]RequestState
 
-	// 模式特定状态（运行时动态更新）
-	// 不同模式可在此存储自定义状态，如：
-	// - standard: 无额外状态
-	// - turbo: {"levels": [...], "current_level": 3, "config": {...}}
-	// - integrity: {"suite": {...}, "cases": [...], "current_case_id": "..."}
+	// 模式特定状态（运行时动态更新），key 使用 ModeStateKey* 常量
 	ModeState map[string]any
 
 	// 最终结果（运行结束后填充）
-	// 根据 Mode 字段判断具体类型：
-	// - standard: types.ReportData
-	// - turbo: types.TurboResult
-	// - integrity: types.IntegrityResult
+	// - standard: *types.ReportData
+	// - turbo:    *types.TurboResult
+	// - integrity: *types.IntegrityResult
 	ModeResult any
 
 	ErrorMsg string
 }
+
+// ModeState 的标准键名常量，避免字符串字面量散落各处。
+const (
+	ModeStateKeyLevels           = "levels"
+	ModeStateKeyCurrentLevel     = "current_level"
+	ModeStateKeyCases            = "cases"
+	ModeStateKeyCurrentCaseID    = "current_case_id"
+	ModeStateKeyAssertionResults = "assertion_results"
+	ModeStateKeySuite            = "suite"
+	ModeStateKeySuiteStatus      = "suite_status"
+	ModeStateKeyConfig           = "config"
+	ModeStateKeyRulesStatus      = "rules_status"
+	ModeStateKeyState            = "state"
+)
 
 // EventKind 事件类型枚举。
 type EventKind string

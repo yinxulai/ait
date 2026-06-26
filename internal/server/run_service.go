@@ -34,7 +34,6 @@ type activeRun struct {
 	ttftSum   time.Duration
 	cacheSum  float64
 	tokenSum  int64 // 累计成功请求的输出 Token 数，用于计算 TPM
-	doneCount int   // 与 state.DoneReqs 保持同步，方便不加锁时计算
 }
 
 // snapshotState 返回 state 的深度拷贝（调用方须已持有 activeRun.mu 读锁）。
@@ -175,7 +174,7 @@ func (s *serverImpl) handleRulesStatus(status integrity.RulesStatus) {
 	active := make(map[RunID]*activeRun, len(s.activeRuns))
 	for runID, ar := range s.activeRuns {
 		ar.mu.RLock()
-		isIntegrity := ar.state != nil && ar.state.Mode == "integrity"
+		isIntegrity := ar.state != nil && ar.state.Mode == ModeIntegrity
 		ar.mu.RUnlock()
 		if isIntegrity {
 			active[runID] = ar
@@ -224,7 +223,7 @@ func buildStoredRunMetadata(taskDef types.TaskDefinition, snap *RunState) store.
 	return store.RunMetadata{
 		RunID:      string(snap.RunID),
 		TaskID:     snap.TaskID,
-		Mode:       snap.Mode,
+		Mode:       string(snap.Mode),
 		Protocol:   taskDef.Input.NormalizedProtocol(),
 		Model:      taskDef.Input.Model,
 		Status:     string(snap.Status),
@@ -242,8 +241,8 @@ func buildStoredRunResult(snap *RunState) store.RunResult {
 		result.TotalReqs = snap.TotalReqs
 	}
 	// 对于 turbo 模式，从 ModeState 提取 current_level
-	if snap.Mode == "turbo" && snap.ModeState != nil {
-		if level, ok := snap.ModeState["current_level"].(int); ok && level > 0 {
+	if snap.Mode == ModeTurbo && snap.ModeState != nil {
+		if level, ok := snap.ModeState[ModeStateKeyCurrentLevel].(int); ok && level > 0 {
 			result.MaxStableConcurrency = level
 		}
 	}
@@ -270,7 +269,7 @@ func buildRunStateFromStoredRun(run *store.StoredRun, requests []types.RequestMe
 		RunID:        RunID(run.Metadata.RunID),
 		TaskID:       run.Metadata.TaskID,
 		Status:       RunStatus(run.Metadata.Status),
-		Mode:         run.Metadata.Mode,
+		Mode:         RunMode(run.Metadata.Mode),
 		StartedAt:    run.Metadata.StartedAt,
 		Requests:     requestPointers(requests),
 		AvgTTFT:      summary.AvgTTFT,
@@ -313,35 +312,24 @@ func buildRunStateFromStoredRun(run *store.StoredRun, requests []types.RequestMe
 		return state
 	}
 
-	// 恢复模式结果（根据 mode 判断类型）
+	// 恢复模式结果
 	state.ModeResult = run.Result.ModeResult
-	// 向后兼容：如果是旧格式存储，尝试从特定字段恢复
-	if state.ModeResult == nil {
-		switch state.Mode {
-		case "standard":
-			state.ModeResult = run.Result.StandardResult
-		case "turbo":
-			state.ModeResult = run.Result.TurboResult
-		case "integrity":
-			state.ModeResult = run.Result.IntegrityResult
-		}
-	}
 	// 恢复模式状态（从结果中提取）
 	switch state.Mode {
-	case "turbo":
+	case ModeTurbo:
 		if turboResult, ok := state.ModeResult.(*types.TurboResult); ok && turboResult != nil {
 			state.ModeState = map[string]any{
-				"config":        turboResult.Config,
-				"levels":        turboResult.Levels,
-				"current_level": turboResult.MaxStableConcurrency,
+				ModeStateKeyConfig:       turboResult.Config,
+				ModeStateKeyLevels:       turboResult.Levels,
+				ModeStateKeyCurrentLevel: turboResult.MaxStableConcurrency,
 			}
 		}
-	case "integrity":
+	case ModeIntegrity:
 		if integrityResult, ok := state.ModeResult.(*types.IntegrityResult); ok && integrityResult != nil {
 			state.ModeState = map[string]any{
-				"suite":             types.IntegritySuite{ID: integrityResult.SuiteID},
-				"cases":             integrityResult.Cases,
-				"assertion_results": integrityResult.Assertions,
+				ModeStateKeySuite:            types.IntegritySuite{ID: integrityResult.SuiteID},
+				ModeStateKeyCases:            integrityResult.Cases,
+				ModeStateKeyAssertionResults: integrityResult.Assertions,
 			}
 		}
 	}
@@ -352,7 +340,7 @@ func buildRunningRunSummary(taskDef types.TaskDefinition, snap *RunState) types.
 	summary := types.TaskRunSummary{
 		RunID:        string(snap.RunID),
 		TaskID:       taskDef.ID,
-		Mode:         snap.Mode,
+		Mode:         string(snap.Mode),
 		Status:       string(snap.Status),
 		Protocol:     taskDef.Input.NormalizedProtocol(),
 		Model:        taskDef.Input.Model,
@@ -396,9 +384,8 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 
 	runID := RunID(fmt.Sprintf("run_%d", time.Now().UnixNano()))
 	now := time.Now()
-	mode := hydratedInput.RunMode()
+	mode := RunMode(hydratedInput.RunMode())
 	// 使用 Server 的生命周期 Context，这样运行可以响应 Server 关闭
-	// 如果 Server 没有 ctx（测试场景），使用 Background
 	parentCtx := s.ctx
 	if parentCtx == nil {
 		parentCtx = context.Background()
@@ -413,7 +400,7 @@ func (s *serverImpl) StartRun(taskID string) (RunID, error) {
 		StartedAt: now,
 	}
 	switch mode {
-	case "turbo", "integrity":
+	case ModeTurbo, ModeIntegrity:
 		state.TotalReqs = 0
 	default:
 		state.TotalReqs = hydratedInput.Count
@@ -462,9 +449,9 @@ func (s *serverImpl) dispatchQueuedRun(item runQueueItem) {
 	s.bus.publishRunEvent(Event{RunID: item.RunID, Kind: EventRunStarted, Payload: snap})
 
 	switch item.Mode {
-	case "turbo":
+	case ModeTurbo:
 		s.runTurbo(ar, item.RunID, item.TaskDef, item.Input, runStore)
-	case "integrity":
+	case ModeIntegrity:
 		s.runIntegrity(ar, item.RunID, item.TaskDef, item.Input, runStore)
 	default:
 		s.runStandard(ar, item.RunID, item.TaskDef, item.Input, runStore)
@@ -474,20 +461,13 @@ func (s *serverImpl) dispatchQueuedRun(item runQueueItem) {
 // runStandard 在 goroutine 中执行标准运行。
 func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
 	ctx := ar.ctx
-	if ctx == nil {
-		// 备用：使用 Server 的生命周期 Context
-		ctx = s.ctx
-		if ctx == nil {
-			ctx = context.Background()
-		}
-	}
 	loggerInstance := loggerForInput(input)
 	modelClient, err := client.NewClient(input, loggerInstance)
 	if err != nil {
-		s.failRun(ar, runID, taskDef, runStore, err)
+		s.finalizeRun(ar, runID, taskDef, runStore, nil, err)
 		return
 	}
-	aggregator := newRunAggregator(s, ar, runID, taskDef, runStore)
+	aggregator := newRunAggregator(s.bus, ar, runID, taskDef, runStore)
 	jobs := make([]RequestJob, 0, input.Count)
 	for i := 0; i < input.Count; i++ {
 		jobs = append(jobs, RequestJob{RunID: runID, Index: i, Input: input})
@@ -514,7 +494,7 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 	})
 
 	reportData := standard.CalculateResult(input, results, time.Since(start), launched)
-	s.completeStandardRun(ar, runID, taskDef, runStore, reportData)
+	s.finalizeRun(ar, runID, taskDef, runStore, reportData, nil)
 }
 
 // runIntegrity 在 goroutine 中执行接口完整性测试。
@@ -529,10 +509,10 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 
 	ar.mu.Lock()
 	ar.state.ModeState = map[string]any{
-		"suite_status": map[string]any{
+		ModeStateKeySuiteStatus: map[string]any{
 			"phase":   "loading",
 			"message": "正在加载完整性测试集",
-			"suite":   input.Integrity.Suite,
+			ModeStateKeySuite:   input.Integrity.Suite,
 		},
 	}
 	if rulesStatus != nil {
@@ -548,28 +528,21 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 		if ar.state.ModeState == nil {
 			ar.state.ModeState = map[string]any{}
 		}
-		ar.state.ModeState["suite_status"] = map[string]any{
+		ar.state.ModeState[ModeStateKeySuiteStatus] = map[string]any{
 			"phase":   "error",
 			"message": "完整性测试集加载失败",
-			"suite":   input.Integrity.Suite,
+			ModeStateKeySuite:   input.Integrity.Suite,
 			"error":   err.Error(),
 		}
 		snap := ar.snapshotState()
 		ar.mu.Unlock()
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegritySuiteLoaded, Payload: snap})
-		s.failRun(ar, runID, taskDef, runStore, err)
+		s.finalizeRun(ar, runID, taskDef, runStore, nil, err)
 		return
 	}
 
 	ctx := ar.ctx
-	if ctx == nil {
-		// 备用：使用 Server 的生命周期 Context
-		ctx = s.ctx
-		if ctx == nil {
-			ctx = context.Background()
-		}
-	}
-	aggregator := newRunAggregator(s, ar, runID, taskDef, runStore)
+	aggregator := newRunAggregator(s.bus, ar, runID, taskDef, runStore)
 	caseIndex := 0
 
 	executor := integrity.NewExecutor(taskDef.ID, input, suite)
@@ -580,23 +553,23 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 		}
 		idx := caseIndex
 		caseIndex++
-		return newQueuedCaseRunner(ctx, runID, caseInput, modelClient, aggregator, idx, c.ID), nil
+		return newBatchRunner(ctx, runID, caseInput, modelClient, aggregator).WithCaseID(c.ID, idx), nil
 	}
 	ar.mu.Lock()
 	ar.runner = executor
 	ar.state.TotalReqs = len(suite.Cases)
 	// 初始化模式状态
 	ar.state.ModeState = map[string]any{
-		"suite": suite,
-		"suite_status": map[string]any{
+		ModeStateKeySuite: suite,
+		ModeStateKeySuiteStatus: map[string]any{
 			"phase":      "ready",
 			"message":    "完整性测试集已加载",
-			"suite":      suite.ID,
+			ModeStateKeySuite:      suite.ID,
 			"case_count": len(suite.Cases),
 		},
-		"cases":             []types.IntegrityCaseResult{},
-		"current_case_id":   "",
-		"assertion_results": []types.AssertionResult{},
+		ModeStateKeyCases:             []types.IntegrityCaseResult{},
+		ModeStateKeyCurrentCaseID:   "",
+		ModeStateKeyAssertionResults: []types.AssertionResult{},
 	}
 	if rulesStatus != nil {
 		ar.state.ModeState["rules_status"] = *rulesStatus
@@ -609,7 +582,7 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 		if ar.state.ModeState == nil {
 			ar.state.ModeState = make(map[string]any)
 		}
-		ar.state.ModeState["current_case_id"] = c.ID
+		ar.state.ModeState[ModeStateKeyCurrentCaseID] = c.ID
 		snap := ar.snapshotState()
 		ar.mu.Unlock()
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegrityCaseStarted, Payload: snap})
@@ -623,8 +596,8 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 
 		ar.mu.Lock()
 		if ar.state.ModeState != nil {
-			if existing, ok := ar.state.ModeState["assertion_results"].([]types.AssertionResult); ok {
-				ar.state.ModeState["assertion_results"] = append(existing, assertions...)
+			if existing, ok := ar.state.ModeState[ModeStateKeyAssertionResults].([]types.AssertionResult); ok {
+				ar.state.ModeState[ModeStateKeyAssertionResults] = append(existing, assertions...)
 			}
 		}
 		ar.mu.Unlock()
@@ -634,8 +607,8 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 	executor.OnCaseDone = func(result types.IntegrityCaseResult) {
 		ar.mu.Lock()
 		if ar.state.ModeState != nil {
-			if existing, ok := ar.state.ModeState["cases"].([]types.IntegrityCaseResult); ok {
-				ar.state.ModeState["cases"] = append(existing, result)
+			if existing, ok := ar.state.ModeState[ModeStateKeyCases].([]types.IntegrityCaseResult); ok {
+				ar.state.ModeState[ModeStateKeyCases] = append(existing, result)
 			}
 		}
 		snap := ar.snapshotState()
@@ -651,32 +624,25 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 		result.Timestamp = time.Now().Format(time.RFC3339)
 	}
 	if err != nil && result == nil {
-		s.failRun(ar, runID, taskDef, runStore, err)
+		s.finalizeRun(ar, runID, taskDef, runStore, nil, err)
 		return
 	}
-	s.completeIntegrityRun(ar, runID, taskDef, runStore, result)
+	s.finalizeRun(ar, runID, taskDef, runStore, result, nil)
 }
 
 // runTurbo 在 goroutine 中执行 Turbo 运行。
 func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefinition, input types.Input, runStore *store.RunStore) {
 	ctx := ar.ctx
-	if ctx == nil {
-		// 备用：使用 Server 的生命周期 Context
-		ctx = s.ctx
-		if ctx == nil {
-			ctx = context.Background()
-		}
-	}
 	loggerInstance := loggerForInput(input)
 	modelClient, err := client.NewClient(input, loggerInstance)
 	if err != nil {
-		s.failRun(ar, runID, taskDef, runStore, err)
+		s.finalizeRun(ar, runID, taskDef, runStore, nil, err)
 		return
 	}
-	aggregator := newRunAggregator(s, ar, runID, taskDef, runStore)
+	aggregator := newRunAggregator(s.bus, ar, runID, taskDef, runStore)
 
 	factory := func(levelInput types.Input) (turbo.LevelRunner, error) {
-		return newQueuedLevelRunner(ctx, runID, levelInput, modelClient, aggregator, levelInput.Concurrency), nil
+		return newBatchRunner(ctx, runID, levelInput, modelClient, aggregator).WithLevel(levelInput.Concurrency), nil
 	}
 
 	engine := turbo.New(factory)
@@ -685,12 +651,12 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 		if ar.state.ModeState == nil {
 			ar.state.ModeState = make(map[string]any)
 		}
-		if existing, ok := ar.state.ModeState["levels"].([]types.TurboLevelResult); ok {
-			ar.state.ModeState["levels"] = append(existing, level)
+		if existing, ok := ar.state.ModeState[ModeStateKeyLevels].([]types.TurboLevelResult); ok {
+			ar.state.ModeState[ModeStateKeyLevels] = append(existing, level)
 		} else {
-			ar.state.ModeState["levels"] = []types.TurboLevelResult{level}
+			ar.state.ModeState[ModeStateKeyLevels] = []types.TurboLevelResult{level}
 		}
-		ar.state.ModeState["current_level"] = level.Concurrency
+		ar.state.ModeState[ModeStateKeyCurrentLevel] = level.Concurrency
 		snap := ar.snapshotState()
 		ar.mu.Unlock()
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventLevelDone, Payload: snap})
@@ -700,113 +666,41 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 	ar.runner = engine
 	// 初始化 Turbo 模式状态
 	ar.state.ModeState = map[string]any{
-		"config":        turbo.NormalizeConfig(input.TurboConfig, input.Count),
-		"levels":        []types.TurboLevelResult{},
-		"current_level": 0,
+		ModeStateKeyConfig:        turbo.NormalizeConfig(input.TurboConfig, input.Count),
+		ModeStateKeyLevels:        []types.TurboLevelResult{},
+		ModeStateKeyCurrentLevel: 0,
 	}
 	ar.mu.Unlock()
 
 	turboResult, err := engine.Run(input)
 	if err != nil {
-		s.failRun(ar, runID, taskDef, runStore, err)
+		s.finalizeRun(ar, runID, taskDef, runStore, nil, err)
 		return
 	}
 
-	s.completeTurboRun(ar, runID, taskDef, runStore, turboResult)
+	s.finalizeRun(ar, runID, taskDef, runStore, turboResult, nil)
 }
 
-// completeStandardRun 处理标准运行成功完成的后续工作。
-func (s *serverImpl) completeStandardRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, data *types.ReportData) {
+// finalizeRun 统一处理所有运行终止路径。
+// modeResult==nil && err!=nil → 致命错误 (Failed)
+// modeResult!=nil → 正常结束 (Completed，除非被停止)
+func (s *serverImpl) finalizeRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, modeResult any, runErr error) {
 	finishedAt := time.Now()
 
 	ar.mu.Lock()
-	if ar.state.Status != RunStatusStopped {
+	if modeResult == nil && runErr != nil {
+		ar.state.Status = RunStatusFailed
+		ar.state.ErrorMsg = runErr.Error()
+	} else if ar.state.Status != RunStatusStopped {
 		ar.state.Status = RunStatusCompleted
 	}
 	ar.state.FinishedAt = &finishedAt
-	ar.state.ModeResult = data
-	if data != nil {
-		ar.state.AvgTPS = data.AvgTPS
-		ar.state.AvgTTFT = data.AvgTTFT
-		ar.state.SuccessRate = data.SuccessRate
-		ar.state.CacheHitRate = data.AvgCacheHitRate
+	if modeResult != nil {
+		ar.state.ModeResult = modeResult
+		applyModeResult(ar.state, modeResult)
 	}
-	// 使用完整运行时长计算最终稳定的 RPM/TPM
-	if elapsed := finishedAt.Sub(ar.state.StartedAt).Minutes(); elapsed > 0 {
-		ar.state.RPM = float64(ar.state.DoneReqs) / elapsed
-		ar.state.TPM = float64(ar.tokenSum) / elapsed
-	}
-	snap := ar.snapshotState()
-	ar.mu.Unlock()
-
-	if snap.Status == RunStatusStopped {
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunStopped, Payload: snap})
-	} else {
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
-	}
-	s.bus.closeRunEvents(runID)
-	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
-		s.removeActiveRun(runID)
-	}
-}
-
-// completeTurboRun 处理 Turbo 运行成功完成的后续工作。
-func (s *serverImpl) completeTurboRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, result *types.TurboResult) {
-	finishedAt := time.Now()
-
-	ar.mu.Lock()
-	if ar.state.Status != RunStatusStopped {
-		ar.state.Status = RunStatusCompleted
-	}
-	ar.state.FinishedAt = &finishedAt
-	ar.state.ModeResult = result
-	if result != nil {
-		// 更新模式状态为最终结果
-		if ar.state.ModeState == nil {
-			ar.state.ModeState = make(map[string]any)
-		}
-		ar.state.ModeState["levels"] = result.Levels
-		ar.state.ModeState["current_level"] = result.MaxStableConcurrency
-	}
-	// 使用完整运行时长计算最终稳定的 RPM/TPM
-	if elapsed := finishedAt.Sub(ar.state.StartedAt).Minutes(); elapsed > 0 {
-		ar.state.RPM = float64(ar.state.DoneReqs) / elapsed
-		ar.state.TPM = float64(ar.tokenSum) / elapsed
-	}
-	snap := ar.snapshotState()
-	ar.mu.Unlock()
-
-	if snap.Status == RunStatusStopped {
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunStopped, Payload: snap})
-	} else {
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
-	}
-	s.bus.closeRunEvents(runID)
-	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
-		s.removeActiveRun(runID)
-	}
-}
-
-// completeIntegrityRun 处理接口完整性测试成功完成的后续工作。
-func (s *serverImpl) completeIntegrityRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, result *types.IntegrityResult) {
-	finishedAt := time.Now()
-
-	ar.mu.Lock()
-	if ar.state.Status != RunStatusStopped {
-		ar.state.Status = RunStatusCompleted
-		if result != nil && result.Status == "failed" {
-			ar.state.Status = RunStatusFailed
-		}
-	}
-	ar.state.FinishedAt = &finishedAt
-	ar.state.ModeResult = result
-	if result != nil {
-		// 更新模式状态为最终结果
-		if ar.state.ModeState == nil {
-			ar.state.ModeState = make(map[string]any)
-		}
-		ar.state.ModeState["cases"] = result.Cases
-		ar.state.ModeState["assertion_results"] = result.Assertions
+	if runErr != nil && ar.state.ErrorMsg == "" {
+		ar.state.ErrorMsg = runErr.Error()
 	}
 	if elapsed := finishedAt.Sub(ar.state.StartedAt).Minutes(); elapsed > 0 {
 		ar.state.RPM = float64(ar.state.DoneReqs) / elapsed
@@ -815,34 +709,41 @@ func (s *serverImpl) completeIntegrityRun(ar *activeRun, runID RunID, taskDef ty
 	snap := ar.snapshotState()
 	ar.mu.Unlock()
 
-	if snap.Status == RunStatusStopped {
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunStopped, Payload: snap})
-	} else if snap.Status == RunStatusFailed {
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunFailed, Payload: snap})
-	} else {
-		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunComplete, Payload: snap})
+	var kind EventKind
+	switch snap.Status {
+	case RunStatusStopped:
+		kind = EventRunStopped
+	case RunStatusFailed:
+		kind = EventRunFailed
+	default:
+		kind = EventRunComplete
 	}
+	s.bus.publishRunEvent(Event{RunID: runID, Kind: kind, Payload: snap})
 	s.bus.closeRunEvents(runID)
 	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
 		s.removeActiveRun(runID)
 	}
 }
 
-// failRun 处理运行失败的后续工作。
-func (s *serverImpl) failRun(ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore, runErr error) {
-	finishedAt := time.Now()
-
-	ar.mu.Lock()
-	ar.state.Status = RunStatusFailed
-	ar.state.FinishedAt = &finishedAt
-	ar.state.ErrorMsg = runErr.Error()
-	snap := ar.snapshotState()
-	ar.mu.Unlock()
-
-	s.bus.publishRunEvent(Event{RunID: runID, Kind: EventRunFailed, Payload: snap})
-	s.bus.closeRunEvents(runID)
-	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
-		s.removeActiveRun(runID)
+func applyModeResult(state *RunState, result any) {
+	switch r := result.(type) {
+	case *types.ReportData:
+		state.AvgTPS = r.AvgTPS
+		state.AvgTTFT = r.AvgTTFT
+		state.SuccessRate = r.SuccessRate
+		state.CacheHitRate = r.AvgCacheHitRate
+	case *types.TurboResult:
+		if state.ModeState == nil {
+			state.ModeState = make(map[string]any)
+		}
+		state.ModeState[ModeStateKeyLevels] = r.Levels
+		state.ModeState[ModeStateKeyCurrentLevel] = r.MaxStableConcurrency
+	case *types.IntegrityResult:
+		if state.ModeState == nil {
+			state.ModeState = make(map[string]any)
+		}
+		state.ModeState[ModeStateKeyCases] = r.Cases
+		state.ModeState[ModeStateKeyAssertionResults] = r.Assertions
 	}
 }
 
@@ -960,7 +861,7 @@ func (s *serverImpl) GenerateRunReport(runID RunID, format ReportFormat) (string
 	s.mu.RUnlock()
 
 	var status RunStatus
-	var mode string
+	var mode RunMode
 	var standardResult *types.ReportData
 
 	if ok {
@@ -977,14 +878,10 @@ func (s *serverImpl) GenerateRunReport(runID RunID, format ReportFormat) (string
 			return "", fmt.Errorf("run %q not found", runID)
 		}
 		status = RunStatus(run.Metadata.Status)
-		mode = run.Metadata.Mode
+		mode = RunMode(run.Metadata.Mode)
 		if run.Result != nil {
-			// 优先从 ModeResult 读取
 			if reportData, ok := run.Result.ModeResult.(*types.ReportData); ok {
 				standardResult = reportData
-			} else if run.Result.StandardResult != nil {
-				// 向后兼容：从旧字段读取
-				standardResult = run.Result.StandardResult
 			}
 		}
 	}
@@ -993,7 +890,7 @@ func (s *serverImpl) GenerateRunReport(runID RunID, format ReportFormat) (string
 		return "", fmt.Errorf("run %q is still in progress", runID)
 	}
 
-	if mode == "turbo" {
+	if mode == ModeTurbo {
 		return "", fmt.Errorf("report generation for turbo runs is not yet supported")
 	}
 

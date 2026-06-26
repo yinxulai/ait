@@ -10,15 +10,15 @@ import (
 
 // RunAggregator 是运行状态、请求持久化和请求事件发布的统一入口。
 type RunAggregator struct {
-	server   *serverImpl
+	bus      *eventBus
 	active   *activeRun
 	runID    RunID
 	taskDef  types.TaskDefinition
 	runStore *store.RunStore
 }
 
-func newRunAggregator(s *serverImpl, ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore) *RunAggregator {
-	return &RunAggregator{server: s, active: ar, runID: runID, taskDef: taskDef, runStore: runStore}
+func newRunAggregator(bus *eventBus, ar *activeRun, runID RunID, taskDef types.TaskDefinition, runStore *store.RunStore) *RunAggregator {
+	return &RunAggregator{bus: bus, active: ar, runID: runID, taskDef: taskDef, runStore: runStore}
 }
 
 func (a *RunAggregator) MarkQueued(job RequestJob) {
@@ -30,7 +30,7 @@ func (a *RunAggregator) MarkQueued(job RequestJob) {
 	a.recountRequestStatesLocked()
 	snap := a.active.snapshotState()
 	a.active.mu.Unlock()
-	a.server.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestQueued, Payload: snap})
+	a.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestQueued, Payload: snap})
 }
 
 func (a *RunAggregator) MarkStarted(job RequestJob) {
@@ -49,7 +49,7 @@ func (a *RunAggregator) MarkStarted(job RequestJob) {
 	a.recountRequestStatesLocked()
 	snap := a.active.snapshotState()
 	a.active.mu.Unlock()
-	a.server.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestStarted, Payload: snap})
+	a.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestStarted, Payload: snap})
 }
 
 func (a *RunAggregator) MarkSkipped(job RequestJob) {
@@ -71,7 +71,7 @@ func (a *RunAggregator) MarkSkipped(job RequestJob) {
 	a.recountRequestStatesLocked()
 	snap := a.active.snapshotState()
 	a.active.mu.Unlock()
-	a.server.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestSkipped, Payload: snap})
+	a.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestSkipped, Payload: snap})
 }
 
 func (a *RunAggregator) Complete(result RequestResult) *types.RequestMetrics {
@@ -127,7 +127,7 @@ func (a *RunAggregator) Complete(result RequestResult) *types.RequestMetrics {
 	a.recountRequestStatesLocked()
 	snap := a.active.snapshotState()
 	a.active.mu.Unlock()
-	a.server.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestDone, Payload: snap})
+	a.bus.publishRunEvent(Event{RunID: a.runID, Kind: EventRequestDone, Payload: snap})
 	return rm
 }
 

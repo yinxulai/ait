@@ -320,7 +320,7 @@ func buildTaskDetailContent(s *TaskDetailState, st Styles, t types.TaskDefinitio
 	rowData := make([]histRow, effectiveLen)
 	if hasActive {
 		rs := s.ActiveRun
-		modeShort := shared.ModeShortLabel(rs.Mode)
+		modeShort := shared.ModeShortLabel(string(rs.Mode))
 		rateStr := "─"
 		if rs.TotalReqs > 0 {
 			rateStr = fmt.Sprintf("%.1f%%", rs.SuccessRate)

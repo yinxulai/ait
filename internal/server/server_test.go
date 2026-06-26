@@ -473,7 +473,7 @@ func TestGetRunState_LoadsCompletedRunFromDisk(t *testing.T) {
 		FinishedAt: &finishedAt,
 	}, store.RunResult{
 		ErrorSummary:   "",
-		StandardResult: &types.ReportData{TotalRequests: 4, AvgTPS: 18.5, AvgTTFT: 120 * time.Millisecond, SuccessRate: 25},
+		ModeResult: &types.ReportData{TotalRequests: 4, AvgTPS: 18.5, AvgTTFT: 120 * time.Millisecond, SuccessRate: 25},
 	}); err != nil {
 		t.Fatalf("SaveFinalRun() returned unexpected error: %v", err)
 	}

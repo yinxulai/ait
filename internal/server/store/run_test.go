@@ -62,7 +62,7 @@ func TestRunStore_ResultOmitsDerivedSummaryFields(t *testing.T) {
 		FinishedAt: &finishedAt,
 	}, RunResult{
 		ErrorSummary: "boom",
-		StandardResult: &types.ReportData{
+		ModeResult: &types.ReportData{
 			TotalRequests: 4,
 			SuccessRate:   75,
 			AvgTPS:        12.5,
@@ -87,7 +87,7 @@ func TestRunStore_ResultOmitsDerivedSummaryFields(t *testing.T) {
 			t.Fatalf("expected derived summary field %q to be omitted from result.json, got %s", key, raw)
 		}
 	}
-	if _, ok := payload["standard_result"]; !ok {
+	if _, ok := payload["mode_result"]; !ok {
 		t.Fatalf("expected final report payload to remain in result.json, got %s", raw)
 	}
 	if _, ok := payload["error_summary"]; !ok {
