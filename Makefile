@@ -30,6 +30,16 @@ build:
 	@mkdir -p $(BIN_DIR)
 	$(GOBUILD) $(BUILD_FLAGS) -o $(BIN_DIR)/$(BINARY) ./cmd/$(BINARY)/
 
+## run: 构建并启动终端 TUI
+.PHONY: run
+run: build
+	./$(BIN_DIR)/$(BINARY)
+
+## dev: 直接 go run 启动终端 TUI（跳过构建）
+.PHONY: dev
+dev:
+	$(GOCMD) run $(BUILD_FLAGS) ./cmd/$(BINARY)/
+
 ## web-build: 构建 Web UI 静态产物
 .PHONY: web-build
 web-build:
