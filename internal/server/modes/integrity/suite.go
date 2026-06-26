@@ -125,9 +125,9 @@ func MergeCases(suite types.IntegritySuite, cases []types.IntegrityCase, source 
 			// Case 已存在，合并 assertions
 			existingCase := suite.Cases[idx]
 
-			// 如果新 case 定义了 request，使用新的（优先级更高）
-			if len(newCase.Request.Body) > 0 || len(newCase.Request.Headers) > 0 {
-				existingCase.Request = newCase.Request
+// 如果新 case 定义了 requests，使用新的（优先级更高）
+		if len(newCase.Requests) > 0 {
+			existingCase.Requests = newCase.Requests
 			}
 
 			// 更新其他字段（如果新 case 有定义）
@@ -265,7 +265,7 @@ func BuiltinSuite(protocol, requested string) types.IntegritySuite {
 		Category:   "protocol",
 		Capability: "basic_request",
 		Required:   true,
-		Request:    types.IntegrityRequest{Body: defaultRequestBody(protocol)},
+		Requests:   []types.IntegrityRequest{{Body: defaultRequestBody(protocol)}},
 		TimeoutMS:  30000,
 		Assertions: baseAssertions(protocol),
 	}
@@ -286,24 +286,24 @@ func defaultRequestBody(protocol string) json.RawMessage {
 
 func baseAssertions(protocol string) []types.Assertion {
 	common := []types.Assertion{
-		{ID: "response.body.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body", Op: "exists", Message: "响应体必须是可解析的 JSON 对象。", Source: "builtin"},
-		{ID: "metrics.total_ms.gte_zero", CaseID: "basic-response-shape", Level: "warn", Path: "metrics.total_ms", Op: "gte", Value: float64(0), Message: "请求耗时必须可用。", Source: "builtin"},
+		{ID: "response.body.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body", Op: "exists", RequestIndex: 0, Message: "响应体必须是可解析的 JSON 对象。", Source: "builtin"},
+		{ID: "metrics.total_ms.gte_zero", CaseID: "basic-response-shape", Level: "warn", Path: "metrics.total_ms", Op: "gte", Value: float64(0), RequestIndex: 0, Message: "请求耗时必须可用。", Source: "builtin"},
 	}
 	switch protocol {
 	case types.ProtocolOpenAIResponses:
 		return append(common,
-			types.Assertion{ID: "responses.id.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.id", Op: "exists", Message: "Responses 响应体必须包含 id 字段。", Source: "builtin"},
-			types.Assertion{ID: "responses.output.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.output", Op: "exists", Message: "Responses 响应体必须包含 output 字段。", Source: "builtin"},
+			types.Assertion{ID: "responses.id.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.id", Op: "exists", RequestIndex: 0, Message: "Responses 响应体必须包含 id 字段。", Source: "builtin"},
+			types.Assertion{ID: "responses.output.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.output", Op: "exists", RequestIndex: 0, Message: "Responses 响应体必须包含 output 字段。", Source: "builtin"},
 		)
 	case types.ProtocolAnthropicMessages:
 		return append(common,
-			types.Assertion{ID: "anthropic.id.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.id", Op: "exists", Message: "Anthropic 响应体必须包含 id 字段。", Source: "builtin"},
-			types.Assertion{ID: "anthropic.content.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.content", Op: "exists", Message: "Anthropic 响应体必须包含 content 字段。", Source: "builtin"},
+			types.Assertion{ID: "anthropic.id.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.id", Op: "exists", RequestIndex: 0, Message: "Anthropic 响应体必须包含 id 字段。", Source: "builtin"},
+			types.Assertion{ID: "anthropic.content.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.content", Op: "exists", RequestIndex: 0, Message: "Anthropic 响应体必须包含 content 字段。", Source: "builtin"},
 		)
 	default:
 		return append(common,
-			types.Assertion{ID: "chat.id.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.id", Op: "exists", Message: "响应体必须包含 id 字段。", Source: "builtin"},
-			types.Assertion{ID: "chat.choices.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.choices", Op: "exists", Message: "Chat Completions 响应体必须包含 choices 字段。", Source: "builtin"},
+			types.Assertion{ID: "chat.id.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.id", Op: "exists", RequestIndex: 0, Message: "响应体必须包含 id 字段。", Source: "builtin"},
+			types.Assertion{ID: "chat.choices.exists", CaseID: "basic-response-shape", Level: "error", Path: "response.body.choices", Op: "exists", RequestIndex: 0, Message: "Chat Completions 响应体必须包含 choices 字段。", Source: "builtin"},
 		)
 	}
 }

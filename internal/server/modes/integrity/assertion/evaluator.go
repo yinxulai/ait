@@ -27,21 +27,30 @@ func EvaluateAll(observation map[string]any, assertions []types.Assertion) ([]ty
 			return nil, err
 		}
 		results = append(results, types.AssertionResult{
-			AssertionID: eval.Assertion.ID,
-			Level:       normalizeLevel(eval.Assertion.Level),
-			Passed:      eval.Passed,
-			Path:        eval.Assertion.Path,
-			Op:          eval.Assertion.Op,
-			Expected:    eval.Assertion.Value,
-			Actual:      eval.Actual,
-			Message:     eval.Message,
+			AssertionID:  eval.Assertion.ID,
+			Level:        normalizeLevel(eval.Assertion.Level),
+			Passed:       eval.Passed,
+			RequestIndex: eval.Assertion.RequestIndex,
+			Path:         eval.Assertion.Path,
+			Op:           eval.Assertion.Op,
+			Expected:     eval.Assertion.Value,
+			Actual:       eval.Actual,
+			Message:      eval.Message,
 		})
 	}
 	return results, nil
 }
 
 func Evaluate(observation map[string]any, a types.Assertion) (Evaluation, error) {
-	actual, found, err := ResolvePath(observation, a.Path)
+	path := a.Path
+	// 如果 observation 是多请求合并结构（包含 requests 数组），
+	// 且 path 不以 requests[ 开头，则根据 RequestIndex 自动加前缀
+	if !strings.HasPrefix(path, "requests[") {
+		if _, hasRequests := observation["requests"]; hasRequests {
+			path = fmt.Sprintf("requests[%d].%s", a.RequestIndex, path)
+		}
+	}
+	actual, found, err := ResolvePath(observation, path)
 	if err != nil {
 		return Evaluation{}, err
 	}
@@ -51,7 +60,10 @@ func Evaluate(observation map[string]any, a types.Assertion) (Evaluation, error)
 		op = "exists"
 	}
 
-	passed, err := evaluateOp(op, actual, found, a.Value)
+	// 解析 Value 中的 {{path}} 模板引用
+	resolvedValue := resolveTemplateValue(observation, a.Value)
+
+	passed, err := evaluateOp(op, actual, found, resolvedValue)
 	if err != nil {
 		return Evaluation{}, fmt.Errorf("assertion %q: %w", a.ID, err)
 	}
@@ -180,7 +192,7 @@ func evaluateOp(op string, actual any, found bool, expected any) (bool, error) {
 		}
 		expectedNum, ok := asFloat(expected)
 		if !ok {
-			return false, fmt.Errorf("%s expects numeric value", op)
+			return false, nil
 		}
 		switch op {
 		case "gt":
@@ -207,7 +219,7 @@ func evaluateOp(op string, actual any, found bool, expected any) (bool, error) {
 		min, ok1 := asFloat(bounds[0])
 		max, ok2 := asFloat(bounds[1])
 		if !ok1 || !ok2 {
-			return false, fmt.Errorf("between bounds must be numeric")
+			return false, nil
 		}
 		return actualNum >= min && actualNum <= max, nil
 	default:
@@ -268,4 +280,40 @@ func asFloat(v any) (float64, bool) {
 	default:
 		return 0, false
 	}
+}
+
+var templateValueRe = regexp.MustCompile(`\{\{(.+?)\}\}`)
+
+// resolveTemplateValue 解析 Value 中的 {{path}} 模板引用，用 observation 中对应路径的值替换。
+// 如果 Value 本身就是一个模板字符串（如 "{{requests[0].metrics.total_ms}}"），则直接返回解析后的值（保留其类型）。
+// 如果 Value 是包含模板的复合字符串，则进行字符串替换。
+// 如果 Value 不是字符串或不含模板，则原样返回。
+func resolveTemplateValue(observation map[string]any, value any) any {
+	s, ok := value.(string)
+	if !ok {
+		return value
+	}
+	matches := templateValueRe.FindAllStringSubmatch(s, -1)
+	if len(matches) == 0 {
+		return value
+	}
+	// 如果整个 Value 就是单个 {{path}}，直接返回值本身（保留类型）
+	match := templateValueRe.FindStringSubmatch(s)
+	if match != nil && match[0] == s {
+		resolved, found, _ := ResolvePath(observation, match[1])
+		if found {
+			return resolved
+		}
+		return value
+	}
+	// 复合模板字符串，逐个替换
+	result := templateValueRe.ReplaceAllStringFunc(s, func(match string) string {
+		key := match[2 : len(match)-2]
+		resolved, found, _ := ResolvePath(observation, key)
+		if found {
+			return fmt.Sprintf("%v", resolved)
+		}
+		return match
+	})
+	return result
 }

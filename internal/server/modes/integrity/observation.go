@@ -128,3 +128,27 @@ func tokensPerSecond(metrics *client.ResponseMetrics) float64 {
 	}
 	return float64(metrics.CompletionTokens) / metrics.TotalTime.Seconds()
 }
+
+// buildMergedObservation 将多次请求的独立 observation 合并为 requests[] 数组结构。
+// task/case 取自首次请求的观测；每个请求的 request/response/metrics/network 放在 requests[N] 下。
+func buildMergedObservation(input types.Input, c types.IntegrityCase, allObs []map[string]any) map[string]any {
+	if len(allObs) == 0 {
+		return map[string]any{}
+	}
+	merged := map[string]any{
+		"task": allObs[0]["task"],
+		"case": allObs[0]["case"],
+	}
+	requests := make([]any, len(allObs))
+	for i, obs := range allObs {
+		requests[i] = map[string]any{
+			"index":    i,
+			"request":  obs["request"],
+			"response": obs["response"],
+			"metrics":  obs["metrics"],
+			"network":  obs["network"],
+		}
+	}
+	merged["requests"] = requests
+	return merged
+}

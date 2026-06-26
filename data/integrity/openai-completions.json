@@ -10,17 +10,6 @@
       "category": "protocol",
       "capability": "basic_request",
       "required": true,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Reply with exactly one short greeting."
-            }
-          ]
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -28,14 +17,16 @@
           "level": "error",
           "path": "response.body",
           "op": "exists",
-          "message": "响应体必须是可解析的 JSON 对象。"
+          "message": "响应体必须是可解析的 JSON 对象。",
+          "request_index": 0
         },
         {
           "id": "response.id.exists",
           "level": "error",
           "path": "response.body.id",
           "op": "exists",
-          "message": "Chat Completions 响应必须包含 id。"
+          "message": "Chat Completions 响应必须包含 id。",
+          "request_index": 0
         },
         {
           "id": "response.object.chat_completion",
@@ -43,42 +34,48 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "非流式响应 object 必须是 chat.completion。"
+          "message": "非流式响应 object 必须是 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.created.exists",
           "level": "warn",
           "path": "response.body.created",
           "op": "exists",
-          "message": "响应建议包含 created Unix 时间戳。"
+          "message": "响应建议包含 created Unix 时间戳。",
+          "request_index": 0
         },
         {
           "id": "response.model.exists",
           "level": "error",
           "path": "response.body.model",
           "op": "exists",
-          "message": "响应必须包含实际使用的 model。"
+          "message": "响应必须包含实际使用的 model。",
+          "request_index": 0
         },
         {
           "id": "response.choices.exists",
           "level": "error",
           "path": "response.body.choices",
           "op": "exists",
-          "message": "响应必须包含 choices 数组。"
+          "message": "响应必须包含 choices 数组。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.index.exists",
           "level": "warn",
           "path": "response.body.choices[0].index",
           "op": "exists",
-          "message": "第一个 choice 建议包含 index。"
+          "message": "第一个 choice 建议包含 index。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.exists",
           "level": "error",
           "path": "response.body.choices[0].message",
           "op": "exists",
-          "message": "第一个 choice 必须包含 message。"
+          "message": "第一个 choice 必须包含 message。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.role.assistant",
@@ -86,14 +83,16 @@
           "path": "response.body.choices[0].message.role",
           "op": "eq",
           "value": "assistant",
-          "message": "模型回复 message.role 必须是 assistant。"
+          "message": "模型回复 message.role 必须是 assistant。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.content.exists",
           "level": "error",
           "path": "response.body.choices[0].message.content",
           "op": "exists",
-          "message": "基础文本回复必须包含 message.content。"
+          "message": "基础文本回复必须包含 message.content。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.finish_reason.valid",
@@ -107,14 +106,16 @@
             "content_filter",
             "function_call"
           ],
-          "message": "finish_reason 必须是 Chat Completions 文档定义的取值之一。"
+          "message": "finish_reason 必须是 Chat Completions 文档定义的取值之一。",
+          "request_index": 0
         },
         {
           "id": "response.usage.exists",
           "level": "warn",
           "path": "response.body.usage",
           "op": "exists",
-          "message": "响应建议包含 usage 统计。"
+          "message": "响应建议包含 usage 统计。",
+          "request_index": 0
         },
         {
           "id": "response.usage.prompt_tokens.gte_zero",
@@ -122,7 +123,8 @@
           "path": "response.body.usage.prompt_tokens",
           "op": "gte",
           "value": 0,
-          "message": "usage.prompt_tokens 应为非负数。"
+          "message": "usage.prompt_tokens 应为非负数。",
+          "request_index": 0
         },
         {
           "id": "response.usage.completion_tokens.gte_zero",
@@ -130,7 +132,8 @@
           "path": "response.body.usage.completion_tokens",
           "op": "gte",
           "value": 0,
-          "message": "usage.completion_tokens 应为非负数。"
+          "message": "usage.completion_tokens 应为非负数。",
+          "request_index": 0
         },
         {
           "id": "response.usage.total_tokens.gte_zero",
@@ -138,7 +141,8 @@
           "path": "response.body.usage.total_tokens",
           "op": "gte",
           "value": 0,
-          "message": "usage.total_tokens 应为非负数。"
+          "message": "usage.total_tokens 应为非负数。",
+          "request_index": 0
         },
         {
           "id": "metrics.total_ms.gte_zero",
@@ -146,7 +150,8 @@
           "path": "metrics.total_ms",
           "op": "gte",
           "value": 0,
-          "message": "请求总耗时必须可观测。"
+          "message": "请求总耗时必须可观测。",
+          "request_index": 0
         },
         {
           "id": "metrics.input_tokens.gte_zero",
@@ -154,7 +159,8 @@
           "path": "metrics.input_tokens",
           "op": "gte",
           "value": 0,
-          "message": "AIT 应能从 usage 中提取输入 token 数。"
+          "message": "AIT 应能从 usage 中提取输入 token 数。",
+          "request_index": 0
         },
         {
           "id": "metrics.output_tokens.gte_zero",
@@ -162,7 +168,21 @@
           "path": "metrics.output_tokens",
           "op": "gte",
           "value": 0,
-          "message": "AIT 应能从 usage 中提取输出 token 数。"
+          "message": "AIT 应能从 usage 中提取输出 token 数。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Reply with exactly one short greeting."
+              }
+            ]
+          }
         }
       ]
     },
@@ -173,21 +193,6 @@
       "category": "protocol",
       "capability": "streaming",
       "required": true,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Count from 1 to 3, separated by commas."
-            }
-          ],
-          "stream": true,
-          "stream_options": {
-            "include_usage": true
-          }
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -195,14 +200,16 @@
           "level": "error",
           "path": "response.body[0]",
           "op": "exists",
-          "message": "流式响应必须至少包含一个可解析的 SSE data chunk。"
+          "message": "流式响应必须至少包含一个可解析的 SSE data chunk。",
+          "request_index": 0
         },
         {
           "id": "response.first_chunk.id.exists",
           "level": "error",
           "path": "response.body[0].id",
           "op": "exists",
-          "message": "流式 chunk 必须包含 id。"
+          "message": "流式 chunk 必须包含 id。",
+          "request_index": 0
         },
         {
           "id": "response.first_chunk.object.chat_completion_chunk",
@@ -210,21 +217,24 @@
           "path": "response.body[0].object",
           "op": "eq",
           "value": "chat.completion.chunk",
-          "message": "流式 chunk object 必须是 chat.completion.chunk。"
+          "message": "流式 chunk object 必须是 chat.completion.chunk。",
+          "request_index": 0
         },
         {
           "id": "response.first_chunk.choices.exists",
           "level": "error",
           "path": "response.body[0].choices",
           "op": "exists",
-          "message": "流式 chunk 必须包含 choices。"
+          "message": "流式 chunk 必须包含 choices。",
+          "request_index": 0
         },
         {
           "id": "response.first_chunk.delta.exists",
           "level": "error",
           "path": "response.body[0].choices[0].delta",
           "op": "exists",
-          "message": "流式 chunk 必须包含 choices[0].delta。"
+          "message": "流式 chunk 必须包含 choices[0].delta。",
+          "request_index": 0
         },
         {
           "id": "metrics.ttft_ms.gte_zero",
@@ -232,7 +242,8 @@
           "path": "metrics.ttft_ms",
           "op": "gte",
           "value": 0,
-          "message": "流式请求应可观测 TTFT。"
+          "message": "流式请求应可观测 TTFT。",
+          "request_index": 0
         },
         {
           "id": "metrics.total_ms.gte_zero",
@@ -240,7 +251,25 @@
           "path": "metrics.total_ms",
           "op": "gte",
           "value": 0,
-          "message": "流式请求总耗时必须可观测。"
+          "message": "流式请求总耗时必须可观测。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Count from 1 to 3, separated by commas."
+              }
+            ],
+            "stream": true,
+            "stream_options": {
+              "include_usage": true
+            }
+          }
         }
       ]
     },
@@ -251,28 +280,6 @@
       "category": "protocol",
       "capability": "request_parameters",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "system",
-              "content": "You are a concise JSON-aware assistant."
-            },
-            {
-              "role": "user",
-              "content": "Reply with exactly one short greeting."
-            }
-          ],
-          "temperature": 0,
-          "top_p": 1,
-          "presence_penalty": 0,
-          "frequency_penalty": 0,
-          "max_tokens": 32,
-          "seed": 42,
-          "user": "ait-integrity"
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -281,14 +288,16 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "带采样参数的非流式响应 object 必须是 chat.completion。"
+          "message": "带采样参数的非流式响应 object 必须是 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.content.exists",
           "level": "error",
           "path": "response.body.choices[0].message.content",
           "op": "exists",
-          "message": "带采样参数的基础文本回复必须包含 message.content。"
+          "message": "带采样参数的基础文本回复必须包含 message.content。",
+          "request_index": 0
         },
         {
           "id": "response.finish_reason.valid",
@@ -302,7 +311,8 @@
             "content_filter",
             "function_call"
           ],
-          "message": "带采样参数的响应应返回合法 finish_reason。"
+          "message": "带采样参数的响应应返回合法 finish_reason。",
+          "request_index": 0
         },
         {
           "id": "response.usage.total_tokens.gte_zero",
@@ -310,7 +320,32 @@
           "path": "response.body.usage.total_tokens",
           "op": "gte",
           "value": 0,
-          "message": "带采样参数的响应应返回 usage.total_tokens。"
+          "message": "带采样参数的响应应返回 usage.total_tokens。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "system",
+                "content": "You are a concise JSON-aware assistant."
+              },
+              {
+                "role": "user",
+                "content": "Reply with exactly one short greeting."
+              }
+            ],
+            "temperature": 0,
+            "top_p": 1,
+            "presence_penalty": 0,
+            "frequency_penalty": 0,
+            "max_tokens": 32,
+            "seed": 42,
+            "user": "ait-integrity"
+          }
         }
       ]
     },
@@ -321,22 +356,6 @@
       "category": "protocol",
       "capability": "response_format",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Return a valid JSON object with keys ok and message. Do not include markdown."
-            }
-          ],
-          "response_format": {
-            "type": "json_object"
-          },
-          "temperature": 0,
-          "max_tokens": 80
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -345,7 +364,8 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "JSON 格式响应 object 必须是 chat.completion。"
+          "message": "JSON 格式响应 object 必须是 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.content.looks_like_json_object",
@@ -353,7 +373,8 @@
           "path": "response.body.choices[0].message.content",
           "op": "matches",
           "value": "^\\s*\\{[\\s\\S]*\\}\\s*$",
-          "message": "启用 json_object 后，assistant 文本内容应是 JSON 对象字符串。"
+          "message": "启用 json_object 后，assistant 文本内容应是 JSON 对象字符串。",
+          "request_index": 0
         },
         {
           "id": "response.finish_reason.valid",
@@ -365,7 +386,26 @@
             "length",
             "content_filter"
           ],
-          "message": "JSON 格式响应的 finish_reason 应为常见结束类型。"
+          "message": "JSON 格式响应的 finish_reason 应为常见结束类型。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Return a valid JSON object with keys ok and message. Do not include markdown."
+              }
+            ],
+            "response_format": {
+              "type": "json_object"
+            },
+            "temperature": 0,
+            "max_tokens": 80
+          }
         }
       ]
     },
@@ -376,22 +416,6 @@
       "category": "protocol",
       "capability": "multi_choice_logprobs",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Answer with one lowercase English word."
-            }
-          ],
-          "n": 2,
-          "logprobs": true,
-          "top_logprobs": 2,
-          "max_tokens": 8,
-          "temperature": 0.7
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -399,21 +423,24 @@
           "level": "error",
           "path": "response.body.choices[0]",
           "op": "exists",
-          "message": "n=2 响应至少应包含第一个 choice。"
+          "message": "n=2 响应至少应包含第一个 choice。",
+          "request_index": 0
         },
         {
           "id": "response.second_choice.exists",
           "level": "warn",
           "path": "response.body.choices[1]",
           "op": "exists",
-          "message": "支持 n=2 的服务应返回第二个 choice。"
+          "message": "支持 n=2 的服务应返回第二个 choice。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.logprobs.exists",
           "level": "warn",
           "path": "response.body.choices[0].logprobs",
           "op": "exists",
-          "message": "支持 logprobs 的服务应返回 choices[0].logprobs。"
+          "message": "支持 logprobs 的服务应返回 choices[0].logprobs。",
+          "request_index": 0
         },
         {
           "id": "response.usage.completion_tokens.gte_zero",
@@ -421,7 +448,26 @@
           "path": "response.body.usage.completion_tokens",
           "op": "gte",
           "value": 0,
-          "message": "多候选响应应返回 completion token 统计。"
+          "message": "多候选响应应返回 completion token 统计。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Answer with one lowercase English word."
+              }
+            ],
+            "n": 2,
+            "logprobs": true,
+            "top_logprobs": 2,
+            "max_tokens": 8,
+            "temperature": 0.7
+          }
         }
       ]
     },
@@ -432,22 +478,6 @@
       "category": "protocol",
       "capability": "stop_sequence",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Write: alpha STOP beta"
-            }
-          ],
-          "stop": [
-            "STOP"
-          ],
-          "max_tokens": 32,
-          "temperature": 0
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -460,14 +490,34 @@
             "length",
             "content_filter"
           ],
-          "message": "停止序列响应应返回合法 finish_reason。"
+          "message": "停止序列响应应返回合法 finish_reason。",
+          "request_index": 0
         },
         {
           "id": "response.content.exists",
           "level": "error",
           "path": "response.body.choices[0].message.content",
           "op": "exists",
-          "message": "停止序列响应仍应包含文本内容。"
+          "message": "停止序列响应仍应包含文本内容。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Write: alpha STOP beta"
+              }
+            ],
+            "stop": [
+              "STOP"
+            ],
+            "max_tokens": 32,
+            "temperature": 0
+          }
         }
       ]
     },
@@ -478,34 +528,6 @@
       "category": "protocol",
       "capability": "modern_request_parameters",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "developer",
-              "content": "Answer briefly and only in plain text."
-            },
-            {
-              "role": "user",
-              "content": "Say ready in one short sentence."
-            }
-          ],
-          "max_completion_tokens": 32,
-          "metadata": {
-            "suite": "ait-integrity",
-            "case": "chat-modern-controls"
-          },
-          "store": false,
-          "modalities": [
-            "text"
-          ],
-          "prompt_cache_key": "ait-integrity-chat-modern",
-          "safety_identifier": "ait-integrity-user",
-          "service_tier": "default",
-          "parallel_tool_calls": false
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -514,7 +536,8 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "现代参数用例仍应返回 chat.completion。"
+          "message": "现代参数用例仍应返回 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.role.assistant",
@@ -522,14 +545,46 @@
           "path": "response.body.choices[0].message.role",
           "op": "eq",
           "value": "assistant",
-          "message": "模型回复 message.role 必须是 assistant。"
+          "message": "模型回复 message.role 必须是 assistant。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.content.exists",
           "level": "error",
           "path": "response.body.choices[0].message.content",
           "op": "exists",
-          "message": "现代参数用例应返回 assistant 文本内容。"
+          "message": "现代参数用例应返回 assistant 文本内容。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "developer",
+                "content": "Answer briefly and only in plain text."
+              },
+              {
+                "role": "user",
+                "content": "Say ready in one short sentence."
+              }
+            ],
+            "max_completion_tokens": 32,
+            "metadata": {
+              "suite": "ait-integrity",
+              "case": "chat-modern-controls"
+            },
+            "store": false,
+            "modalities": [
+              "text"
+            ],
+            "prompt_cache_key": "ait-integrity-chat-modern",
+            "safety_identifier": "ait-integrity-user",
+            "service_tier": "default",
+            "parallel_tool_calls": false
+          }
         }
       ]
     },
@@ -540,43 +595,6 @@
       "category": "protocol",
       "capability": "tools_request_shape",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Answer in plain text: what is 2 plus 2?"
-            }
-          ],
-          "tools": [
-            {
-              "type": "function",
-              "function": {
-                "name": "lookup_number_fact",
-                "description": "Look up a short fact about a number.",
-                "parameters": {
-                  "type": "object",
-                  "properties": {
-                    "number": {
-                      "type": "integer"
-                    }
-                  },
-                  "required": [
-                    "number"
-                  ],
-                  "additionalProperties": false
-                },
-                "strict": true
-              }
-            }
-          ],
-          "tool_choice": "none",
-          "parallel_tool_calls": false,
-          "max_completion_tokens": 32,
-          "temperature": 0
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -585,14 +603,16 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "工具定义但禁止调用时仍应返回 chat.completion。"
+          "message": "工具定义但禁止调用时仍应返回 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.content.exists",
           "level": "error",
           "path": "response.body.choices[0].message.content",
           "op": "exists",
-          "message": "tool_choice=none 时应返回普通文本 message.content。"
+          "message": "tool_choice=none 时应返回普通文本 message.content。",
+          "request_index": 0
         },
         {
           "id": "response.finish_reason.valid",
@@ -606,7 +626,47 @@
             "content_filter",
             "function_call"
           ],
-          "message": "工具定义但禁止调用时应返回合法 finish_reason。"
+          "message": "工具定义但禁止调用时应返回合法 finish_reason。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Answer in plain text: what is 2 plus 2?"
+              }
+            ],
+            "tools": [
+              {
+                "type": "function",
+                "function": {
+                  "name": "lookup_number_fact",
+                  "description": "Look up a short fact about a number.",
+                  "parameters": {
+                    "type": "object",
+                    "properties": {
+                      "number": {
+                        "type": "integer"
+                      }
+                    },
+                    "required": [
+                      "number"
+                    ],
+                    "additionalProperties": false
+                  },
+                  "strict": true
+                }
+              }
+            ],
+            "tool_choice": "none",
+            "parallel_tool_calls": false,
+            "max_completion_tokens": 32,
+            "temperature": 0
+          }
         }
       ]
     },
@@ -617,24 +677,6 @@
       "category": "protocol",
       "capability": "cache_usage",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "system",
-              "content": "AIT cache probe stable prefix. Repeatable context for prompt caching validation. Keep this prefix identical across runs."
-            },
-            {
-              "role": "user",
-              "content": "Reply with exactly one short greeting."
-            }
-          ],
-          "prompt_cache_key": "ait-integrity-chat-cache",
-          "max_tokens": 32,
-          "temperature": 0
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -643,7 +685,8 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "缓存用例应返回 chat.completion。"
+          "message": "缓存用例应返回 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.usage.prompt_tokens_details.cached_tokens.gte_zero",
@@ -651,7 +694,28 @@
           "path": "response.body.usage.prompt_tokens_details.cached_tokens",
           "op": "gte",
           "value": 0,
-          "message": "支持 prompt cache 的服务应在 usage.prompt_tokens_details.cached_tokens 暴露缓存 token 数。"
+          "message": "支持 prompt cache 的服务应在 usage.prompt_tokens_details.cached_tokens 暴露缓存 token 数。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "system",
+                "content": "AIT cache probe stable prefix. Repeatable context for prompt caching validation. Keep this prefix identical across runs."
+              },
+              {
+                "role": "user",
+                "content": "Reply with exactly one short greeting."
+              }
+            ],
+            "prompt_cache_key": "ait-integrity-chat-cache",
+            "max_tokens": 32,
+            "temperature": 0
+          }
         }
       ]
     },
@@ -662,19 +726,6 @@
       "category": "protocol",
       "capability": "thinking_response",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Solve 17 plus 25, then answer with only the number."
-            }
-          ],
-          "reasoning_effort": "low",
-          "max_completion_tokens": 64
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -683,7 +734,8 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "思考用例应返回 chat.completion。"
+          "message": "思考用例应返回 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.reasoning_tokens.gte_zero",
@@ -691,7 +743,23 @@
           "path": "response.body.usage.completion_tokens_details.reasoning_tokens",
           "op": "gte",
           "value": 0,
-          "message": "支持 reasoning 的服务应在 completion_tokens_details.reasoning_tokens 暴露思考 token 数。"
+          "message": "支持 reasoning 的服务应在 completion_tokens_details.reasoning_tokens 暴露思考 token 数。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Solve 17 plus 25, then answer with only the number."
+              }
+            ],
+            "reasoning_effort": "low",
+            "max_completion_tokens": 64
+          }
         }
       ]
     },
@@ -702,19 +770,6 @@
       "category": "protocol",
       "capability": "non_thinking_response",
       "required": false,
-      "request": {
-        "body": {
-          "model": "{{model}}",
-          "messages": [
-            {
-              "role": "user",
-              "content": "Answer in one short sentence: ready."
-            }
-          ],
-          "max_tokens": 32,
-          "temperature": 0
-        }
-      },
       "timeout_ms": 30000,
       "assertions": [
         {
@@ -723,14 +778,31 @@
           "path": "response.body.object",
           "op": "eq",
           "value": "chat.completion",
-          "message": "非思考文本用例应返回 chat.completion。"
+          "message": "非思考文本用例应返回 chat.completion。",
+          "request_index": 0
         },
         {
           "id": "response.first_choice.message.content.exists",
           "level": "error",
           "path": "response.body.choices[0].message.content",
           "op": "exists",
-          "message": "非思考文本用例应返回 assistant 文本内容。"
+          "message": "非思考文本用例应返回 assistant 文本内容。",
+          "request_index": 0
+        }
+      ],
+      "requests": [
+        {
+          "body": {
+            "model": "{{model}}",
+            "messages": [
+              {
+                "role": "user",
+                "content": "Answer in one short sentence: ready."
+              }
+            ],
+            "max_tokens": 32,
+            "temperature": 0
+          }
         }
       ]
     }

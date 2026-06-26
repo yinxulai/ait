@@ -1,7 +1,8 @@
 package integrity
 
 import (
-	"strings"
+	"fmt"
+	"regexp"
 	"sync"
 	"time"
 
@@ -113,10 +114,7 @@ func (e *Executor) runCase(c types.IntegrityCase) (types.IntegrityCaseResult, er
 	caseInput.Turbo = false
 	caseInput.Concurrency = 1
 	caseInput.Count = 1
-	if len(c.Request.Body) > 0 {
-		caseInput.PromptMode = "raw"
-		caseInput.PromptText = strings.ReplaceAll(string(c.Request.Body), "{{model}}", caseInput.Model)
-	}
+	caseInput.PromptMode = "raw"
 	if c.TimeoutMS > 0 {
 		caseInput.Timeout = time.Duration(c.TimeoutMS) * time.Millisecond
 	} else if caseInput.Integrity.CaseTimeoutMS > 0 {
@@ -128,26 +126,73 @@ func (e *Executor) runCase(c types.IntegrityCase) (types.IntegrityCaseResult, er
 		return failedCase(c, started, err.Error()), err
 	}
 
-	r, err := e.RunnerFactory(caseInput, c)
-	if err != nil {
-		return failedCase(c, started, err.Error()), err
-	}
-	e.mu.Lock()
-	if e.stopped {
+	extracted := map[string]any{}
+	var allRequestObs []map[string]any
+
+	for i, req := range c.Requests {
+		body := interpolateRequest(string(req.Body), caseInput.Model, extracted)
+		reqInput := caseInput
+		reqInput.PromptText = body
+
+		r, err := e.RunnerFactory(reqInput, c)
+		if err != nil {
+			return failedCase(c, started, err.Error()), err
+		}
+
+		e.mu.Lock()
+		if e.stopped {
+			e.mu.Unlock()
+			r.Stop()
+			return failedCase(c, started, "integrity run stopped"), nil
+		}
+		e.currentRunner = r
 		e.mu.Unlock()
-		r.Stop()
-		return failedCase(c, started, "integrity run stopped"), nil
-	}
-	e.currentRunner = r
-	e.mu.Unlock()
-	defer func() {
+
+		_, runErr := r.RunWithCallback(func(metrics *client.ResponseMetrics, idx int, cbErr error) {
+			obs := BuildObservation(reqInput, c, metrics, idx, cbErr)
+			allRequestObs = append(allRequestObs, obs)
+			if e.OnRequestDone != nil {
+				e.OnRequestDone(c, metrics, idx, cbErr, nil)
+			}
+		})
+
 		e.mu.Lock()
 		if e.currentRunner == r {
 			e.currentRunner = nil
 		}
 		e.mu.Unlock()
-	}()
 
+		if runErr != nil {
+			return failedCase(c, started, runErr.Error()), runErr
+		}
+
+		// 提取变量供后续请求使用
+		if len(allRequestObs) > 0 {
+			lastObs := allRequestObs[len(allRequestObs)-1]
+			for varName, jsonPath := range req.Extract {
+				val, found, _ := assertion.ResolvePath(lastObs, jsonPath)
+				if found {
+					extracted[varName] = val
+				}
+			}
+		}
+
+		_ = i // request index (used in observation)
+	}
+
+	// 构建合并 observation 并评估所有断言
+	mergedObs := buildMergedObservation(caseInput, c, allRequestObs)
+	caseAssertions, evalErr := assertion.EvaluateAll(mergedObs, c.Assertions)
+	if evalErr != nil {
+		caseAssertions = append(caseAssertions, types.AssertionResult{
+			AssertionID: "assertion.evaluate",
+			Level:       "error",
+			Passed:      false,
+			Message:     evalErr.Error(),
+		})
+	}
+
+	finished := time.Now()
 	caseResult := types.IntegrityCaseResult{
 		CaseID:     c.ID,
 		Name:       c.Name,
@@ -156,26 +201,6 @@ func (e *Executor) runCase(c types.IntegrityCase) (types.IntegrityCaseResult, er
 		Status:     "passed",
 		StartedAt:  started,
 	}
-	var caseAssertions []types.AssertionResult
-
-	_, runErr := r.RunWithCallback(func(metrics *client.ResponseMetrics, idx int, cbErr error) {
-		obs := BuildObservation(caseInput, c, metrics, idx, cbErr)
-		assertions, evalErr := assertion.EvaluateAll(obs, c.Assertions)
-		if evalErr != nil {
-			assertions = append(assertions, types.AssertionResult{
-				AssertionID: "assertion.evaluate",
-				Level:       "error",
-				Passed:      false,
-				Message:     evalErr.Error(),
-			})
-		}
-		caseAssertions = append(caseAssertions, assertions...)
-		if e.OnRequestDone != nil {
-			e.OnRequestDone(c, metrics, idx, cbErr, assertions)
-		}
-	})
-
-	finished := time.Now()
 	caseResult.FinishedAt = &finished
 	caseResult.Duration = finished.Sub(started)
 	caseResult.Assertions = caseAssertions
@@ -191,20 +216,30 @@ func (e *Executor) runCase(c types.IntegrityCase) (types.IntegrityCaseResult, er
 			caseResult.FailedAssertions++
 		}
 	}
-	if runErr != nil {
-		caseResult.Status = "failed"
-		caseResult.ErrorMessage = runErr.Error()
-	} else if caseResult.FailedAssertions > 0 {
+	if caseResult.FailedAssertions > 0 {
 		caseResult.Status = "failed"
 	} else if caseResult.WarnedAssertions > 0 {
 		caseResult.Status = "warned"
-	} else {
-		caseResult.Status = "passed"
 	}
 	if e.OnCaseDone != nil {
 		e.OnCaseDone(caseResult)
 	}
-	return caseResult, runErr
+	return caseResult, nil
+}
+
+var templateRe = regexp.MustCompile(`\{\{(\w+(?:\.\w+)*)\}\}`)
+
+func interpolateRequest(body, model string, vars map[string]any) string {
+	return templateRe.ReplaceAllStringFunc(body, func(match string) string {
+		key := match[2 : len(match)-2] // strip {{ and }}
+		if key == "model" {
+			return model
+		}
+		if val, ok := vars[key]; ok {
+			return fmt.Sprintf("%v", val)
+		}
+		return match // unknown template, keep as-is
+	})
 }
 
 func failedCase(c types.IntegrityCase, started time.Time, message string) types.IntegrityCaseResult {

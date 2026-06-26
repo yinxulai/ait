@@ -358,32 +358,35 @@ type IntegrityConfig struct {
 }
 
 type Assertion struct {
-	ID      string `json:"id,omitempty"`
-	CaseID  string `json:"case_id,omitempty"`
-	Name    string `json:"name,omitempty"`
-	Phase   string `json:"phase,omitempty"`
-	Level   string `json:"level,omitempty"`
-	Path    string `json:"path"`
-	Op      string `json:"op"`
-	Value   any    `json:"value,omitempty"`
-	Message string `json:"message,omitempty"`
-	Source  string `json:"source,omitempty"`
+	ID           string `json:"id,omitempty"`
+	CaseID       string `json:"case_id,omitempty"`
+	Name         string `json:"name,omitempty"`
+	Phase        string `json:"phase,omitempty"`
+	Level        string `json:"level,omitempty"`
+	RequestIndex int    `json:"request_index,omitempty"`
+	Path         string `json:"path"`
+	Op           string `json:"op"`
+	Value        any    `json:"value,omitempty"`
+	Message      string `json:"message,omitempty"`
+	Source       string `json:"source,omitempty"`
 }
 
 type AssertionResult struct {
-	AssertionID string `json:"assertion_id,omitempty"`
-	Level       string `json:"level"`
-	Passed      bool   `json:"passed"`
-	Path        string `json:"path,omitempty"`
-	Op          string `json:"op,omitempty"`
-	Expected    any    `json:"expected,omitempty"`
-	Actual      any    `json:"actual,omitempty"`
-	Message     string `json:"message,omitempty"`
+	AssertionID  string `json:"assertion_id,omitempty"`
+	Level        string `json:"level"`
+	Passed       bool   `json:"passed"`
+	RequestIndex int    `json:"request_index,omitempty"`
+	Path         string `json:"path,omitempty"`
+	Op           string `json:"op,omitempty"`
+	Expected     any    `json:"expected,omitempty"`
+	Actual       any    `json:"actual,omitempty"`
+	Message      string `json:"message,omitempty"`
 }
 
 type IntegrityRequest struct {
 	Body    json.RawMessage   `json:"body,omitempty"`
 	Headers map[string]string `json:"headers,omitempty"`
+	Extract map[string]string `json:"extract,omitempty"` // 变量提取: varName → jsonPath
 }
 
 type IntegritySuite struct {
@@ -397,17 +400,17 @@ type IntegritySuite struct {
 }
 
 type IntegrityCase struct {
-	ID          string           `json:"id"`
-	Name        string           `json:"name,omitempty"`
-	Description string           `json:"description,omitempty"`
-	Category    string           `json:"category,omitempty"`
-	Capability  string           `json:"capability,omitempty"`
-	Required    bool             `json:"required,omitempty"`
-	Request     IntegrityRequest `json:"request,omitempty"`
-	Assertions  []Assertion      `json:"assertions,omitempty"`
-	TimeoutMS   int              `json:"timeout_ms,omitempty"`
-	Retry       int              `json:"retry,omitempty"`
-	SkipWhen    []Assertion      `json:"skip_when,omitempty"`
+	ID          string              `json:"id"`
+	Name        string              `json:"name,omitempty"`
+	Description string              `json:"description,omitempty"`
+	Category    string              `json:"category,omitempty"`
+	Capability  string              `json:"capability,omitempty"`
+	Required    bool                `json:"required,omitempty"`
+	Requests    []IntegrityRequest  `json:"requests,omitempty"`
+	Assertions  []Assertion         `json:"assertions,omitempty"`
+	TimeoutMS   int                 `json:"timeout_ms,omitempty"`
+	Retry       int                 `json:"retry,omitempty"`
+	SkipWhen    []Assertion         `json:"skip_when,omitempty"`
 }
 
 type IntegrityCaseResult struct {
