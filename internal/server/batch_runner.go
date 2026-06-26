@@ -44,7 +44,7 @@ func (r *batchRunner) Run() (*types.ReportData, error) {
 	r.results = make([]*client.ResponseMetrics, r.input.Count)
 	jobs := make([]RequestJob, 0, r.input.Count)
 	for i := 0; i < r.input.Count; i++ {
-		jobs = append(jobs, RequestJob{RunID: r.runID, Index: i, Input: r.input, Level: r.level})
+		jobs = append(jobs, RequestJob{RunID: r.runID, Index: r.level*10000 + i, Input: r.input, Level: r.level})
 	}
 	start := time.Now()
 	launched := RunRequestBatch(r.ctx, jobs, r.input.Concurrency, NewRequestExecutor(r.client), RequestQueueHooks{
@@ -52,8 +52,9 @@ func (r *batchRunner) Run() (*types.ReportData, error) {
 		OnStarted: r.aggregator.MarkStarted,
 		OnSkipped: r.aggregator.MarkSkipped,
 		OnDone: func(result RequestResult) {
-			if result.Metrics != nil && result.Job.Index >= 0 && result.Job.Index < len(r.results) {
-				r.results[result.Job.Index] = result.Metrics
+			localIdx := result.Job.Index - r.level*10000
+			if result.Metrics != nil && localIdx >= 0 && localIdx < len(r.results) {
+				r.results[localIdx] = result.Metrics
 			}
 			rm := r.aggregator.Complete(result)
 			if rm.Success {

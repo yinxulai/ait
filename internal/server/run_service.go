@@ -474,7 +474,6 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 	}
 
 	stopTick := s.startProgressTicker(ar, runID)
-	defer close(stopTick)
 
 	results := make([]*client.ResponseMetrics, input.Count)
 	start := time.Now()
@@ -493,6 +492,7 @@ func (s *serverImpl) runStandard(ar *activeRun, runID RunID, taskDef types.TaskD
 		},
 	})
 
+	close(stopTick)
 	reportData := standard.CalculateResult(input, results, time.Since(start), launched)
 	s.finalizeRun(ar, runID, taskDef, runStore, reportData, nil)
 }
@@ -610,13 +610,21 @@ func (s *serverImpl) runIntegrity(ar *activeRun, runID RunID, taskDef types.Task
 			if existing, ok := ar.state.ModeState[ModeStateKeyCases].([]types.IntegrityCaseResult); ok {
 				ar.state.ModeState[ModeStateKeyCases] = append(existing, result)
 			}
+			if existing, ok := ar.state.ModeState[ModeStateKeyAssertionResults].([]types.AssertionResult); ok {
+				ar.state.ModeState[ModeStateKeyAssertionResults] = append(existing, result.Assertions...)
+			}
 		}
 		snap := ar.snapshotState()
 		ar.mu.Unlock()
 		s.bus.publishRunEvent(Event{RunID: runID, Kind: EventIntegrityCaseDone, Payload: snap})
+		if len(result.Assertions) > 0 {
+			s.bus.publishRunEvent(Event{RunID: runID, Kind: EventAssertionResult, Payload: result.Assertions})
+		}
 	}
 
+	stopTick := s.startProgressTicker(ar, runID)
 	result, err := executor.Run()
+	close(stopTick)
 	if result != nil {
 		result.Protocol = input.NormalizedProtocol()
 		result.Model = input.Model
@@ -672,7 +680,9 @@ func (s *serverImpl) runTurbo(ar *activeRun, runID RunID, taskDef types.TaskDefi
 	}
 	ar.mu.Unlock()
 
+	stopTick := s.startProgressTicker(ar, runID)
 	turboResult, err := engine.Run(input)
+	close(stopTick)
 	if err != nil {
 		s.finalizeRun(ar, runID, taskDef, runStore, nil, err)
 		return
@@ -720,9 +730,8 @@ func (s *serverImpl) finalizeRun(ar *activeRun, runID RunID, taskDef types.TaskD
 	}
 	s.bus.publishRunEvent(Event{RunID: runID, Kind: kind, Payload: snap})
 	s.bus.closeRunEvents(runID)
-	if err := s.persistFinalRun(runStore, taskDef, snap); err == nil {
-		s.removeActiveRun(runID)
-	}
+	s.persistFinalRun(runStore, taskDef, snap)
+	s.removeActiveRun(runID)
 }
 
 func applyModeResult(state *RunState, result any) {
