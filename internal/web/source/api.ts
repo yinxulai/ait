@@ -186,6 +186,10 @@ export async function listTaskRuns(taskId: string, limit = 20) {
   return body.runs
 }
 
+export async function startTaskRun(taskId: string) {
+  return requestJSON<{ run_id: string }>(`/api/tasks/${encodeURIComponent(taskId)}/runs`, { method: 'POST' })
+}
+
 export async function getRunState(runId: string) {
   return requestJSON<RunState>(`/api/runs/${encodeURIComponent(runId)}`)
 }

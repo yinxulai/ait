@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, ClipboardList, Copy, Database, FileJson, Gauge, Hash, ListChecks, Network, Plus, Route, Search, Settings2, ShieldCheck, TrendingUp, XCircle, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, ClipboardList, Copy, Database, FileJson, Gauge, Hash, ListChecks, Network, Play, Plus, Route, Search, Settings2, ShieldCheck, TrendingUp, XCircle, Zap } from 'lucide-react'
 import { CategoryScale, Chart as ChartJS, Filler, Legend as ChartLegend, LinearScale, LineElement, PointElement, Tooltip as ChartTooltip } from 'chart.js'
 import { Line } from 'react-chartjs-2'
 
@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { createTask as createTaskAPI, getRunRequests, getRunState, listIntegritySuites, listProtocols, listTaskRuns, listTasks, type IntegritySuite, type PromptMode, type ProtocolMeta, type RequestDetail, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
+import { createTask as createTaskAPI, getRunRequests, getRunState, listIntegritySuites, listProtocols, listTaskRuns, listTasks, startTaskRun as startTaskRunAPI, type IntegritySuite, type PromptMode, type ProtocolMeta, type RequestDetail, type RunState, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
 
 const modeLabel: Record<TaskMode, string> = {
   standard: '标准压测',
@@ -74,6 +74,7 @@ function App() {
   const [selectedTaskId, setSelectedTaskId] = useState('')
   const [selectedRunId, setSelectedRunId] = useState('')
   const [selectedRequestId, setSelectedRequestId] = useState('')
+  const [startingTaskId, setStartingTaskId] = useState('')
   const [loadingMessage, setLoadingMessage] = useState('加载任务中...')
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -167,6 +168,29 @@ function App() {
     setSelectedRequestId('')
   }
 
+  async function startTaskRun(task: Task) {
+    if (startingTaskId) return
+    setStartingTaskId(task.id)
+    try {
+      const { run_id } = await startTaskRunAPI(task.id)
+      const [state, runList] = await Promise.all([
+        getRunState(run_id).catch(() => undefined),
+        listTaskRuns(task.id).catch(() => []),
+      ])
+      const nextRuns = mergeStartedRun(runList, state, task)
+      setRunsByTask((current) => ({ ...current, [task.id]: nextRuns }))
+      setTaskList((current) => current.map((item) => item.id === task.id ? { ...item, latest_run: nextRuns[0] ?? item.latest_run } : item))
+      setSelectedTaskId(task.id)
+      setSelectedRunId(nextRuns.some((run) => run.run_id === run_id) ? run_id : nextRuns[0]?.run_id ?? '')
+      setSelectedRequestId('')
+      setErrorMessage('')
+    } catch (error) {
+      setErrorMessage(error instanceof Error ? error.message : '启动任务失败')
+    } finally {
+      setStartingTaskId('')
+    }
+  }
+
   return (
     <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,var(--muted),transparent_34rem)] bg-background text-foreground">
       <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-4 p-3 sm:p-5 lg:p-6">
@@ -239,7 +263,7 @@ function App() {
           </Card>
 
           <div className="flex min-w-0 flex-col gap-4 lg:gap-5">
-            <TaskOverview task={selectedTask} onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
+            <TaskOverview task={selectedTask} onCreate={createTask} onStartRun={startTaskRun} starting={startingTaskId === selectedTask.id} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
             <TaskRunHistory runs={taskRuns} selectedRun={selectedRun} onChooseRun={chooseRun} samplesByRun={requestsByRun} />
             <RunDetail run={selectedRun} requests={runRequests} selectedRequest={selectedRequest} onSelectRequest={setSelectedRequestId} />
           </div>
@@ -658,7 +682,7 @@ function TopStat({ icon, label, value }: { icon: React.ReactNode; label: string;
   )
 }
 
-function TaskOverview({ task, onCreate, protocolOptions, protocols }: { task: Task; onCreate: (draft: TaskDraft) => Promise<void> | void; protocolOptions: string[]; protocols: ProtocolMeta[] }) {
+function TaskOverview({ task, onCreate, onStartRun, starting, protocolOptions, protocols }: { task: Task; onCreate: (draft: TaskDraft) => Promise<void> | void; onStartRun: (task: Task) => Promise<void> | void; starting: boolean; protocolOptions: string[]; protocols: ProtocolMeta[] }) {
   const mode = taskMode(task)
   return (
     <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40">
@@ -673,6 +697,9 @@ function TaskOverview({ task, onCreate, protocolOptions, protocols }: { task: Ta
             <CardDescription className="mt-2 max-w-2xl leading-6">创建于 {formatDate(task.created_at)}，最近更新 {formatDate(task.updated_at)}</CardDescription>
           </div>
           <div className="flex flex-wrap items-center gap-2 lg:justify-end">
+            <Button size="sm" className="rounded-full" onClick={() => onStartRun(task)} disabled={starting}>
+              <Play className="size-3.5" />{starting ? '启动中...' : '开始运行'}
+            </Button>
             <CreateTaskSheet onCreate={onCreate} sourceTask={task} variant="copy" protocolOptions={protocolOptions} protocols={protocols} />
             <TaskConfigSheet task={task} />
           </div>
@@ -686,6 +713,31 @@ function TaskOverview({ task, onCreate, protocolOptions, protocols }: { task: Ta
       </CardContent>
     </Card>
   )
+}
+
+function mergeStartedRun(runs: RunSummary[], state: RunState | undefined, task: Task) {
+  if (!state || runs.some((run) => run.run_id === state.run_id)) return runs
+  return [runSummaryFromState(state, task), ...runs]
+}
+
+function runSummaryFromState(state: RunState, task: Task): RunSummary {
+  return {
+    run_id: state.run_id,
+    task_id: state.task_id,
+    mode: state.mode,
+    status: state.status,
+    protocol: taskProtocol(task),
+    model: taskModel(task),
+    started_at: state.started_at,
+    finished_at: state.finished_at ?? '',
+    success_rate: state.success_rate,
+    avg_ttft: state.avg_ttft,
+    avg_tps: state.avg_tps,
+    cache_hit_rate: state.cache_hit_rate,
+    rpm: state.rpm,
+    tpm: state.tpm,
+    error_summary: state.error_msg,
+  }
 }
 
 function TaskConfigSheet({ task }: { task: Task }) {
