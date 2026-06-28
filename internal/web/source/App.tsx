@@ -1,17 +1,17 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, ClipboardList, Copy, Database, FileJson, Gauge, Hash, ListChecks, Menu, Network, Play, Plus, Route, Search, Settings2, ShieldCheck, TrendingUp, XCircle, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, BarChart3, CheckCircle2, ClipboardList, Clock3, Copy, Database, FileJson, Gauge, ListChecks, Network, Play, Plus, Route, Settings2, ShieldCheck, TrendingUp, XCircle, Zap } from 'lucide-react'
 import { CategoryScale, Chart as ChartJS, Filler, Legend as ChartLegend, LinearScale, LineElement, PointElement, Tooltip as ChartTooltip } from 'chart.js'
 import { Line } from 'react-chartjs-2'
 
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
+import { DashboardHeader, TaskSidebarContent, type TaskNavItem } from '@/components/dashboard-layout'
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle, DialogTrigger } from '@/components/ui/dialog'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { RadioGroup, RadioGroupItem } from '@/components/ui/radio-group'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { Stepper } from '@/components/ui/stepper'
@@ -20,13 +20,8 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { createTask as createTaskAPI, getRunRequests, getRunState, listIntegritySuites, listProtocols, listTaskRuns, listTasks, startTaskRun as startTaskRunAPI, type IntegrityAssertionResult, type IntegrityCaseResult, type IntegrityModeState, type IntegrityResult, type IntegritySuite, type PromptMode, type ProtocolMeta, type RequestDetail, type RunState, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
-
-const modeLabel: Record<TaskMode, string> = {
-  standard: '标准压测',
-  turbo: 'Turbo 爬坡',
-  integrity: '完整性校验',
-}
+import { createModeHint, createStepHint, defaultEndpoint, draftFromTask, formatDate, formatNumber, formatPercent, inputJsonFromDraft, isDraftValid, isStepValid, makeInitialDraft, maskSecret, modeLabel, nextStepLabel, promptFieldLabel, promptModeLabel, promptModeOptions, promptSpec, protocolLabel, protocolOptions, redactSecretInput, requestKey, taskConcurrency, taskEndpoint, taskFromDraft, taskMode, taskModel, taskProtocol, taskRequests, toNumber, turboLevelsFromConfig, type TaskDraft } from '@/lib/task-utils'
+import { createTask as createTaskAPI, getRunRequests, getRunState, listIntegritySuites, listProtocols, listTaskRuns, listTasks, startTaskRun as startTaskRunAPI, type IntegrityAssertionResult, type IntegrityCaseResult, type IntegrityModeState, type IntegrityResult, type IntegritySuite, type PromptMode, type ProtocolMeta, type RequestDetail, type RunState, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskMode } from './api'
 
 const statusLabel: Record<RunStatus, string> = {
   queued: '排队中',
@@ -42,25 +37,6 @@ const statusStyle: Record<RunStatus, string> = {
   completed: 'border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/40 dark:text-emerald-300',
   failed: 'border-red-200 bg-red-50 text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300',
   stopped: 'border-zinc-200 bg-zinc-50 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900 dark:text-zinc-300',
-}
-
-const promptModeLabel: Record<PromptMode, string> = {
-  text: '直接输入文本',
-  file: '从文件读取',
-  generated: '按长度生成',
-  raw: '原始请求 JSON',
-}
-
-const protocolLabel: Record<string, string> = {
-  'openai-completions': 'OpenAI Completions 接口',
-  'openai-responses': 'OpenAI Responses 接口',
-  'anthropic-messages': 'Anthropic Messages 接口',
-}
-
-const promptFieldLabel: Record<string, string> = {
-  prompt_file: 'Prompt 文件',
-  prompt_length: 'Prompt 长度',
-  prompt_text: 'Prompt 文本',
 }
 
 ChartJS.register(CategoryScale, LinearScale, PointElement, LineElement, Filler, ChartTooltip, ChartLegend)
@@ -151,13 +127,35 @@ function App() {
   const selectedRunState = selectedRun ? statesByRun[selectedRun.run_id] : undefined
   const runRequests = selectedRun ? requestsByRun[selectedRun.run_id] ?? [] : []
   const selectedRequest = runRequests.find((request) => requestKey(request) === selectedRequestId) ?? runRequests[0]
-  const totalRuns = Object.values(runsByTask).reduce((sum, item) => sum + item.length, 0)
-  const totalSamples = Object.values(requestsByRun).reduce((sum, item) => sum + item.length, 0)
+  const standardTaskCount = taskList.filter((task) => taskMode(task) === 'standard').length
+  const turboTaskCount = taskList.filter((task) => taskMode(task) === 'turbo').length
+  const integrityTaskCount = taskList.filter((task) => taskMode(task) === 'integrity').length
   const protocolOptionsForCreate = protocols.length > 0 ? protocols.map((protocol) => protocol.id) : [...protocolOptions]
+  const taskNavItems = useMemo<TaskNavItem[]>(() => filteredTasks.map((task) => {
+    const runs = runsByTask[task.id] ?? []
+    const latestRun = task.latest_run ?? runs[0]
+    return {
+      id: task.id,
+      name: task.name,
+      mode: taskMode(task),
+      modeLabel: modeLabel[taskMode(task)],
+      model: taskModel(task),
+      updatedAt: formatDate(task.updated_at),
+      runsCount: runs.length,
+      successRate: latestRun ? formatPercent(latestRun.success_rate) : undefined,
+      latestFailed: latestRun?.status === 'failed',
+      active: selectedTask?.id === task.id,
+    }
+  }), [filteredTasks, runsByTask, selectedTask?.id])
 
   function chooseTask(task: Task) {
     setSelectedTaskId(task.id)
     setTaskDrawerOpen(false)
+  }
+
+  function chooseTaskById(taskId: string) {
+    const task = taskList.find((item) => item.id === taskId)
+    if (task) chooseTask(task)
   }
 
   function chooseRun(run: RunSummary) {
@@ -200,44 +198,11 @@ function App() {
     <main className="min-h-screen bg-muted/30 text-foreground lg:h-screen lg:overflow-hidden">
       <div className="grid min-h-screen lg:h-full lg:min-h-0 lg:grid-cols-[320px_minmax(0,1fr)]">
         <aside className="hidden min-h-0 border-r bg-sidebar/95 lg:block">
-          <TaskSidebarContent taskList={taskList} filteredTasks={filteredTasks} runsByTask={runsByTask} selectedTask={selectedTask} totalRuns={totalRuns} totalSamples={totalSamples} query={query} onQueryChange={setQuery} onChooseTask={chooseTask} onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
+          <TaskSidebarContent items={taskNavItems} totalTaskCount={taskList.length} query={query} onQueryChange={setQuery} onChooseTask={chooseTaskById} />
         </aside>
 
         <section className="min-h-0 min-w-0 bg-background/80 lg:overflow-y-auto">
-          <header className="sticky top-0 z-20 border-b bg-background/90 px-4 py-3 backdrop-blur sm:px-6">
-            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
-              <div className="min-w-0">
-                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
-                  <BarChart3 className="size-3.5" />Operations Dashboard
-                </div>
-                <h2 className="mt-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">{selectedTask?.name ?? 'AIT 执行观测台'}</h2>
-              </div>
-              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
-                <Sheet open={taskDrawerOpen} onOpenChange={setTaskDrawerOpen}>
-                  <SheetTrigger asChild>
-                    <Button variant="outline" size="sm" className="rounded-xl lg:hidden">
-                      <Menu className="size-3.5" />任务
-                    </Button>
-                  </SheetTrigger>
-                  <SheetContent side="right" className="w-[min(88vw,360px)]! max-w-none! gap-0 p-0">
-                    <SheetHeader className="sr-only">
-                      <SheetTitle>任务列表</SheetTitle>
-                      <SheetDescription>选择任务、搜索任务或创建新任务。</SheetDescription>
-                    </SheetHeader>
-                    <TaskSidebarContent taskList={taskList} filteredTasks={filteredTasks} runsByTask={runsByTask} selectedTask={selectedTask} totalRuns={totalRuns} totalSamples={totalSamples} query={query} onQueryChange={setQuery} onChooseTask={chooseTask} onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
-                  </SheetContent>
-                </Sheet>
-                <CreateTaskSheet onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} variant="primary" />
-                {selectedTask && <>
-                <Badge variant="outline" className="gap-1.5"><ModeIcon mode={taskMode(selectedTask)} className="size-3.5" />{modeLabel[taskMode(selectedTask)]}</Badge>
-                <Badge variant="outline" className="gap-1.5"><Network className="size-3.5" />{taskProtocol(selectedTask)}</Badge>
-                <Button size="sm" className="rounded-xl" onClick={() => startTaskRun(selectedTask)} disabled={startingTaskId === selectedTask.id}>
-                  <Play className="size-3.5" />{startingTaskId === selectedTask.id ? '启动中...' : '开始运行'}
-                </Button>
-                </>}
-              </div>
-            </div>
-          </header>
+          <DashboardHeader taskDrawerOpen={taskDrawerOpen} onTaskDrawerOpenChange={setTaskDrawerOpen} taskDrawerContent={<TaskSidebarContent items={taskNavItems} totalTaskCount={taskList.length} query={query} onQueryChange={setQuery} onChooseTask={chooseTaskById} />} createTaskButton={<CreateTaskSheet onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} variant="primary" />} filteredTaskCount={filteredTasks.length} totalTaskCount={taskList.length} standardTaskCount={standardTaskCount} turboTaskCount={turboTaskCount} integrityTaskCount={integrityTaskCount} />
 
           <div className="mx-auto max-w-375 space-y-4 p-4 sm:p-6">
             {errorMessage && <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{errorMessage}</div>}
@@ -254,35 +219,6 @@ function App() {
   )
 }
 
-type TaskDraft = {
-  mode: TaskMode
-  name: string
-  protocol: string
-  endpoint: string
-  apiKey: string
-  model: string
-  concurrency: number
-  requests: number
-  promptMode: PromptMode
-  promptText: string
-  promptFile: string
-  promptLength: number
-  timeout: string
-  stream: boolean
-  thinking: boolean
-  report: boolean
-  log: boolean
-  turboInitConcurrency: number
-  turboMaxConcurrency: number
-  turboStepSize: number
-  turboLevelRequests: number
-  turboMinSuccessRate: number
-  turboMaxLatency: string
-  integritySuite: string
-  integrityFailFast: boolean
-  integrityCaseTimeout: string
-}
-
 const createSteps = [
   { title: '任务类型', description: '选择创建模式' },
   { title: '基础信息', description: '名称与目标' },
@@ -296,86 +232,6 @@ type CreateTaskSheetProps = {
   variant?: 'create' | 'copy' | 'primary'
   protocolOptions: string[]
   protocols: ProtocolMeta[]
-}
-
-type TaskSidebarContentProps = {
-  taskList: Task[]
-  filteredTasks: Task[]
-  runsByTask: Record<string, RunSummary[]>
-  selectedTask?: Task
-  totalRuns: number
-  totalSamples: number
-  query: string
-  onQueryChange: (value: string) => void
-  onChooseTask: (task: Task) => void
-  onCreate: (draft: TaskDraft) => Promise<void> | void
-  protocolOptions: string[]
-  protocols: ProtocolMeta[]
-}
-
-function TaskSidebarContent({ taskList, filteredTasks, runsByTask, selectedTask, totalRuns, totalSamples, query, onQueryChange, onChooseTask, onCreate, protocolOptions, protocols }: TaskSidebarContentProps) {
-  return (
-    <div className="flex h-full min-h-0 flex-col">
-      <div className="border-b px-5 py-4">
-        <div className="flex items-center gap-3">
-          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
-            <Activity className="size-4" />
-          </div>
-          <div className="min-w-0">
-            <h1 className="truncate text-base font-semibold tracking-tight">AIT Dashboard</h1>
-            <p className="truncate text-xs text-muted-foreground">任务执行与完整性校验</p>
-          </div>
-        </div>
-      </div>
-
-      <div className="grid grid-cols-3 gap-2 border-b px-4 py-3 text-xs lg:grid-cols-1 xl:grid-cols-3">
-        <TopStat icon={<ListChecks className="size-3.5" />} label="任务" value={taskList.length.toString()} />
-        <TopStat icon={<Clock3 className="size-3.5" />} label="执行" value={totalRuns.toString()} />
-        <TopStat icon={<Hash className="size-3.5" />} label="样本" value={totalSamples.toString()} />
-      </div>
-
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-        <CreateTaskSheet onCreate={onCreate} protocolOptions={protocolOptions} protocols={protocols} />
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(event) => onQueryChange(event.target.value)} className="h-10 rounded-xl bg-background pl-9" placeholder="搜索任务 / 模型 / 协议" />
-        </div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
-          <span>任务队列</span>
-          <span>{filteredTasks.length} / {taskList.length}</span>
-        </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-2 pr-4">
-            {filteredTasks.map((task) => {
-              const runs = runsByTask[task.id] ?? []
-              const latestRun = task.latest_run ?? runs[0]
-              return (
-                <button key={task.id} type="button" onClick={() => onChooseTask(task)} className={cn('group w-full rounded-xl border border-transparent bg-background/70 px-3 py-3 text-left transition hover:border-sidebar-border hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', selectedTask?.id === task.id && 'border-sidebar-primary bg-sidebar-accent shadow-sm')}>
-                  <div className="flex items-start justify-between gap-3">
-                    <div className="min-w-0 flex-1">
-                      <div className="flex min-w-0 items-center gap-2">
-                        <ModeIcon mode={taskMode(task)} className="size-3.5 shrink-0 text-muted-foreground" />
-                        <div className="truncate text-sm font-medium leading-5">{task.name}</div>
-                      </div>
-                      <div className="mt-1 truncate text-xs text-muted-foreground">{modeLabel[taskMode(task)]} · {taskModel(task)}</div>
-                    </div>
-                    <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:text-foreground" />
-                  </div>
-                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
-                    <span>{runs.length} 次执行</span>
-                    <span className="inline-flex items-center gap-2">
-                      {latestRun && <span className={cn('tabular-nums', latestRun.status === 'failed' ? 'text-red-600' : 'text-emerald-600')}>{formatPercent(latestRun.success_rate)}</span>}
-                      <span>{formatDate(task.updated_at)}</span>
-                    </span>
-                  </div>
-                </button>
-              )
-            })}
-          </div>
-        </ScrollArea>
-      </div>
-    </div>
-  )
 }
 
 function CreateTaskSheet({ onCreate, sourceTask, variant = 'create', protocolOptions, protocols }: CreateTaskSheetProps) {
@@ -455,7 +311,7 @@ function CreateTaskSheet({ onCreate, sourceTask, variant = 'create', protocolOpt
             <Copy className="size-3.5" />复制为新任务
           </Button>
         ) : variant === 'primary' ? (
-          <Button size="sm" className="rounded-xl">
+          <Button size="sm" className="h-10 rounded-2xl bg-foreground px-4 font-medium text-background shadow-sm hover:bg-foreground/90">
             <Plus className="size-3.5" />创建任务
           </Button>
         ) : (
@@ -737,16 +593,6 @@ function DraftTaskPreview({ task }: { task: Task }) {
         <KeyValue label="API Key" value={maskSecret(task.input.api_key)} />
       </div>
       <TaskModeConfigPreview task={task} />
-    </div>
-  )
-}
-
-function TopStat({ icon, label, value }: { icon: React.ReactNode; label: string; value: string }) {
-  return (
-    <div className="inline-flex items-center gap-1.5 rounded-full border bg-background/70 px-3 py-1.5 shadow-xs">
-      <span className="text-muted-foreground">{icon}</span>
-      <span className="font-semibold text-foreground">{value}</span>
-      <span>{label}</span>
     </div>
   )
 }
@@ -1184,7 +1030,7 @@ function RunDetail({ run, state, requests, selectedRequest, onSelectRequest }: {
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-4 pt-0 sm:p-5 sm:pt-0">
-        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_440px]">
+        <div className="space-y-4">
           <div className="space-y-4">
             <section className="rounded-2xl border bg-background/70 p-4">
               <div className="mb-3 flex items-center justify-between gap-3 text-sm">
@@ -1224,18 +1070,21 @@ function RunDetail({ run, state, requests, selectedRequest, onSelectRequest }: {
             </section>
           </div>
 
-          <section className="min-w-0 rounded-2xl border bg-background/70 p-4">
-            <div className="mb-3 flex items-center justify-between gap-3">
-              <div className="flex items-center gap-2 text-sm font-medium"><Network className="size-4" />请求样本检查</div>
-              <Badge variant="outline">{requests.length}</Badge>
+          <section className="min-w-0 rounded-2xl border bg-muted/25 p-4 ring-1 ring-border/20">
+            <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+              <div>
+                <div className="flex items-center gap-2 text-sm font-medium"><Network className="size-4" />请求样本检查</div>
+                <div className="mt-1 text-xs leading-5 text-muted-foreground">按请求样本查看耗时、Token、网络与原始请求响应。</div>
+              </div>
+              <Badge variant="outline" className="w-fit bg-background">{requests.length} 个样本</Badge>
             </div>
-            <div className="grid min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)] 2xl:block">
-              <div className="space-y-2 pr-3 xl:max-h-105 xl:overflow-y-auto xl:scrollbar-gutter-stable 2xl:max-h-72">
+            <div className="grid min-h-0 gap-4 xl:grid-cols-[320px_minmax(0,1fr)]">
+              <div className="space-y-2 rounded-2xl border bg-background/75 p-2 xl:max-h-140 xl:overflow-y-auto xl:scrollbar-gutter-stable">
                 {requests.length === 0 ? <div className="rounded-xl bg-muted/50 px-3 py-6 text-center text-sm text-muted-foreground">暂无请求样本。</div> : requests.map((request) => {
                   const key = requestKey(request)
                   const active = selectedRequest && requestKey(selectedRequest) === key
                   return (
-                    <button key={key} type="button" onClick={() => onSelectRequest(key)} className={cn('flex w-full items-center justify-between gap-3 rounded-xl border bg-background/70 px-3 py-2.5 text-left text-sm hover:bg-accent', active && 'border-primary bg-accent')}>
+                    <button key={key} type="button" onClick={() => onSelectRequest(key)} className={cn('flex w-full items-center justify-between gap-3 rounded-xl border border-transparent bg-transparent px-3 py-2.5 text-left text-sm hover:bg-muted/70', active && 'border-border bg-muted shadow-xs')}>
                       <span className="min-w-0">
                         <span className="block truncate font-medium">#{request.index}{request.case_id ? ` · ${request.case_id}` : ''}</span>
                         <span className="mt-0.5 block truncate text-xs text-muted-foreground">{request.total_time} · TTFT {request.ttft}</span>
@@ -1283,26 +1132,50 @@ function CompactMetricList({ title, icon, items }: { title: string; icon: React.
 }
 
 function RequestPanel({ request, compact = false }: { request: RequestDetail; compact?: boolean }) {
+  const metricItems = [
+    ['Case ID', request.case_id || '-'],
+    ['总耗时', request.total_time || '-'],
+    ['TTFT', request.ttft || '-'],
+    ['TPS', formatNumber(request.tps)],
+    ['输入 Token', formatNumber(request.prompt_tokens)],
+    ['输出 Token', formatNumber(request.completion_tokens)],
+    ['缓存 Token', formatNumber(request.cached_tokens)],
+    ['Target IP', request.target_ip || '-'],
+    ['DNS', request.dns_time || '-'],
+    ['Connect', request.connect_time || '-'],
+    ['TLS', request.tls_time || '-'],
+  ]
+
   return (
-    <div className={cn('rounded-2xl border bg-background p-4', compact && 'mt-4 xl:mt-4')}>
+    <div className={cn('rounded-2xl border bg-background p-4 shadow-xs', compact && 'mt-4 xl:mt-0')}>
       <div className="mb-4 flex items-center justify-between gap-3">
-        <div className="font-medium">请求详情 #{request.index}</div>
+        <div>
+          <div className="font-medium">请求详情 #{request.index}</div>
+          <div className="mt-1 text-xs text-muted-foreground">状态、耗时、Token 与网络阶段明细</div>
+        </div>
         {request.error_message ? <Badge className="bg-red-600"><AlertTriangle className="size-3" />{request.error_message}</Badge> : <Badge className="bg-emerald-600">OK</Badge>}
       </div>
       <div className={cn('grid gap-4', !compact && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
-        <CompactMetricList title="本次指标" icon={<Gauge className="size-4" />} items={[
-          ['Case ID', request.case_id || '-'],
-          ['延迟', `${request.total_time} · TTFT ${request.ttft}`],
-          ['TPS', formatNumber(request.tps)],
-          ['Token', `in ${request.prompt_tokens} · out ${request.completion_tokens} · cached ${request.cached_tokens}`],
-          ['网络', `DNS ${request.dns_time} · Conn ${request.connect_time} · TLS ${request.tls_time}`],
-          ['Target IP', request.target_ip || '-'],
-        ]} />
+        <div>
+          <div className="mb-2 flex items-center gap-2 text-sm font-medium"><Gauge className="size-4" />本次指标</div>
+          <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {metricItems.map(([label, value]) => <RequestMetricTile key={label} label={label} value={value} />)}
+          </div>
+        </div>
         <div className="space-y-3">
           <CodeBlock label="请求内容" value={request.request_body || '-'} icon={<Network className="size-3.5" />} />
           <CodeBlock label="响应内容" value={request.response_body || request.error_message || '-'} icon={<FileJson className="size-3.5" />} />
         </div>
       </div>
+    </div>
+  )
+}
+
+function RequestMetricTile({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="min-w-0 rounded-lg bg-muted/65 px-3 py-2.5 ring-1 ring-border/30">
+      <div className="text-[11px] leading-4 text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-sm font-semibold tabular-nums" title={value}>{value}</div>
     </div>
   )
 }
@@ -1438,316 +1311,6 @@ function TaskModeConfigPreview({ task }: { task: Task }) {
       <ModeSpecificPanel task={task} />
     </div>
   )
-}
-
-const createModeHint: Record<TaskMode, string> = {
-  standard: '固定并发与请求总数',
-  turbo: '起始并发、最大并发、递增步长',
-  integrity: '测试集与执行控制',
-}
-
-const draftName: Record<TaskMode, string> = {
-  standard: '新建标准压测任务',
-  turbo: '新建 Turbo 爬坡任务',
-  integrity: '新建完整性校验任务',
-}
-
-const draftModel: Record<TaskMode, string> = {
-  standard: 'gpt-4.1',
-  turbo: 'claude-3-5-sonnet',
-  integrity: 'gpt-4o-mini',
-}
-
-const draftProtocol: Record<TaskMode, string> = {
-  standard: 'openai-responses',
-  turbo: 'anthropic-messages',
-  integrity: 'openai-completions',
-}
-
-const draftPrompt: Record<Exclude<TaskMode, 'integrity'>, string> = {
-  standard: '解释缓存命中对大模型 API 性能指标的影响，输出三条结论。',
-  turbo: '使用 8000 token 共享上下文生成多条用户变体，观察缓存爬坡收益。',
-}
-
-const protocolOptions = ['openai-completions', 'openai-responses', 'anthropic-messages'] as const
-const promptModeOptions = ['text', 'file', 'generated', 'raw'] as const
-
-type PromptSpec = { mode: PromptMode; label: string; summary: string; content: string }
-
-function makeInitialDraft(mode: TaskMode, protocols: ProtocolMeta[] = []): TaskDraft {
-  const protocol = draftProtocol[mode]
-  return {
-    mode,
-    name: draftName[mode],
-    protocol,
-    endpoint: defaultEndpoint(protocol, protocols),
-    apiKey: '',
-    model: draftModel[mode],
-    concurrency: mode === 'integrity' ? 1 : mode === 'turbo' ? 4 : 8,
-    requests: mode === 'integrity' ? 1 : mode === 'turbo' ? 60 : 120,
-    promptMode: mode === 'turbo' ? 'generated' : 'text',
-    promptText: mode === 'integrity' ? '' : draftPrompt[mode],
-    promptFile: '',
-    promptLength: mode === 'turbo' ? 8000 : 1200,
-    timeout: '30s',
-    stream: true,
-    thinking: false,
-    report: true,
-    log: false,
-    turboInitConcurrency: 4,
-    turboMaxConcurrency: 64,
-    turboStepSize: 4,
-    turboLevelRequests: 60,
-    turboMinSuccessRate: 0.9,
-    turboMaxLatency: '10s',
-    integritySuite: defaultSuite(protocol),
-    integrityFailFast: true,
-    integrityCaseTimeout: '30000',
-  }
-}
-
-function draftFromTask(task: Task): TaskDraft {
-  const input = task.input
-  const draft = makeInitialDraft(taskMode(task))
-  const promptMode = input.prompt_mode ?? draft.promptMode
-  return {
-    ...draft,
-    mode: taskMode(task),
-    name: `${task.name} 副本`,
-    protocol: input.protocol || draft.protocol,
-    endpoint: input.endpoint_url || draft.endpoint,
-    apiKey: input.api_key ?? '',
-    model: input.model || draft.model,
-    concurrency: input.concurrency ?? draft.concurrency,
-    requests: input.count ?? draft.requests,
-    promptMode,
-    promptText: input.prompt_text ?? draft.promptText,
-    promptFile: input.prompt_file ?? '',
-    promptLength: input.prompt_length ?? draft.promptLength,
-    timeout: input.timeout ?? draft.timeout,
-    stream: input.stream ?? draft.stream,
-    thinking: input.thinking ?? draft.thinking,
-    report: input.report ?? draft.report,
-    log: input.log ?? draft.log,
-    turboInitConcurrency: input.turbo_config?.init_concurrency ?? draft.turboInitConcurrency,
-    turboMaxConcurrency: input.turbo_config?.max_concurrency ?? draft.turboMaxConcurrency,
-    turboStepSize: input.turbo_config?.step_size ?? draft.turboStepSize,
-    turboLevelRequests: input.turbo_config?.level_requests ?? input.count ?? draft.turboLevelRequests,
-    turboMinSuccessRate: input.turbo_config?.min_success_rate ?? draft.turboMinSuccessRate,
-    turboMaxLatency: input.turbo_config?.max_latency ?? draft.turboMaxLatency,
-    integritySuite: input.integrity?.suite ?? draft.integritySuite,
-    integrityFailFast: input.integrity?.fail_fast ?? draft.integrityFailFast,
-    integrityCaseTimeout: input.integrity?.case_timeout_ms ? String(input.integrity.case_timeout_ms) : draft.integrityCaseTimeout,
-  }
-}
-
-function taskFromDraft(id: string, draft: TaskDraft): Task {
-  return {
-    id,
-    name: draft.name.trim() || draftName[draft.mode],
-    mode: draft.mode,
-    input: inputJsonFromDraft(draft),
-    created_at: new Date().toISOString(),
-    updated_at: new Date().toISOString(),
-  }
-}
-
-function inputJsonFromDraft(draft: TaskDraft): TaskInput {
-  const input: TaskInput = {
-    mode: draft.mode,
-    protocol: draft.protocol,
-    endpoint_url: draft.endpoint.trim(),
-    ...(draft.apiKey.trim() ? { api_key: draft.apiKey.trim() } : {}),
-    model: draft.model.trim(),
-    stream: draft.stream,
-    report: draft.report,
-    log: draft.log,
-    ...(draft.timeout.trim() ? { timeout: draft.timeout.trim() } : {}),
-  }
-
-  if (draft.mode === 'integrity') {
-    return {
-      ...input,
-      concurrency: 1,
-      count: 0,
-      integrity: {
-        enabled: true,
-        suite: draft.integritySuite.trim(),
-        fail_fast: draft.integrityFailFast,
-        case_timeout_ms: durationToMs(draft.integrityCaseTimeout),
-      },
-    }
-  }
-
-  const prompt = promptInputFromDraft(draft)
-  if (draft.mode === 'turbo') {
-    return {
-      ...input,
-      turbo: true,
-      count: draft.turboLevelRequests,
-      ...prompt,
-      turbo_config: {
-        init_concurrency: draft.turboInitConcurrency,
-        max_concurrency: draft.turboMaxConcurrency,
-        step_size: draft.turboStepSize,
-        level_requests: draft.turboLevelRequests,
-        min_success_rate: draft.turboMinSuccessRate,
-        max_latency: draft.turboMaxLatency.trim(),
-      },
-    }
-  }
-
-  return {
-    ...input,
-    concurrency: draft.concurrency,
-    count: draft.requests,
-    thinking: draft.thinking,
-    ...prompt,
-  }
-}
-
-function promptInputFromDraft(draft: TaskDraft): Partial<TaskInput> {
-  if (draft.promptMode === 'file') return { prompt_mode: 'file', prompt_file: draft.promptFile.trim() }
-  if (draft.promptMode === 'generated') return { prompt_mode: 'generated', prompt_length: draft.promptLength }
-  return { prompt_mode: draft.promptMode, prompt_text: draft.promptText }
-}
-
-function promptSpec(input: TaskInput): PromptSpec | undefined {
-  if (input.mode === 'integrity') return undefined
-  if (input.prompt_mode === 'file') return { mode: 'file', label: 'prompt_file', summary: `从文件读取 Prompt：${input.prompt_file || '-'}`, content: input.prompt_file || '-' }
-  if (input.prompt_mode === 'generated') return { mode: 'generated', label: 'prompt_length', summary: `按长度生成 ${input.prompt_length || 0} token Prompt。`, content: `Prompt 长度：${input.prompt_length || 0}` }
-  if (input.prompt_mode === 'raw') return { mode: 'raw', label: 'prompt_text', summary: '原始 JSON 请求体。', content: input.prompt_text || '-' }
-  return { mode: 'text', label: 'prompt_text', summary: '直接使用文本 Prompt。', content: input.prompt_text || '-' }
-}
-
-function taskMode(task: Task) {
-  return task.input.mode || task.mode
-}
-
-function taskModel(task: Task) {
-  return task.input.model || '-'
-}
-
-function taskProtocol(task: Task) {
-  return task.input.protocol || '-'
-}
-
-function taskEndpoint(task: Task) {
-  return task.input.endpoint_url || task.input.base_url || task.input.proxy_url || '-'
-}
-
-function maskSecret(value?: string) {
-  if (!value) return '未配置或已隐藏'
-  if (value.length <= 8) return '••••••••'
-  return `${value.slice(0, 4)}••••${value.slice(-4)}`
-}
-
-function redactSecretInput(input: TaskInput): TaskInput {
-  return input.api_key ? { ...input, api_key: maskSecret(input.api_key) } : input
-}
-
-function taskConcurrency(task: Task) {
-  return task.input.turbo_config?.init_concurrency ?? task.input.concurrency ?? 0
-}
-
-function taskRequests(task: Task) {
-  return task.input.count ?? 0
-}
-
-function requestKey(request?: RequestDetail) {
-  return request ? `${request.index}-${request.level ?? 0}` : ''
-}
-
-function formatDate(value?: string) {
-  if (!value) return '-'
-  const date = new Date(value)
-  if (Number.isNaN(date.getTime())) return value
-  return date.toLocaleString()
-}
-
-function formatNumber(value?: number) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
-  return Number.isInteger(value) ? value.toString() : value.toFixed(2)
-}
-
-function formatPercent(value?: number) {
-  if (typeof value !== 'number' || !Number.isFinite(value)) return '-'
-  return `${Math.round(value)}%`
-}
-
-function turboLevelsFromConfig(config?: TaskInput['turbo_config']) {
-  if (!config) return []
-  const levels: number[] = []
-  const stepSize = Math.max(1, config.step_size || 1)
-  for (let value = Math.max(1, config.init_concurrency); value <= Math.max(config.init_concurrency, config.max_concurrency); value += stepSize) levels.push(value)
-  return levels
-}
-
-function defaultEndpoint(protocol: string, protocols: ProtocolMeta[] = []) {
-  const meta = protocols.find((item) => item.id === protocol)
-  if (meta?.default_endpoint_url) return meta.default_endpoint_url
-  if (protocol === 'openai-responses') return 'https://api.openai.com/v1/responses'
-  if (protocol === 'anthropic-messages') return 'https://api.anthropic.com/v1/messages'
-  return 'https://api.openai.com/v1/chat/completions'
-}
-
-function defaultSuite(protocol: string) {
-  if (protocol === 'openai-responses') return 'openai-responses-smoke'
-  if (protocol === 'anthropic-messages') return 'anthropic-messages-smoke'
-  return 'openai-completions-smoke'
-}
-
-function nextStepLabel(step: number) {
-  if (step === 0) return '填写基础信息'
-  if (step === 1) return '填写类型配置'
-  if (step === 2) return '检查并确认'
-  return '下一步'
-}
-
-function createStepHint(draft: TaskDraft, step: number) {
-  if (step === 1) return '请先填写任务名称、协议、模型名称和请求地址。'
-  if (step === 2 && draft.mode === 'integrity') return '请选择当前协议已加载的测试集，并填写单个用例超时。'
-  if (step === 2 && draft.mode === 'turbo') return '请确认 Prompt、并发爬坡参数、请求超时和停止条件均已填写。'
-  if (step === 2) return '请确认 Prompt、并发数、请求总数和请求超时均已填写。'
-  return '请先完成当前步骤。'
-}
-
-function isStepValid(draft: TaskDraft, step: number): boolean {
-  if (step === 0) return Boolean(draft.mode)
-  if (step === 1) return isBasicConfigValid(draft)
-  if (step === 2) return isModeConfigValid(draft)
-  return isDraftValid(draft)
-}
-
-function isDraftValid(draft: TaskDraft): boolean {
-  return isBasicConfigValid(draft) && isModeConfigValid(draft)
-}
-
-function isBasicConfigValid(draft: TaskDraft): boolean {
-  return Boolean(draft.name.trim() && draft.protocol.trim() && draft.endpoint.trim() && draft.model.trim())
-}
-
-function isModeConfigValid(draft: TaskDraft): boolean {
-  if (draft.mode === 'integrity') return Boolean(draft.integritySuite.trim() && durationToMs(draft.integrityCaseTimeout) > 0)
-  if (draft.mode === 'turbo' && (draft.turboInitConcurrency <= 0 || draft.turboMaxConcurrency <= 0 || draft.turboStepSize <= 0 || draft.turboLevelRequests <= 0 || draft.turboMinSuccessRate <= 0 || !draft.turboMaxLatency.trim())) return false
-  if (draft.mode === 'standard' && (draft.concurrency <= 0 || draft.requests <= 0)) return false
-  if (!draft.timeout.trim()) return false
-  if (draft.promptMode === 'file') return Boolean(draft.promptFile.trim())
-  if (draft.promptMode === 'generated') return draft.promptLength > 0
-  return Boolean(draft.promptText.trim())
-}
-
-function toNumber(value: string) {
-  return Math.max(0, Number.parseInt(value, 10) || 0)
-}
-
-function durationToMs(value: string) {
-  const normalized = value.trim()
-  const amount = Number.parseFloat(normalized)
-  if (!Number.isFinite(amount)) return 0
-  if (normalized.endsWith('ms')) return Math.round(amount)
-  if (normalized.endsWith('s')) return Math.round(amount * 1000)
-  return Math.round(amount)
 }
 
 export default App

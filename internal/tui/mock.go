@@ -102,7 +102,22 @@ func renderProgressBar(done, total int, width int) string {
 	return strings.Repeat("█", filled) + strings.Repeat("░", width-filled)
 }
 
-func formatStats(reqs []types.RequestMetrics, totalReqs int, isCompleted bool, elapsed time.Duration) string {
+type statsSummary struct {
+	Done         int
+	Failed       int
+	TotalReqs    int
+	Percent      int
+	SuccessRate  float64
+	AvgTPS       float64
+	AvgCacheRate float64
+	P50TTFT      time.Duration
+	P99TTFT      time.Duration
+	RPM          float64
+	TPM          float64
+	TimeLabel    string
+}
+
+func calculateStats(reqs []types.RequestMetrics, totalReqs int, isCompleted bool, elapsed time.Duration) statsSummary {
 	done := len(reqs)
 	success := 0
 	var sumTPS, sumCacheRate float64
@@ -143,14 +158,11 @@ func formatStats(reqs []types.RequestMetrics, totalReqs int, isCompleted bool, e
 		tpm = float64(totalOutTokens) / elapsed.Minutes()
 	}
 
-	barWidth := 20
 	pct := 100
 	if !isCompleted && totalReqs > 0 {
 		pct = done * 100 / totalReqs
 	}
-	bar := renderProgressBar(done, totalReqs, barWidth)
 
-	// 时间标签
 	timeLabel := ""
 	if isCompleted && elapsed > 0 {
 		timeLabel = fmt.Sprintf(" 耗时: %s", elapsed.Truncate(time.Second))
@@ -158,16 +170,41 @@ func formatStats(reqs []types.RequestMetrics, totalReqs int, isCompleted bool, e
 		estimated := time.Duration(float64(elapsed) / float64(done) * float64(totalReqs-done)).Truncate(time.Second)
 		timeLabel = fmt.Sprintf(" 预计剩余: %s", estimated)
 	}
+	return statsSummary{
+		Done:         done,
+		Failed:       done - success,
+		TotalReqs:    totalReqs,
+		Percent:      pct,
+		SuccessRate:  successRate,
+		AvgTPS:       avgTPS,
+		AvgCacheRate: avgCacheRate,
+		P50TTFT:      p50TTFT,
+		P99TTFT:      p99TTFT,
+		RPM:          rpm,
+		TPM:          tpm,
+		TimeLabel:    timeLabel,
+	}
+}
+
+func formatStatsProgress(reqs []types.RequestMetrics, totalReqs int, isCompleted bool, elapsed time.Duration, barWidth int) string {
+	stats := calculateStats(reqs, totalReqs, isCompleted, elapsed)
+	bar := renderProgressBar(stats.Done, stats.TotalReqs, barWidth)
+	return fmt.Sprintf("%s  %d%% (%d / %d)%s", bar, stats.Percent, stats.Done, stats.TotalReqs, stats.TimeLabel)
+}
+
+func formatStats(reqs []types.RequestMetrics, totalReqs int, isCompleted bool, elapsed time.Duration) string {
+	stats := calculateStats(reqs, totalReqs, isCompleted, elapsed)
+	bar := renderProgressBar(stats.Done, stats.TotalReqs, 20)
 
 	var sb strings.Builder
-	sb.WriteString(fmt.Sprintf("%s  %d%% (%d / %d)%s\n", bar, pct, done, totalReqs, timeLabel))
+	sb.WriteString(fmt.Sprintf("%s  %d%% (%d / %d)%s\n", bar, stats.Percent, stats.Done, stats.TotalReqs, stats.TimeLabel))
 	sb.WriteString(strings.Repeat("─", 50) + "\n")
-	sb.WriteString(fmt.Sprintf("总请求数: %d    成功率: %.1f%%\n", totalReqs, successRate))
-	sb.WriteString(fmt.Sprintf("完成: %d  失败: %d\n", done, done-success))
-	sb.WriteString(fmt.Sprintf("平均 TPS: %.1f     缓存命中率: %.1f%%\n", avgTPS, avgCacheRate))
+	sb.WriteString(fmt.Sprintf("总请求数: %d    成功率: %.1f%%\n", stats.TotalReqs, stats.SuccessRate))
+	sb.WriteString(fmt.Sprintf("完成: %d  失败: %d\n", stats.Done, stats.Failed))
+	sb.WriteString(fmt.Sprintf("平均 TPS: %.1f     缓存命中率: %.1f%%\n", stats.AvgTPS, stats.AvgCacheRate))
 	sb.WriteString(fmt.Sprintf("P50 TTFT: %s     P99 TTFT: %s\n",
-		p50TTFT.Truncate(time.Millisecond), p99TTFT.Truncate(time.Millisecond)))
-	sb.WriteString(fmt.Sprintf("RPM: %.0f           TPM: %.0f\n", rpm, tpm))
+		stats.P50TTFT.Truncate(time.Millisecond), stats.P99TTFT.Truncate(time.Millisecond)))
+	sb.WriteString(fmt.Sprintf("RPM: %.0f           TPM: %.0f\n", stats.RPM, stats.TPM))
 	return sb.String()
 }
 

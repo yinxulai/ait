@@ -2,6 +2,7 @@ package tui
 
 import (
 	"fmt"
+	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -19,7 +20,9 @@ type MainPage struct {
 	taskTable    *tview.Table
 	historyTable *tview.Table
 	statsPanel   *tview.Flex
-	statsText    *tview.TextView
+	statsBox     *tview.Flex
+	statsTable   *tview.Table
+	progressText *tview.TextView
 	requestTable *tview.Table
 	activePanel  panelIndex
 	root         *tview.Flex
@@ -31,6 +34,7 @@ type MainPage struct {
 	runRequests    map[int][]types.RequestMetrics // key = runs 切片索引
 	totalReqs      int
 	selectedTaskID string
+	selectedRunID  string
 }
 
 // NewMainPage 创建主布局页面。
@@ -60,7 +64,6 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 		SetTitleAlign(tview.AlignLeft)
 	m.taskTable.SetSelectionChangedFunc(func(_, _ int) {
 		m.updateFooter()
-		m.refreshHistoryForSelectedTask()
 	})
 
 	// History Table (中 panel)
@@ -72,11 +75,18 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 		m.updateFooter()
 	})
 
-	// Stats Text (右 panel 上)
-	m.statsText = tview.NewTextView().
+	// Stats Box (右 panel 上)
+	m.statsTable = tview.NewTable().
+		SetSelectable(false, false).
+		SetSeparator(' ')
+	m.progressText = tview.NewTextView().
 		SetDynamicColors(true).
-		SetScrollable(true)
-	m.statsText.SetBorder(true).
+		SetTextAlign(tview.AlignLeft)
+	m.statsBox = tview.NewFlex().
+		SetDirection(tview.FlexRow).
+		AddItem(m.statsTable, 0, 1, false).
+		AddItem(m.progressText, 1, 0, false)
+	m.statsBox.SetBorder(true).
 		SetTitle(" Statistics ").
 		SetTitleAlign(tview.AlignLeft)
 
@@ -92,7 +102,7 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 	// 右 panel 布局：statsText 上 + requestList 下
 	m.statsPanel = tview.NewFlex().
 		SetDirection(tview.FlexRow).
-		AddItem(m.statsText, 0, 4, false).
+		AddItem(m.statsBox, 0, 4, false).
 		AddItem(m.requestTable, 0, 6, true)
 
 	// 三栏布局
@@ -144,10 +154,25 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 		m.app.SetFocus(m.FocusTarget())
 		return nil
 	case tcell.KeyEnter:
-		target := m.EnterAction()
-		if target != nil {
-			router.NavigateTo(target)
-			m.app.SetFocus(target.FocusTarget())
+		switch m.activePanel {
+		case panelTasks:
+			m.selectCurrentTask()
+			m.activePanel = panelHistory
+			m.updatePanelStyles()
+			m.updateFooter()
+			m.app.SetFocus(m.FocusTarget())
+		case panelHistory:
+			m.selectCurrentRun()
+			m.activePanel = panelStats
+			m.updatePanelStyles()
+			m.updateFooter()
+			m.app.SetFocus(m.FocusTarget())
+		case panelStats:
+			target := m.requestDetailPage()
+			if target != nil {
+				router.NavigateTo(target)
+				m.app.SetFocus(target.FocusTarget())
+			}
 		}
 		return nil
 	case tcell.KeyEsc:
@@ -195,16 +220,21 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 	return event // ↑↓ 等透传给 tview Table
 }
 
-func (m *MainPage) refreshHistoryForSelectedTask() {
+func (m *MainPage) selectCurrentTask() {
 	idx := selectedDataIndex(m.taskTable)
 	if idx < 0 || idx >= len(m.tasks) {
 		return
 	}
 	taskID := m.tasks[idx].ID
-	if taskID == "" || taskID == m.selectedTaskID {
+	if taskID == "" {
+		return
+	}
+	if taskID == m.selectedTaskID {
+		m.selectCurrentRun()
 		return
 	}
 	m.selectedTaskID = taskID
+	m.selectedRunID = ""
 	go func() {
 		runs, _ := m.srv.ListTaskRunHistory(taskID, 50)
 		m.app.QueueUpdateDraw(func() {
@@ -215,30 +245,43 @@ func (m *MainPage) refreshHistoryForSelectedTask() {
 	}()
 }
 
-// ─── Enter 导航 ────────────────────────────────────────────────────────────────
+func (m *MainPage) selectCurrentRun() {
+	idx := selectedDataIndex(m.historyTable)
+	if idx < 0 || idx >= len(m.runs) {
+		m.selectedRunID = ""
+		m.requests = nil
+		m.RebuildStatsAndRequests()
+		return
+	}
 
-// EnterAction 根据当前 activePanel 和选中项返回目标页面，nil 表示无操作。
-func (m *MainPage) EnterAction() Page {
-	switch m.activePanel {
-	case panelTasks:
-		idx := selectedDataIndex(m.taskTable)
-		if idx >= 0 && idx < len(m.tasks) {
-			return NewTaskDetailPage(&m.tasks[idx])
+	m.selectedRunID = m.runs[idx].RunID
+	if state, ok := m.srv.GetRunState(server.RunID(m.selectedRunID)); ok {
+		m.requests = requestMetricsFromState(state)
+	} else if reqs, ok := m.runRequests[idx]; ok {
+		m.requests = reqs
+	} else {
+		m.requests = nil
+	}
+	m.RebuildStatsAndRequests()
+}
+
+func requestMetricsFromState(state *server.RunState) []types.RequestMetrics {
+	if state == nil || len(state.Requests) == 0 {
+		return nil
+	}
+	requests := make([]types.RequestMetrics, 0, len(state.Requests))
+	for _, request := range state.Requests {
+		if request != nil {
+			requests = append(requests, *request)
 		}
-	case panelHistory:
-		idx := selectedDataIndex(m.historyTable)
-		if idx >= 0 && idx < len(m.runs) {
-			reqs, ok := m.runRequests[idx]
-			if !ok {
-				reqs = nil
-			}
-			return NewStandardDashboardPage(m.srv, &m.runs[idx], reqs, m.totalReqs)
-		}
-	case panelStats:
-		idx := selectedDataIndex(m.requestTable)
-		if idx >= 0 && idx < len(m.requests) {
-			return NewRequestDetailPage(&m.requests[idx])
-		}
+	}
+	return requests
+}
+
+func (m *MainPage) requestDetailPage() Page {
+	idx := selectedDataIndex(m.requestTable)
+	if idx >= 0 && idx < len(m.requests) {
+		return NewRequestDetailPage(&m.requests[idx])
 	}
 	return nil
 }
@@ -278,9 +321,9 @@ func (m *MainPage) updateFooter() {
 	var txt string
 	switch m.activePanel {
 	case panelTasks:
-		txt = "Tab=切换面板  ↑↓=选择  Enter=详情  r=运行  R=刷新  Esc=退出"
+		txt = "Tab=切换面板  ↑↓=移动  Enter=选择任务  r=运行  R=刷新  Esc=退出"
 	case panelHistory:
-		txt = "Tab=切换面板  ↑↓=选择  Enter=仪表盘  s=停止  Esc=退出"
+		txt = "Tab=切换面板  ↑↓=移动  Enter=选择运行  s=停止  Esc=退出"
 	case panelStats:
 		txt = "Tab=切换面板  ↑↓=选择  Enter=请求详情  Esc=退出"
 	}
@@ -313,10 +356,12 @@ func (m *MainPage) PopulateData(
 	m.runRequests = runReqs
 	m.totalReqs = totalReqs
 	m.selectedTaskID = ""
+	m.selectedRunID = ""
 
 	m.RebuildTaskList()
 	m.RebuildHistoryList()
-	m.RebuildStatsAndRequests()
+	m.selectCurrentTask()
+	m.selectCurrentRun()
 }
 
 // RebuildTaskList 清空并重建任务表。
@@ -351,18 +396,46 @@ func (m *MainPage) RebuildStatsAndRequests() {
 	done := len(m.requests)
 	if !isCompleted && m.totalReqs > 0 {
 		pct := done * 100 / m.totalReqs
-		m.statsText.SetTitle(fmt.Sprintf(" Statistics [Running %d%%] ", pct))
+		m.statsBox.SetTitle(fmt.Sprintf(" Statistics [Running %d%%] ", pct))
 	} else {
-		m.statsText.SetTitle(" Statistics [Completed 100%] ")
+		m.statsBox.SetTitle(" Statistics [Completed 100%] ")
 	}
 
-	m.statsText.SetText(formatStats(m.requests, m.totalReqs, isCompleted, 0))
+	m.rebuildStatsTable(isCompleted)
+	m.progressText.SetText(formatStatsProgress(m.requests, m.totalReqs, isCompleted, 0, 36))
 
 	rows := make([][]string, 0, len(m.requests))
 	for _, r := range m.requests {
 		rows = append(rows, formatReqRow(r))
 	}
 	setTableRows(m.requestTable, requestColumns(), rows)
+}
+
+func (m *MainPage) rebuildStatsTable(isCompleted bool) {
+	stats := calculateStats(m.requests, m.totalReqs, isCompleted, 0)
+	rows := [][4]string{
+		{"总请求数", fmt.Sprintf("%d", stats.TotalReqs), "成功率", fmt.Sprintf("%.1f%%", stats.SuccessRate)},
+		{"完成", fmt.Sprintf("%d", stats.Done), "失败", fmt.Sprintf("%d", stats.Failed)},
+		{"平均 TPS", fmt.Sprintf("%.1f", stats.AvgTPS), "缓存命中率", fmt.Sprintf("%.1f%%", stats.AvgCacheRate)},
+		{"P50 TTFT", stats.P50TTFT.Truncate(time.Millisecond).String(), "P99 TTFT", stats.P99TTFT.Truncate(time.Millisecond).String()},
+		{"RPM", fmt.Sprintf("%.0f", stats.RPM), "TPM", fmt.Sprintf("%.0f", stats.TPM)},
+	}
+
+	m.statsTable.Clear()
+	for rowIdx, row := range rows {
+		for colIdx, text := range row {
+			cell := tview.NewTableCell(text).
+				SetSelectable(false).
+				SetExpansion(1).
+				SetMaxWidth(24)
+			if colIdx%2 == 0 {
+				cell.SetTextColor(tcell.ColorGray)
+			} else {
+				cell.SetTextColor(tcell.ColorWhite)
+			}
+			m.statsTable.SetCell(rowIdx, colIdx, cell)
+		}
+	}
 }
 
 // RefreshTasks 清空并重建任务表（由 startUpdateLoop 调用）。
@@ -376,16 +449,21 @@ func (m *MainPage) RefreshTasks(tasks []types.TaskOverview) {
 	m.RebuildTaskList()
 	selectDataIndex(m.taskTable, indexTaskByID(tasks, oldTaskID, oldIdx))
 	m.selectedTaskID = ""
-	m.refreshHistoryForSelectedTask()
+	m.selectCurrentTask()
 	m.updatePanelStyles()
 }
 
 // RefreshRuns 清空并重建历史表（由 startUpdateLoop 调用）。
 func (m *MainPage) RefreshRuns(runs []types.TaskRunSummary) {
 	oldIdx := selectedDataIndex(m.historyTable)
+	oldRunID := ""
+	if oldIdx >= 0 && oldIdx < len(m.runs) {
+		oldRunID = m.runs[oldIdx].RunID
+	}
 	m.runs = runs
 	m.RebuildHistoryList()
-	selectDataIndex(m.historyTable, oldIdx)
+	selectDataIndex(m.historyTable, indexRunByID(runs, oldRunID, oldIdx))
+	m.selectCurrentRun()
 	m.updatePanelStyles()
 }
 
@@ -407,6 +485,20 @@ func indexTaskByID(tasks []types.TaskOverview, taskID string, fallback int) int 
 		}
 	}
 	if fallback >= 0 && fallback < len(tasks) {
+		return fallback
+	}
+	return 0
+}
+
+func indexRunByID(runs []types.TaskRunSummary, runID string, fallback int) int {
+	if runID != "" {
+		for idx, run := range runs {
+			if run.RunID == runID {
+				return idx
+			}
+		}
+	}
+	if fallback >= 0 && fallback < len(runs) {
 		return fallback
 	}
 	return 0
