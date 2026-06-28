@@ -17,7 +17,7 @@ type StandardDashboardPage struct {
 	reqs     []types.RequestMetrics
 	total    int
 	root     *tview.Flex
-	rList    *tview.Table
+	rList    *tview.List
 	statsTv  *tview.TextView
 }
 
@@ -59,44 +59,18 @@ func NewStandardDashboardPage(
 	}
 	p.statsTv.SetText(formatStats(reqs, totalReqs, isCompleted, elapsed))
 
-	// 请求表格
-	p.rList = tview.NewTable().
-		SetBorders(true).
-		SetSelectable(true, false).
-		SetFixed(1, 0)
+	// 请求列表
+	p.rList = tview.NewList().
+		ShowSecondaryText(true)
 	p.rList.SetBorder(true).SetTitle(" Requests ").SetTitleAlign(tview.AlignLeft)
-	p.rList.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite))
+	p.rList.SetSelectedBackgroundColor(tcell.ColorDarkBlue)
 
-	p.rList.SetCell(0, 0, tview.NewTableCell("#").SetAlign(tview.AlignLeft).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 1, tview.NewTableCell("Status").SetAlign(tview.AlignCenter).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 2, tview.NewTableCell("Total").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 3, tview.NewTableCell("TTFT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 4, tview.NewTableCell("TPS").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 5, tview.NewTableCell("PT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 6, tview.NewTableCell("CT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 7, tview.NewTableCell("CH").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-
-	for i, r := range reqs {
-		row := i + 1
-		status := "✅"
-		if !r.Success {
-			status = "❌"
-		}
-		p.rList.SetCell(row, 0, tview.NewTableCell(fmt.Sprintf("#%03d", r.Index)).SetAlign(tview.AlignLeft))
-		p.rList.SetCell(row, 1, tview.NewTableCell(status).SetAlign(tview.AlignCenter))
-		p.rList.SetCell(row, 2, tview.NewTableCell(r.TotalTime.Truncate(time.Millisecond).String()).SetAlign(tview.AlignRight))
-		ttftText := r.TTFT.Truncate(time.Millisecond).String()
-		if !r.Success {
-			ttftText = "-"
-		}
-		p.rList.SetCell(row, 3, tview.NewTableCell(ttftText).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf("%.0f", r.TPS)).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf("%d", r.PromptTokens)).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 6, tview.NewTableCell(fmt.Sprintf("%d", r.CompletionTokens)).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 7, tview.NewTableCell(fmt.Sprintf("%.0f%%", r.CacheHitRate)).SetAlign(tview.AlignRight))
+	for _, r := range reqs {
+		main, sec := formatReqLine(r)
+		p.rList.AddItem(main, sec, 0, nil)
 	}
-	if p.rList.GetRowCount() > 1 {
-		p.rList.Select(1, 0)
+	if p.rList.GetItemCount() > 0 {
+		p.rList.SetCurrentItem(0)
 	}
 
 	// Footer
@@ -131,35 +105,9 @@ func (p *StandardDashboardPage) SetRequests(reqs []types.RequestMetrics, totalRe
 	}
 	p.statsTv.SetText(formatStats(reqs, totalReqs, isCompleted, elapsed))
 	p.rList.Clear()
-	p.rList.SetCell(0, 0, tview.NewTableCell("#").SetAlign(tview.AlignLeft).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 1, tview.NewTableCell("Status").SetAlign(tview.AlignCenter).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 2, tview.NewTableCell("Total").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 3, tview.NewTableCell("TTFT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 4, tview.NewTableCell("TPS").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 5, tview.NewTableCell("PT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 6, tview.NewTableCell("CT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	p.rList.SetCell(0, 7, tview.NewTableCell("CH").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	for i, r := range reqs {
-		row := i + 1
-		status := "✅"
-		if !r.Success {
-			status = "❌"
-		}
-		p.rList.SetCell(row, 0, tview.NewTableCell(fmt.Sprintf("#%03d", r.Index)).SetAlign(tview.AlignLeft))
-		p.rList.SetCell(row, 1, tview.NewTableCell(status).SetAlign(tview.AlignCenter))
-		p.rList.SetCell(row, 2, tview.NewTableCell(r.TotalTime.Truncate(time.Millisecond).String()).SetAlign(tview.AlignRight))
-		ttftText := r.TTFT.Truncate(time.Millisecond).String()
-		if !r.Success {
-			ttftText = "-"
-		}
-		p.rList.SetCell(row, 3, tview.NewTableCell(ttftText).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf("%.0f", r.TPS)).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf("%d", r.PromptTokens)).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 6, tview.NewTableCell(fmt.Sprintf("%d", r.CompletionTokens)).SetAlign(tview.AlignRight))
-		p.rList.SetCell(row, 7, tview.NewTableCell(fmt.Sprintf("%.0f%%", r.CacheHitRate)).SetAlign(tview.AlignRight))
-	}
-	if p.rList.GetRowCount() > 1 {
-		p.rList.Select(1, 0)
+	for _, r := range reqs {
+		main, sec := formatReqLine(r)
+		p.rList.AddItem(main, sec, 0, nil)
 	}
 }
 

@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/gdamore/tcell/v2"
@@ -21,8 +20,8 @@ func SetVersion(v string) { version = v }
 // ─── 尺寸常量 ──────────────────────────────────────────────────────────────────
 
 const (
-	minTermWidth  = 100
-	minTermHeight = 14
+	minTermWidth  = 120
+	minTermHeight = 16
 )
 
 // ─── tuiState ──────────────────────────────────────────────────────────────────
@@ -131,7 +130,6 @@ func (s *tuiState) beforeDrawCheck(screen tcell.Screen) bool {
 
 // Run 启动 TUI，srv 为 Server 接口引用。
 func Run(srv server.Server) error {
-	os.WriteFile("/tmp/ait-tui-start.log", []byte("TUI starting\n"), 0644)
 	app := tview.NewApplication()
 	pages := tview.NewPages()
 	router := NewPageRouter(pages)
@@ -146,8 +144,6 @@ func Run(srv server.Server) error {
 	// 2.5 注入 runRequests + totalReqs（静态数据，不通过 channel）
 	mp.SetRunRequests(generateRunRequests())
 	mp.SetTotalReqs(10000)
-	// 2.6 直接注入首屏初始数据，避免依赖异步 channel
-	mp.PopulateData(generateTaskOverviews(), generateRunSummaries(), generateRequestMetrics(50), generateRunRequests(), 10000)
 
 	// 3. 首次数据注入（Simulator 构造时已推入初始数据到 channel）
 	state := &tuiState{
@@ -162,17 +158,15 @@ func Run(srv server.Server) error {
 	// 4. 启动更新循环（先启动，确保能消费初始数据）
 	state.startUpdateLoop(tasksCh, runsCh, reqsCh)
 
-	// 5. 加载主页面并设置根视图
-	pages.AddPage(mp.Name(), mp.Primitive(), true, true)
-	router.stack = append(router.stack, mp)
-	app.SetRoot(mp.Primitive(), true)
+	// 5. SetRoot + 导航到主页
+	app.SetRoot(pages, true)
+	router.NavigateTo(mp)
 	app.SetFocus(mp.FocusTarget())
 
 	// 6. 注册按键 + 尺寸检测
 	state.setupKeybindings()
 
 	// 7. 运行
-	os.WriteFile("/tmp/ait-tui-run.log", []byte("TUI running\n"), 0644)
 	if err := app.Run(); err != nil {
 		state.stop()
 		_ = srv.Shutdown(5 * time.Second)

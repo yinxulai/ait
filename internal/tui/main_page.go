@@ -2,7 +2,6 @@ package tui
 
 import (
 	"fmt"
-	"time"
 
 	"github.com/gdamore/tcell/v2"
 	"github.com/rivo/tview"
@@ -17,11 +16,11 @@ type MainPage struct {
 	version     string
 	header      *tview.TextView
 	footer      *tview.TextView
-	taskList    *tview.Table
-	historyList *tview.Table
+	taskList    *tview.List
+	historyList *tview.List
 	statsPanel  *tview.Flex
 	statsText   *tview.TextView
-	requestList *tview.Table
+	requestList *tview.List
 	activePanel panelIndex
 	root        *tview.Flex
 
@@ -53,29 +52,23 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
 
-	// Task Table (左 panel)
-	m.taskList = tview.NewTable().
-		SetBorders(true).
-		SetSelectable(true, false).
-		SetFixed(1, 0)
+	// Task List (左 panel)
+	m.taskList = tview.NewList().
+		ShowSecondaryText(true)
 	m.taskList.SetBorder(true).
 		SetTitle(" Tasks ").
 		SetTitleAlign(tview.AlignLeft)
-	m.taskList.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite))
-	m.taskList.SetSelectionChangedFunc(func(_ int, _ int) {
+	m.taskList.SetChangedFunc(func(_ int, _, _ string, _ rune) {
 		m.updateFooter()
 	})
 
-	// History Table (中 panel)
-	m.historyList = tview.NewTable().
-		SetBorders(true).
-		SetSelectable(true, false).
-		SetFixed(1, 0)
+	// History List (中 panel)
+	m.historyList = tview.NewList().
+		ShowSecondaryText(true)
 	m.historyList.SetBorder(true).
 		SetTitle(" Run History ").
 		SetTitleAlign(tview.AlignLeft)
-	m.historyList.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite))
-	m.historyList.SetSelectionChangedFunc(func(_ int, _ int) {
+	m.historyList.SetChangedFunc(func(_ int, _, _ string, _ rune) {
 		m.updateFooter()
 	})
 
@@ -87,16 +80,13 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 		SetTitle(" Statistics ").
 		SetTitleAlign(tview.AlignLeft)
 
-	// Request Table (右 panel 下)
-	m.requestList = tview.NewTable().
-		SetBorders(true).
-		SetSelectable(true, false).
-		SetFixed(1, 0)
+	// Request List (右 panel 下)
+	m.requestList = tview.NewList().
+		ShowSecondaryText(true)
 	m.requestList.SetBorder(true).
 		SetTitle(" Requests ").
 		SetTitleAlign(tview.AlignLeft)
-	m.requestList.SetSelectedStyle(tcell.StyleDefault.Background(tcell.ColorDarkBlue).Foreground(tcell.ColorWhite))
-	m.requestList.SetSelectionChangedFunc(func(_ int, _ int) {
+	m.requestList.SetChangedFunc(func(_ int, _, _ string, _ rune) {
 		m.updateFooter()
 	})
 
@@ -118,7 +108,6 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 		AddItem(m.header, 1, 0, false).
 		AddItem(content, 0, 1, true).
 		AddItem(m.footer, 1, 0, false)
-	m.root.SetBorder(true).SetTitle(" AIT Main ")
 
 	m.activePanel = panelTasks
 	m.updatePanelStyles()
@@ -144,31 +133,6 @@ func (m *MainPage) FocusTarget() tview.Primitive {
 		return m.requestList
 	}
 }
-
-func (m *MainPage) selectedTaskIndex() int {
-	row, _ := m.taskList.GetSelection()
-	if row <= 0 || row > m.taskList.GetRowCount()-1 {
-		return -1
-	}
-	return row - 1
-}
-
-func (m *MainPage) selectedHistoryIndex() int {
-	row, _ := m.historyList.GetSelection()
-	if row <= 0 || row > m.historyList.GetRowCount()-1 {
-		return -1
-	}
-	return row - 1
-}
-
-func (m *MainPage) selectedRequestIndex() int {
-	row, _ := m.requestList.GetSelection()
-	if row <= 0 || row > m.requestList.GetRowCount()-1 {
-		return -1
-	}
-	return row - 1
-}
-
 
 func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.EventKey {
 	switch event.Key() {
@@ -196,7 +160,7 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 	switch event.Rune() {
 	case 'r':
 		if m.activePanel == panelTasks {
-			idx := m.selectedTaskIndex()
+			idx := m.taskList.GetCurrentItem()
 			if idx >= 0 && idx < len(m.tasks) {
 				go func() { _, _ = m.srv.StartRun(m.tasks[idx].ID) }()
 			}
@@ -204,7 +168,7 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 		return nil
 	case 's':
 		if m.activePanel == panelHistory {
-			idx := m.selectedHistoryIndex()
+			idx := m.historyList.GetCurrentItem()
 			if idx >= 0 && idx < len(m.runs) && m.runs[idx].Status == "running" {
 				go func() { _ = m.srv.StopRun(server.RunID(m.runs[idx].RunID)) }()
 			}
@@ -219,7 +183,7 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 			}()
 		case panelHistory:
 			go func() {
-				idx := m.selectedTaskIndex()
+				idx := m.taskList.GetCurrentItem()
 				if idx >= 0 && idx < len(m.tasks) {
 					runs, _ := m.srv.ListTaskRunHistory(m.tasks[idx].ID, 50)
 					m.app.QueueUpdateDraw(func() { m.RefreshRuns(runs) })
@@ -238,12 +202,12 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 func (m *MainPage) EnterAction() Page {
 	switch m.activePanel {
 	case panelTasks:
-		idx := m.selectedTaskIndex()
+		idx := m.taskList.GetCurrentItem()
 		if idx >= 0 && idx < len(m.tasks) {
 			return NewTaskDetailPage(&m.tasks[idx])
 		}
 	case panelHistory:
-		idx := m.selectedHistoryIndex()
+		idx := m.historyList.GetCurrentItem()
 		if idx >= 0 && idx < len(m.runs) {
 			reqs, ok := m.runRequests[idx]
 			if !ok {
@@ -252,7 +216,7 @@ func (m *MainPage) EnterAction() Page {
 			return NewStandardDashboardPage(m.srv, &m.runs[idx], reqs, m.totalReqs)
 		}
 	case panelStats:
-		idx := m.selectedRequestIndex()
+		idx := m.requestList.GetCurrentItem()
 		if idx >= 0 && idx < len(m.requests) {
 			return NewRequestDetailPage(&m.requests[idx])
 		}
@@ -277,12 +241,16 @@ func (m *MainPage) prevPanel() {
 func (m *MainPage) updatePanelStyles() {
 	activeColor := tcell.ColorYellow
 	inactiveColor := tcell.ColorGray
+	activeBg := tcell.ColorDarkBlue
+	inactiveBg := tcell.ColorBlack
 
-	for i, table := range []*tview.Table{m.taskList, m.historyList, m.requestList} {
+	for i, list := range []*tview.List{m.taskList, m.historyList, m.requestList} {
 		if panelIndex(i) == m.activePanel {
-			table.SetBorderColor(activeColor)
+			list.SetBorderColor(activeColor)
+			list.SetSelectedBackgroundColor(activeBg)
 		} else {
-			table.SetBorderColor(inactiveColor)
+			list.SetBorderColor(inactiveColor)
+			list.SetSelectedBackgroundColor(inactiveBg)
 		}
 	}
 }
@@ -331,61 +299,27 @@ func (m *MainPage) PopulateData(
 	m.RebuildStatsAndRequests()
 }
 
-// RebuildTaskList 清空并重建任务表格。
+// RebuildTaskList 清空并重建任务列表。
 func (m *MainPage) RebuildTaskList() {
 	m.taskList.Clear()
-	m.taskList.SetCell(0, 0, tview.NewTableCell("Task").SetAlign(tview.AlignLeft).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.taskList.SetCell(0, 1, tview.NewTableCell("Mode").SetAlign(tview.AlignCenter).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.taskList.SetCell(0, 2, tview.NewTableCell("Status").SetAlign(tview.AlignCenter).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.taskList.SetCell(0, 3, tview.NewTableCell("SR").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.taskList.SetCell(0, 4, tview.NewTableCell("TPS").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	for i, t := range m.tasks {
-		row := i + 1
-		status := "idle"
-		srText := "-"
-		tpsText := "-"
-		mode := t.Input.RunMode()
-		if t.LatestRun != nil {
-			status = t.LatestRun.Status
-			srText = fmt.Sprintf("%.1f%%", t.LatestRun.SuccessRate*100)
-			tpsText = fmt.Sprintf("%.0f", t.LatestRun.AvgTPS)
-		}
-		m.taskList.SetCell(row, 0, tview.NewTableCell(t.Name).SetAlign(tview.AlignLeft))
-		m.taskList.SetCell(row, 1, tview.NewTableCell(mode).SetAlign(tview.AlignCenter))
-		m.taskList.SetCell(row, 2, tview.NewTableCell(status).SetAlign(tview.AlignCenter))
-		m.taskList.SetCell(row, 3, tview.NewTableCell(srText).SetAlign(tview.AlignRight))
-		m.taskList.SetCell(row, 4, tview.NewTableCell(tpsText).SetAlign(tview.AlignRight))
+	for _, t := range m.tasks {
+		main, sec := formatTaskLine(t)
+		m.taskList.AddItem(main, sec, 0, nil)
 	}
-	if m.taskList.GetRowCount() > 1 {
-		m.taskList.Select(1, 0)
+	if m.taskList.GetItemCount() > 0 {
+		m.taskList.SetCurrentItem(0)
 	}
 }
 
 // RebuildHistoryList 清空并重建历史列表。
 func (m *MainPage) RebuildHistoryList() {
 	m.historyList.Clear()
-	m.historyList.SetCell(0, 0, tview.NewTableCell("RunID").SetAlign(tview.AlignLeft).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.historyList.SetCell(0, 1, tview.NewTableCell("Mode").SetAlign(tview.AlignCenter).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.historyList.SetCell(0, 2, tview.NewTableCell("Start").SetAlign(tview.AlignCenter).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.historyList.SetCell(0, 3, tview.NewTableCell("Duration").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.historyList.SetCell(0, 4, tview.NewTableCell("SR").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.historyList.SetCell(0, 5, tview.NewTableCell("TPS").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	for i, r := range m.runs {
-		row := i + 1
-		shortID := r.RunID
-		if len(shortID) > 8 {
-			shortID = shortID[:8]
-		}
-		dur := r.FinishedAt.Sub(r.StartedAt).Truncate(time.Second)
-		m.historyList.SetCell(row, 0, tview.NewTableCell(shortID).SetAlign(tview.AlignLeft))
-		m.historyList.SetCell(row, 1, tview.NewTableCell(r.Mode).SetAlign(tview.AlignCenter))
-		m.historyList.SetCell(row, 2, tview.NewTableCell(r.StartedAt.Format("01-02 15:04")).SetAlign(tview.AlignCenter))
-		m.historyList.SetCell(row, 3, tview.NewTableCell(dur.String()).SetAlign(tview.AlignRight))
-		m.historyList.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf("%.1f%%", r.SuccessRate*100)).SetAlign(tview.AlignRight))
-		m.historyList.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf("%.0f", r.AvgTPS)).SetAlign(tview.AlignRight))
+	for _, r := range m.runs {
+		main, sec := formatRunLine(r)
+		m.historyList.AddItem(main, sec, 0, nil)
 	}
-	if m.historyList.GetRowCount() > 1 {
-		m.historyList.Select(1, 0)
+	if m.historyList.GetItemCount() > 0 {
+		m.historyList.SetCurrentItem(0)
 	}
 }
 
@@ -411,60 +345,33 @@ func (m *MainPage) RebuildStatsAndRequests() {
 	m.statsText.SetText(formatStats(m.requests, m.totalReqs, isCompleted, 0))
 
 	m.requestList.Clear()
-	m.requestList.SetCell(0, 0, tview.NewTableCell("#").SetAlign(tview.AlignLeft).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.requestList.SetCell(0, 1, tview.NewTableCell("Status").SetAlign(tview.AlignCenter).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.requestList.SetCell(0, 2, tview.NewTableCell("Total").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.requestList.SetCell(0, 3, tview.NewTableCell("TTFT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.requestList.SetCell(0, 4, tview.NewTableCell("TPS").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.requestList.SetCell(0, 5, tview.NewTableCell("PT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.requestList.SetCell(0, 6, tview.NewTableCell("CT").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	m.requestList.SetCell(0, 7, tview.NewTableCell("CH").SetAlign(tview.AlignRight).SetSelectable(false).SetAttributes(tcell.AttrBold))
-	for i, r := range m.requests {
-		row := i + 1
-		status := "✅"
-		if !r.Success {
-			status = "❌"
-		}
-		m.requestList.SetCell(row, 0, tview.NewTableCell(fmt.Sprintf("#%03d", r.Index)).SetAlign(tview.AlignLeft))
-		m.requestList.SetCell(row, 1, tview.NewTableCell(status).SetAlign(tview.AlignCenter))
-		m.requestList.SetCell(row, 2, tview.NewTableCell(r.TotalTime.Truncate(time.Millisecond).String()).SetAlign(tview.AlignRight))
-		ttftText := r.TTFT.Truncate(time.Millisecond).String()
-		if !r.Success {
-			ttftText = "-"
-		}
-		m.requestList.SetCell(row, 3, tview.NewTableCell(ttftText).SetAlign(tview.AlignRight))
-		m.requestList.SetCell(row, 4, tview.NewTableCell(fmt.Sprintf("%.0f", r.TPS)).SetAlign(tview.AlignRight))
-		m.requestList.SetCell(row, 5, tview.NewTableCell(fmt.Sprintf("%d", r.PromptTokens)).SetAlign(tview.AlignRight))
-		m.requestList.SetCell(row, 6, tview.NewTableCell(fmt.Sprintf("%d", r.CompletionTokens)).SetAlign(tview.AlignRight))
-		m.requestList.SetCell(row, 7, tview.NewTableCell(fmt.Sprintf("%.0f%%", r.CacheHitRate)).SetAlign(tview.AlignRight))
+	for _, r := range m.requests {
+		main, sec := formatReqLine(r)
+		m.requestList.AddItem(main, sec, 0, nil)
 	}
-	if m.requestList.GetRowCount() > 1 {
-		m.requestList.Select(1, 0)
+	if m.requestList.GetItemCount() > 0 {
+		m.requestList.SetCurrentItem(0)
 	}
 }
 
 // RefreshTasks 清空并重建任务列表（由 startUpdateLoop 调用）。
 func (m *MainPage) RefreshTasks(tasks []types.TaskOverview) {
-	row, _ := m.taskList.GetSelection()
+	oldIdx := m.taskList.GetCurrentItem()
 	m.tasks = tasks
 	m.RebuildTaskList()
-	if row > 0 && row < m.taskList.GetRowCount() {
-		m.taskList.Select(row, 0)
-	} else if m.taskList.GetRowCount() > 1 {
-		m.taskList.Select(1, 0)
+	if oldIdx < m.taskList.GetItemCount() {
+		m.taskList.SetCurrentItem(oldIdx)
 	}
 	m.updatePanelStyles()
 }
 
 // RefreshRuns 清空并重建历史列表（由 startUpdateLoop 调用）。
 func (m *MainPage) RefreshRuns(runs []types.TaskRunSummary) {
-	row, _ := m.historyList.GetSelection()
+	oldIdx := m.historyList.GetCurrentItem()
 	m.runs = runs
 	m.RebuildHistoryList()
-	if row > 0 && row < m.historyList.GetRowCount() {
-		m.historyList.Select(row, 0)
-	} else if m.historyList.GetRowCount() > 1 {
-		m.historyList.Select(1, 0)
+	if oldIdx < m.historyList.GetItemCount() {
+		m.historyList.SetCurrentItem(oldIdx)
 	}
 	m.updatePanelStyles()
 }
