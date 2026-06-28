@@ -18,8 +18,6 @@
 
 相关设计：
 
-- [TUI 页面功能与布局设计](tui-pages.md)
-- [TUI 重写实施计划](tui-implementation-plan.md)
 - [统一运行存储设计](storage.md)
 - [队列化执行架构设计](queue.md)
 - [Turbo 模式功能设计](turbo.md)
@@ -137,7 +135,7 @@ main()
 
 ```
 ┌──────────────────────────────────────────────────────────────┐
-│  cmd/ait/main.go  ─  入口                                    │
+│  cmd/ait/ait.go  ─  入口                                    │
 │   解析 flag → 创建 Server → 启动 TUI Client                  │
 └──────────────────────┬───────────────────────────────────────┘
                        │
@@ -159,12 +157,12 @@ main()
 
    CLIENT LAYER（调用 Server 接口，不直接依赖下层）：
    ┌─────────────────────────────────────────────────────┐
-   │  internal/tui/   ─  TUI Client（当前）               │
-   │  BubbleTea 状态机 + 页面渲染                         │
+   │  internal/tui/   ─  TUI Client（当前，tview 实现）    │
+   │  tview 组件树 + Page 路由 + 异步数据管道             │
    └─────────────────────────────────────────────────────┘
    ┌─────────────────────────────────────────────────────┐
-   │  internal/webui/  ─  Web UI Bridge（未来）           │
-   │  HTTP / WebSocket 桥接，前端通过浏览器访问            │
+   │  internal/web/    ─  Web UI（已实现）                │
+   │  HTTP / SSE 桥接，前端通过浏览器访问                  │
    └─────────────────────────────────────────────────────┘
 ```
 
@@ -226,9 +224,9 @@ type CancelFunc func()
 | **持久化子模块** | `internal/server/store` `internal/server/config` | `store` 是下一版唯一持久化实现；`config` 仅负责应用目录与路径解析 |
 | **渲染子模块** | `internal/server/report` | JSON / CSV / Turbo / Integrity 报告渲染；纯函数，无副作用 |
 | **工具子模块** | `internal/server/prompt` `internal/server/network` `internal/server/logger` `internal/server/upload` | Server 内部公共工具，无 UI 依赖 |
-| **TUI Client** | `internal/tui` | BubbleTea 状态机；**只依赖 server.Server 接口**；渲染终端 UI |
+| **TUI Client** | `internal/tui` | tview 组件树；**只依赖 server.Server 接口**；渲染终端 UI |
 | **MCP Client** | `internal/mcp` | MCP 协议适配层；**只依赖 server.Server 接口**；不直接访问 Server 子模块 |
-| **Web Client** _(Future)_ | `internal/webui` | HTTP/WS 桥接；**只依赖 server.Server 接口**；提供 Web API |
+| **Web Client**（已实现） | `internal/web` | HTTP/SSE 桥接；**只依赖 server.Server 接口**；提供 Web API |
 
 > 存储设计请优先参考 [统一运行存储设计](storage.md)。该文档描述目标存储架构，不以当前实现与兼容层为约束。目标源码目录采用“父模块聚合”原则：属于 `server` 的执行、协议、存储、报告、工具等子模块都放在 `internal/server/` 下；其他父模块也按同样方式收纳自己的子模块，避免 `internal/` 顶层平铺过多业务细节。
 
@@ -237,7 +235,7 @@ type CancelFunc func()
 ```
 cmd/
   ait/
-    main.go                 ← 入口：创建 server.New()；按 flag 启动 TUI / MCP
+    ait.go                  ← 入口：创建 server.New()；按 flag 启动 TUI / MCP
 
 internal/
   server/                   ← SERVICE LAYER（业务父模块）
@@ -296,70 +294,74 @@ internal/
     upload/                 ← Server 子模块：匿名数据上传
     types/                  ← Server 子模块：共享领域类型（Input / RequestMetrics ...）
 
-  tui/                      ← TUI CLIENT（客户端父模块）
-    client.go               ← 持有 server.Server；提供 tea.Cmd 包装（异步调用 server）
-    model.go                ← 根 BubbleTea Model + 全局状态机
-    messages.go             ← 所有 tea.Msg 类型
-    styles.go               ← lipgloss 样式常量
-    pages/                  ← TUI 子模块：页面组件
-      tasklist.go           ← 任务列表页渲染 + 按键处理
-      taskdetail.go         ← 任务详情页
-      wizard.go             ← 新建 / 编辑弹窗向导（overlay，覆盖任务列表）
-      dashboard.go          ← 标准模式仪表盘
-      turbodash.go          ← Turbo 仪表盘
-      integritydash.go      ← 接口完整性测试仪表盘
-      integritydetail.go    ← Case 详情与断言详情页
-      reqdetail.go          ← 请求详情页
-      contextbar.go         ← Context Bar 组件（条件渲染）
+  tui/                      ← TUI CLIENT（客户端父模块，tview 实现）
+    page.go                 ← Page 接口 + panelIndex 类型
+    main_page.go            ← MainPage（3-panel 主布局 + HandleKey）
+    router.go               ← PageRouter（页面栈 + Overlay）
+    tui.go                  ← SetVersion + Run() + tuiState + DataSink 接口 + globalKeyHandler + beforeDrawCheck
+    mock.go                 ← 模拟数据生成 + format* 格式化函数
+    pages/                  ← Page 实现子目录
+      page_task_detail.go       ← TaskDetailPage（任务详情）
+      page_standard_dashboard.go ← StandardDashboardPage（标准模式运行仪表盘）
+      page_turbo_dashboard.go   ← TurboDashboardPage（Turbo 爬坡仪表盘）
+      page_integrity_dashboard.go ← IntegrityDashboardPage（完整性测试仪表盘）
+      page_request_detail.go    ← RequestDetailPage（请求详情）
+      page_warning.go           ← WarningPage（终端尺寸不足告警）
 
   mcp/                      ← MCP CLIENT（客户端父模块）
     server.go               ← MCP 协议适配与工具注册；仅调用 server.Server 接口
 
-  webui/                    ← WEB CLIENT（未来客户端父模块）
-    handler.go              ← HTTP / WebSocket / SSE 桥接
-    static/                 ← Web 静态资源或前端构建产物
+  web/                      ← WEB UI（已实现）
+    api.go                  ← HTTP / SSE API handler
+    web.go                  ← 嵌入式文件服务
+    public/                 ← 构建产物
+    source/                 ← 前端源码
 ```
 
 ### 3.5 TUI Client 与 Server 交互示意
 
 ```
-TUI Model (tea.Update)      server.Server            底层执行模块
+TUI (tview App)              server.Server            底层执行模块
 ───────────────────         ─────────────            ────────────
 [用户按 r 运行任务]
     │
-    ├─ client.StartRunCmd(taskID)
-    │       └─ server.StartRun(taskID)
+    ├─ MainPage.HandleKey('r')
+    │       └─ go srv.StartRun(taskID)
     │               └─ 创建 RunState
     │               └─ go runner.RunWithCallback(cb)  ─→  runner/
     │               └─ cb 内部: eventBus.publishRunEvent(Event{RequestDone})
     │               └─ 返回 runID
     │
-    ├─ client.SubscribeRunEventsCmd(runID) → tea.Cmd
-    │       └─ server.SubscribeRunEvents(runID) → eventCh
-    │       └─ tea.Cmd: 持续从 eventCh 读事件 → tea.Msg
+    ├─ Simulator(v1) / SubscribeRunEvents(v2) → channel
+    │       └─ startUpdateLoop goroutine
+    │               └─ select channel → app.QueueUpdateDraw(Refresh*)
     │
 [Event: RequestDone]
-    → RequestDoneMsg → Update() → 追加请求行 → View()
+    → 数据推送 → QueueUpdateDraw → RefreshRequests() → tview.Draw()
 
 [Event: RunComplete]
-    → RunCompleteMsg → Update() → 切换到任务详情页（最近运行展开）
+    → 数据推送 → RefreshRuns() → 历史列表更新
 
-[用户按 b 后台运行]
-    │ cancelFunc()   ← 停止接收事件，但运行仍在 Server 继续
-    │ 返回任务列表
-    │ 任务列表中◉ 标记：定时 server.GetRunState(runID) 轮询刷新进度
+[用户按 s 停止运行]
+    │ MainPage.HandleKey('s') → go srv.StopRun(runID)
+    │ 运行在 Server 层终止，数据管道自动推送最终状态
 
-[用户重新进入仪表盘]
-    ├─ server.GetRunState(runID)       ← 恢复当前快照（已完成请求列表）
-    └─ server.SubscribeRunEvents(runID) ← 重新订阅，接收后续事件
+[用户 Enter 进入仪表盘]
+    ├─ MainPage.EnterAction() → NewStandardDashboardPage(srv, run, reqs)
+    ├─ router.NavigateTo(dashboardPage)
+    └─ v2: OnActivate 中订阅 srv.SubscribeRunEvents(runID) 实时事件流
 ```
 
-### 3.6 Web UI 接入路径（未来）
+> **v1 数据管道**：`Simulator → channel → startUpdateLoop → QueueUpdateDraw → Refresh*`。  
+> **v2 实时管道**：`srv.SubscribeRunEvents(runID) → eventCh → QueueUpdateDraw → Refresh*`。  
+> 两种管道对 Page 层透明，Refresh* 方法无需修改。
 
-新增 `internal/webui/` 包，直接复用同一个 `server.Server` 实例，无需修改 Server 层或任何下层模块：
+### 3.6 Web UI 接入路径（已实现）
+
+`internal/web/` 包直接复用同一个 `server.Server` 实例，无需修改 Server 层或任何下层模块：
 
 ```go
-// internal/webui/handler.go  （示意）
+// internal/web/api.go  （示意）
 func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
     runID, _ := h.server.StartRun(r.PathValue("taskID"))
     eventCh, cancel := h.server.SubscribeRunEvents(runID)
@@ -375,11 +377,11 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 
 **原则 1：TUI / Web UI 只依赖 server.Server 接口，不直接 import runner / task / report 等包。**
 
-**原则 2：Server 层只依赖执行层和持久化层，不 import 任何 UI 包（tui / webui）。**
+**原则 2：Server 层只依赖执行层和持久化层，不 import 任何 UI 包（tui / web）。**
 
-**原则 3：执行层（runner / turbo）通过回调/channel 推送进度，不感知 UI，不 import tea 或 http。**
+**原则 3：执行层（runner / turbo）通过回调/channel 推送进度，不感知 UI，不 import tview 或 http。**
 
-**原则 4：TUI Model 是纯状态机。** 所有副作用（调用 server、读文件）封装在 `tea.Cmd` 中，`Update()` 只做状态转换，方便单元测试。
+**原则 4：TUI Page 层是纯视图。** 操作副作用（调用 server）在 goroutine 中异步执行，通过 `app.QueueUpdateDraw` 回主线程刷新，方便单元测试。
 
 **原则 5：一个任务只测一个模型。** 任务是最小回归单元，多模型对比通过创建多个任务实现。
 
@@ -388,7 +390,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ```diff
   cmd/ait/
 -   ait.go                  ← 含全部逻辑
-+   main.go                 ← 仅做：flag解析 + server.New() + tui/mcp 启动
++   ait.go                  ← flag解析 + server.New() + tui.SetVersion() + tui.Run(srv)
 
 + internal/server/          ← SERVICE LAYER（核心新增，聚合所有业务子模块）
 +   server.go / task.go / run.go / event.go / types.go
@@ -424,99 +426,73 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 
 | 库 | 用途 |
 |----|------|
-| `charm.land/bubbletea/v2` | 主框架：消息驱动状态机，从任意 goroutine 安全推送消息 |
-| `github.com/charmbracelet/bubbles` | 预制组件：`textinput`、`list`、`spinner`、`viewport`、`progress`、`table` |
-| `github.com/charmbracelet/lipgloss` | 样式 & 布局：边框、颜色、多栏弹性布局 |
-| `github.com/NimbleMarkets/ntcharts` | Turbo 爬坡折线图 |
+| `github.com/rivo/tview` | 主框架：tview 原语组件树 + Application 事件循环 |
+| `github.com/gdamore/tcell/v2` | 终端底层：键盘事件、屏幕渲染、颜色 |
 
-### 4.2 TUI 状态机
+> **实现详见** `/memories/session/plan.md` — tview TUI 基础布局与交互计划。Phase 1 使用 tview 实现，后续 Phase 继续扩展 tview。
+
+### 4.2 TUI 架构（tview 实现）
 
 ```
-启动无参数 ───────────────────────────────→ TaskList
-启动带完整参数 ─→ 创建任务 + 自动 StartRun ─→ Running / TurboRunning / IntegrityRunning
+┌──────────────────────────────────────────────────┐
+│  Page 接口 (page.go)                             │
+│  ├─ Name() string                                │
+│  ├─ Primitive() tview.Primitive                  │
+│  ├─ FocusTarget() tview.Primitive               │
+│  ├─ HandleKey(event, router) *tcell.EventKey   │
+│  ├─ OnActivate()   — 预留                         │
+│  └─ OnDeactivate() — 预留                         │
+│                                                  │
+│  实现者:                                               │
+│  ├─ *MainPage              (主布局 3-panel)             │
+│  ├─ *TaskDetailPage        (任务详情)                    │
+│  ├─ *StandardDashboardPage (标准模式仪表盘)     v1      │
+│  ├─ *TurboDashboardPage    (Turbo 爬坡仪表盘)   v2      │
+│  ├─ *IntegrityDashboardPage (完整性测试仪表盘)  v2      │
+│  ├─ *RequestDetailPage     (请求详情)                    │
+│  └─ *WarningPage           (尺寸不足告警 overlay)        │
+└──────────────────────────────────────────────────┘
 
-                 ┌─────────────┐
-                 │  TaskList   │
-                 │  任务列表页   │
-                 └──────┬──────┘
-    [a 新建/e 编辑]     │  │ [Enter]
-          ╔══════▼══╗   │  │  ← Wizard 弹窗 overlay（不切换页面）
-          ║  Wizard  ║  │  │
-          ║ 弹窗向导  ║  │  │
-          ╚══════╤══╝  │  │
-           [保存] │     │  │
-                 └─────┘  │
-                          ▼
-                 ┌─────────────┐
-                 │ TaskDetail  │
-                 │  任务详情页   │
-                 └──────┬──────┘
-            [Enter / r] │  │ [e 编辑 → 弹窗]
-                       │  └──────────────┐
-                       │                 │
-         [标准模式]    ▼                 │
-                 ┌─────────────┐         │
-                 │   Running   │         │
-                 │  标准运行中   │         │
-                 └──────┬──┬───┘         │
-      [完成/s 停止]    │  │ [b/Esc 后台] │
-                        │  └──→ TaskList │
-                        ▼     （◉ 标记）  │
-                        └────────────────┘
-                （完成/停止后直接返回 TaskDetail，最近运行展开）
+PageRouter (router.go):
+  NavigateTo(Page)  → push stack
+  GoBack()          → pop stack
+  ShowOverlay(Page) → overlay 不干扰栈
+  HideOverlay()     → 恢复栈顶
+  ActivePage() Page → 优先返回 overlay
 
-         [Turbo 模式]   ▼
-                 ┌─────────────┐
-                 │TurboRunning │
-                 │ Turbo 爬坡中 │
-                 └──────┬──┬───┘
-      [完成/s 停止]    │  │ [b/Esc 后台]
-                        │  └──→ TaskList
-                        ▼     （◉ 标记）
-                        └──────────────→ TaskDetail
-                （完成/停止后直接返回 TaskDetail，最近运行展开）
+全局 keyhandler: cur := router.ActivePage(); cur.HandleKey(event, router)
 
-         [完整性测试] ▼
-                 ┌────────────────┐
-                 │IntegrityRunning│
-                 │ Suite / Case 执行│
-                 └──────┬──┬──────┘
-      [完成/s 停止]    │  │ [b/Esc 后台]
-                        │  └──→ TaskList
-                        ▼     （◉ 标记）
-                        └──────────────→ TaskDetail
-                （完成/停止后直接返回 TaskDetail，最近运行展开）
-
-         [请求详情]  在 Running/TurboRunning 请求列表中选中后
-                 ┌─────────────┐
-                 │RequestDetail│
-                 │  请求详情页   │
-                 └──────┬──────┘
-           [b/Esc 返回] │
-                        └──────→ Running / TurboRunning
-
-         [Case 详情]  在 IntegrityRunning Case 列表中选中后
-                 ┌───────────────┐
-                 │IntegrityDetail│
-                 │Case / Assertion│
-                 └──────┬────────┘
-           [b/Esc 返回] │
-                        └──────→ IntegrityRunning
+数据管道: Simulator → chan → startUpdateLoop → QueueUpdateDraw → Refresh*
 ```
 
-**多任务并发规则：**
+**v1 页面导航：**
+
+```
+MainPage（3-panel: 任务列表 | 运行历史 | 统计+请求）
+    │
+    ├─ Enter → TaskDetailPage（任务详情，Esc 返回）
+    ├─ Enter → StandardDashboardPage（运行仪表盘，Esc 返回）
+    └─ Enter → RequestDetailPage（请求详情，Esc 返回）
+
+尺寸不足 → WarningPage（overlay，Esc 关闭恢复原页面）
+```
+
+> **v2 扩展**：Turbo 仪表盘、完整性测试仪表盘、Wizard 弹窗等页面实现 Page 接口即可接入，Router/keybindings 零修改。
+
+**多任务并发规则（v2）：**
 
 - 支持多个任务同时在后台运行，不限数量
 - 启动第二个任务时弹出提示："当前已有 N 个任务正在运行，多任务并行可能影响网络指标（DNS/TCP/TLS），`[y]` 继续 `[n]` 取消"
 - 任务列表中所有运行中任务都带 `◉` 标记和实时进度
-- 任务完成后自动更新对应任务的状态和历史记录，无论当前处于哪个页面
 
-**后台运行规则：**
+**后台运行规则（v2）：**
 
-- 在仪表盘（Running / TurboRunning / IntegrityRunning）按 `[b]` 或 `[Esc]` 可返回任务列表，测试继续在后台执行
-- 任务列表中正在运行的任务行首显示 `◉` 标记，对其按 `[Enter]` 可随时重新进入仪表盘
+- 在仪表盘按 `[b]` 或 `[Esc]` 可返回任务列表，测试继续在后台执行
+- 任务列表中正在运行的任务对其按 `[Enter]` 可随时重新进入仪表盘
 
-### 4.3 页面设计
+### 4.3 页面设计（v2 目标布局）
+
+> **v1 已实现**：MainPage（3-panel 任务列表/历史/请求）、TaskDetailPage、StandardDashboardPage、RequestDetailPage、WarningPage。  \n> **以下为 v2 目标布局**，含 Turbo 仪表盘、完整性测试仪表盘、Wizard 弹窗等。
 
 ---
 
@@ -543,7 +519,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ╠══════════════════════════════════════════════════════════════╣
 ║  [Enter] 详情/仪表盘  [a] 新建  [e] 编辑  [d] 删除  [r] 运行 ║  ← context bar
 ╠══════════════════════════════════════════════════════════════╣
-║  [↑↓] 选择  [y] 复制  [q] 退出   ◆ AIT  v0.1               ║
+║  [↑↓] 选择  [y] 复制  [Esc] 退出   ◆ AIT  v0.1               ║
 ╚══════════════════════════════════════════════════════════════╝
 ```
 
@@ -722,7 +698,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ╠═════════════════════════════════════════════════════════════╣
 ║  [Enter] 查看请求详情  [↑↓] 选择请求  [s] 停止               ║  ← context bar
 ╠═════════════════════════════════════════════════════════════╣
-║  [s] 停止  [b] 后台运行  [r] 提前报告  [q] 退出              ║
+║  [s] 停止  [b] 后台运行  [r] 提前报告  [Esc] 退出              ║
 ╚═════════════════════════════════════════════════════════════╝
 ```
 
@@ -758,7 +734,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ╠═════════════════════════════════════════════════════════════╣
 ║  [Enter] 查看该级别请求列表  [↑↓] 选择                      ║  ← context bar
 ╠═════════════════════════════════════════════════════════════╣
-║  [s] 停止  [b] 后台运行  [m] 标记极限  [r] 提前报告  [q] 退出║
+║  [s] 停止  [b] 后台运行  [m] 标记极限  [r] 提前报告  [Esc] 退出║
 ╚═════════════════════════════════════════════════════════════╝
 ```
 
@@ -791,7 +767,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 ╠═════════════════════════════════════════════════════════════╣
 ║  [Enter] 查看 Case 详情  [↑↓] 选择  [s] 停止                 ║
 ╠═════════════════════════════════════════════════════════════╣
-║  [s] 停止  [b] 后台运行  [r] 提前报告  [q] 退出              ║
+║  [s] 停止  [b] 后台运行  [r] 提前报告  [Esc] 退出              ║
 ╚═════════════════════════════════════════════════════════════╝
 ```
 
@@ -836,32 +812,93 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 
 ### 4.4 键盘交互规范
 
-| 按键 | 适用页面 | 功能 |
-|------|----------|------|
-| `a` | 任务列表 | 新建任务 |
-| `Enter` | 任务列表（普通任务） | 查看任务详情 |
-| `Enter` | 任务列表（运行中任务） | 重新进入仪表盘 |
-| `r` | 任务列表 / 任务详情 | 运行当前任务（有其他任务运行时提示干扰风险） |
-| `e` | 任务列表 / 任务详情 | 编辑当前任务 |
-| `d` | 任务列表 / 任务详情 | 删除当前任务 |
-| `y` | 任务列表 / 任务详情 | 复制当前任务 |
-| `b` / `Esc` | 任务详情 | 返回任务列表 |
-| `b` / `Esc` | 仪表盘（标准/Turbo/完整性） | **后台运行**，返回任务列表（测试继续进行） |
-| `b` / `Esc` | 请求详情页 / Case 详情页 | 返回仪表盘 |
-| `Enter` | 仪表盘请求列表 | 进入请求详情页 |
-| `Enter` | 完整性仪表盘 Case 列表 | 进入 Case 详情页 |
-| `↑` / `↓` | 仪表盘请求列表 / Case 列表 / 详情页 | 选择条目 / 滚动内容 |
-| `←` / `→` | 请求详情页 | 切换上/下一条请求 |
-| `Tab` / `Shift+Tab` | 向导 | 在输入项间切换焦点 |
-| `↑` / `↓` | 任务列表、向导 | 上下选择 |
-| `←` / `→` | 向导模式选择 | 切换选项 |
-| `Enter` | 向导 | 确认 / 下一步 / 保存 |
-| `Esc` | 所有页 | 返回上一步 / 取消 |
-| `s` | 仪表盘（标准/Turbo/完整性） | 停止测试 |
-| `r` | 仪表盘 / 任务详情 | 生成报告文件 |
-| `m` | Turbo 仪表盘 | 手动标记当前并发为最大稳定并发并停止 |
-| `c` | 任务详情（有运行记录时） | 复制最近运行摘要到剪贴板 |
-| `q` / `Ctrl+C` | 所有页 | 退出程序 |
+键盘事件由 `globalKeyHandler` 分派到 `ActivePage().HandleKey(event, router)`，每个 Page 自行处理其关心的按键并返回 `nil`（已消费）或透传 `event` 给 tview 原生路由。
+
+#### MainPage（主布局 3-panel）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v1 | `Tab` / `Shift+Tab` | 切换面板 |
+| v1 | `↑` / `↓` | 当前面板上下选择 |
+| v1 | `Enter` | 进入详情 / 仪表盘（根据面板和任务状态） |
+| v1 | `r` | 运行当前选中任务 |
+| v1 | `s` | 停止当前选中运行 |
+| v1 | `R` | 刷新当前面板数据 |
+| v1 | `Esc` | 退出程序 |
+| v2 | `a` | 新建任务（弹窗向导） |
+| v2 | `e` | 编辑当前选中任务 |
+| v2 | `d` | 删除当前选中任务 |
+| v2 | `y` | 复制当前选中任务 |
+
+#### TaskDetailPage（任务详情）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v1 | `Enter` | 运行任务 |
+| v1 | `Esc` | 返回任务列表 |
+| v2 | `r` | 生成报告文件 |
+| v2 | `e` | 编辑任务（弹窗向导预填） |
+| v2 | `y` | 复制任务 |
+| v2 | `d` | 删除任务 |
+| v2 | `c` | 复制最近运行摘要到剪贴板（有运行记录时） |
+
+#### StandardDashboardPage（标准模式仪表盘）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v1 | `↑` / `↓` | 选择请求（tview List 原生滚动） |
+| v1 | `Enter` | 进入请求详情页 |
+| v1 | `s` | 停止测试 |
+| v1 | `r` | 提前生成报告 |
+| v1 | `Esc` | 返回任务列表（测试继续后台运行） |
+
+#### RequestDetailPage（请求详情）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v1 | `↑` / `↓` | 滚动内容 |
+| v1 | `←` / `→` | 切换上/下一条请求 |
+| v1 | `Esc` | 返回仪表盘 |
+
+#### WarningPage（尺寸不足告警 overlay）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v1 | `Esc` | 关闭 overlay，恢复原页面 |
+| v1 | 其余按键 | 全部消费（不穿透） |
+
+#### TurboDashboardPage（Turbo 爬坡仪表盘）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v2 | `↑` / `↓` | 选择级别 |
+| v2 | `Enter` | 查看选中级别的请求列表 |
+| v2 | `s` | 停止测试 |
+| v2 | `b` | 后台运行（返回任务列表） |
+| v2 | `m` | 手动标记当前并发为最大稳定并发并停止 |
+| v2 | `r` | 提前生成报告 |
+| v2 | `Esc` | 返回任务列表（测试继续后台运行） |
+
+#### IntegrityDashboardPage（完整性测试仪表盘）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v2 | `↑` / `↓` | 选择 Case |
+| v2 | `Enter` | 进入 Case 详情页 |
+| v2 | `s` | 停止测试 |
+| v2 | `b` | 后台运行（返回任务列表） |
+| v2 | `r` | 提前生成报告 |
+| v2 | `Esc` | 返回任务列表（测试继续后台运行） |
+
+#### WizardPage（弹窗向导，overlay 模式）
+
+| Phase | 按键 | 功能 |
+|-------|------|------|
+| v2 | `Tab` / `Shift+Tab` | 切换焦点 |
+| v2 | `↑` / `↓` | 选择列表项 |
+| v2 | `←` / `→` | 切换模式/选项 |
+| v2 | `Enter` | 确认 / 下一步 / 保存 |
+| v2 | `Esc` | 取消 / 返回上一步 |
 
 ---
 
@@ -896,7 +933,7 @@ func (h *Handler) startRun(w http.ResponseWriter, r *http.Request) {
 **规则：**
 - Context Bar 使用与 Footer 相同的暗色调，但前景色略亮（用于区分层级）
 - 仅展示**当前状态下可执行**的操作（例如：仅在请求列表选中行时才显示 `[Enter] 查看详情`）
-- Context Bar 不替代 Footer——Footer 始终展示全局快捷键（`[q]` 退出等）
+- Context Bar 不替代 Footer——Footer 始终展示全局快捷键（`Esc` 退出等）
 
 ---
 
@@ -1248,57 +1285,7 @@ const (
 )
 ```
 
-### 7.7 TUI 消息类型
-
-TUI 层的 `tea.Msg` 类型由 `tui/client.go` 包装 `server.Server` 调用后产生，不直接暴露 server 内部类型：
-
-```go
-// internal/tui/messages.go
-
-// TasksLoadedMsg 任务列表加载完成
-type TasksLoadedMsg struct {
-    Tasks []types.Task
-}
-
-// TaskSavedMsg 任务保存完成
-type TaskSavedMsg struct {
-    Task types.Task
-}
-
-// HistoryLoadedMsg 运行历史加载完成
-type HistoryLoadedMsg struct {
-    TaskID  string
-    History []server.RunSummary
-}
-
-// RunStartedMsg 运行启动成功，获得 RunID
-type RunStartedMsg struct {
-    RunID  server.RunID
-    TaskID string
-}
-
-// ServerEventMsg 从 server.Subscribe 接收到的事件（统一包装）
-type ServerEventMsg struct {
-    Event server.Event
-}
-
-// RunStateMsg server.GetRunState 的轮询结果（后台模式重新进入仪表盘时使用）
-type RunStateMsg struct {
-    State *server.RunState
-}
-
-// ReportGeneratedMsg 报告生成完成
-type ReportGeneratedMsg struct {
-    Path string
-}
-
-// ErrorMsg 操作出错
-type ErrorMsg struct {
-    Err error
-}
-```
-
-### 7.8 Runner 接口扩展
+### 7.7 Runner 接口扩展（Server 层内部）
 
 ```go
 // internal/server/runner/runner.go — Server 层内部使用，TUI 不直接调用
@@ -1313,7 +1300,7 @@ func (r *Runner) RunWithCallback(cb RequestDoneCallback) (*types.ReportData, err
 func (r *Runner) Stop()
 ```
 
-### 7.9 统一存储接口
+### 7.8 统一存储接口
 
 目标存储结构以 [统一运行存储设计](storage.md) 为准。总设计只约定最小 Repository 能力：
 
@@ -1374,23 +1361,162 @@ func ReadRequestFacts(taskID string, runID server.RunID) ([]types.RequestFact, e
 - [ ] `internal/server/types.go`：定义 `Event / EventKind / RunState / RunID` 等 Server 层类型
 - [ ] Server 单元测试：任务 CRUD、运行状态机、事件分发
 
-**Step 2：TUI Client（依赖 Server 接口完成后）**
+**Step 2：TUI Client（依赖 Server 接口完成后，tview 实现）**
 
-- [ ] `internal/tui/client.go`：持有 `server.Server`，封装 `tea.Cmd` 异步调用
-- [ ] `internal/tui/model.go`：根 BubbleTea Model + 全局状态机（只依赖 `client.go`）
-- [ ] `internal/tui/messages.go`：所有 `tea.Msg` 类型
-- [ ] `internal/tui/styles.go`：lipgloss 样式常量
-- [ ] `internal/tui/pages/contextbar.go`：Context Bar 组件（条件渲染）
-- [ ] `internal/tui/pages/tasklist.go`：任务列表页（含 ◉ 运行状态展示）
-- [ ] `internal/tui/pages/taskdetail.go`：任务详情页
-- [ ] `internal/tui/pages/wizard.go`：三步弹窗向导（overlay）
-- [ ] `internal/tui/pages/dashboard.go`：标准模式仪表盘（请求列表 + 实时指标）
-- [ ] `internal/tui/pages/reqdetail.go`：请求详情页（含原始输入/输出）
-- [ ] `cmd/ait/main.go`：`server.New()` → 启动 TUI
+- [ ] `internal/tui/page.go`：Page 接口 + panelIndex 类型定义
+- [ ] `internal/tui/tui.go`：`SetVersion()` + `Run(srv)` + `tuiState` + `DataSink` 接口 + `NewSimulator()` + `startUpdateLoop()` + `globalKeyHandler` + `beforeDrawCheck`
+- [ ] `internal/tui/main_page.go`：MainPage（3-panel 主布局 + HandleKey + Refresh*）
+- [ ] `internal/tui/router.go`：PageRouter（`[]Page` 栈 + overlay + `ActivePage()`）
+- [ ] `internal/tui/pages/page_task_detail.go`：TaskDetailPage（Esc → GoBack）
+- [ ] `internal/tui/pages/page_standard_dashboard.go`：StandardDashboardPage（Esc → GoBack）
+- [ ] `internal/tui/pages/page_request_detail.go`：RequestDetailPage（Esc → GoBack）
+- [ ] `internal/tui/pages/page_warning.go`：WarningPage（overlay，尺寸不足告警）
+- [ ] `internal/tui/mock.go`：模拟数据生成 + `format*` 格式化函数
+- [ ] `cmd/ait/ait.go`：`server.New()` → `tui.SetVersion(Version)` → `tui.Run(srv)`
+- [ ] 数据管道：`Simulator → chan → startUpdateLoop → QueueUpdateDraw → Refresh*`
 - [ ] 协议枚举：`openai-completions`、`openai-responses`、`anthropic-messages`
 - [ ] 统一任务模式：`standard`、`turbo`、`integrity`
-- [ ] 响应式布局（终端宽度自适应）
+- [ ] 响应式布局（WarningPage overlay 检测终端尺寸）
 - [ ] `internal/display/` 退役，由 TUI 全面接管输出
+
+### 8.1 Phase 1 TUI 实施细节
+
+> 以下为 TUI 层各文件的详细实施指南，Server 层已就绪。
+
+#### 8.1.1 核心架构：Page 抽象 + PageRouter + Overlay
+
+```
+┌──────────────────────────────────────────────────┐
+│  Page 接口 (page.go)                             │
+│  ├─ Name() string                                │
+│  ├─ Primitive() tview.Primitive                  │
+│  ├─ FocusTarget() tview.Primitive               │
+│  ├─ HandleKey(event, router) *tcell.EventKey    │
+│  ├─ OnActivate()   — v1 空实现，预留              │
+│  └─ OnDeactivate() — v1 空实现，预留              │
+│                                                  │
+│  实现者:                                         │
+│  ├─ *MainPage       (主布局 3-panel)             │
+│  ├─ *TaskDetailPage (Esc→返回)                   │
+│  ├─ *StandardDashboardPage (Esc→返回)            │
+│  ├─ *RequestDetailPage (Esc→返回)                │
+│  └─ *WarningPage    (Esc→隐藏 overlay)           │
+└──────────────────────────────────────────────────┘
+
+PageRouter (router.go):
+  NavigateTo(Page)  → push stack, hide/show
+  GoBack()          → pop stack, show prev
+  ShowOverlay(Page) → overlay 不干扰栈
+  HideOverlay()     → 恢复栈顶
+  ActivePage() Page → 优先返回 overlay，其次栈顶
+  StackDepth() int
+
+全局 keyhandler 精简为单行分派:
+  cur := router.ActivePage(); return cur.HandleKey(event, router)
+```
+
+#### 8.1.2 数据管道
+
+```
+Simulator(v1) / SubscribeRunEvents(v2)
+        │
+        ▼
+  taskUpdates    <-chan []types.TaskOverview
+  runUpdates     <-chan []types.TaskRunSummary
+  requestUpdates <-chan []types.RequestMetrics
+        │
+        ▼
+  startUpdateLoop() goroutine
+        │  select { case data := <-ch: }
+        ▼
+  app.QueueUpdateDraw(func() { mainPage.Refresh*(data) })
+        │
+        ▼
+  MainPage.RefreshTasks/RefreshRuns/RefreshRequests
+        │  Clear + Rebuild + Rebind keyboard
+        ▼
+  tview.Draw()  ← 自动触发重绘
+```
+
+#### 8.1.3 数据结构对齐
+
+**左 Panel — 任务列表**：数据来源 `server.types.TaskOverview`
+```
+main:  "高并发压测-gpt4"
+sec:   "standard  | SR 98.5%  | TPS 245"
+```
+`Input.RunMode()` 自动推导默认值。`LatestRun` 为 `nil` 时 secondary 显示 `"-"`。
+
+**中 Panel — 历史记录**：数据来源 `types.TaskRunSummary`
+```
+main:  "run-a1b2c3"
+sec:   "turbo    | 06-28 14:22 | 45s  | SR 97.8% | TPS 342"
+```
+
+**右 Panel 上部 — 统计**：实时/已完成两种状态，含进度条（`█`+`░`）、TPS/TTFT/缓存命中率/RPM/TPM。
+
+**右 Panel 下部 — 请求记录**：数据来源 `types.RequestMetrics`
+```
+#001 ✅  234ms  TTFT 45ms   TPS 512  | PT 1024  CT 256  CH 45%
+#002 ❌  5.2s   TTFT -      TPS 0    | ERR: timeout
+```
+
+#### 8.1.4 MainPage HandleKey 规范
+
+MainPage 自包含按键逻辑，通过 `app.SetFocus` 管理焦点：
+
+| 键 | 面板 | 行为 |
+|----|------|------|
+| `Tab`/`Shift+Tab` | 全局 | 循环切换 3 个 panel，边框黄↔灰，选中背景蓝↔灰 |
+| `Enter` | tasks | → `TaskDetailPage` |
+| `Enter` | history | → `StandardDashboardPage`（v1 使用静态请求数据） |
+| `Enter` | stats | → `RequestDetailPage` |
+| `r` | tasks | `go srv.StartRun(taskID)`（异步） |
+| `s` | history | `go srv.StopRun(runID)`（仅 running 状态） |
+| `R` | tasks/history | `go srv.ListTasks()` / `ListTaskRunHistory()` |
+| `Esc` | 全局 | `app.Stop()` 退出 |
+| `↑↓`/`PgUp`/`PgDn` | 全局 | 透传给 tview List 原生处理 |
+
+#### 8.1.5 tuiState 结构
+
+```go
+type tuiState struct {
+    app         *tview.Application
+    router      *PageRouter
+    srv         server.Server
+    mainPage    *MainPage
+    warningPage *WarningPage
+    stopCh      chan struct{}
+}
+```
+
+`srv` 通过构造函数注入：`NewMainPage(app, srv, version)`，详情页同理。`PageRouter` 不持有 `srv`。
+
+#### 8.1.6 Server API → TUI Page 映射（v1）
+
+| Server 方法 | 触发方式 | 页面 |
+|------------|---------|------|
+| `ListTasks()` | `R` 刷新 / 管道刷新 | MainPage (左 panel) |
+| `ListTaskRunHistory(taskID, limit)` | Enter 进入详情 | MainPage (中 panel) |
+| `StartRun(taskID)` | `r` 按键 | MainPage (左 panel) |
+| `StopRun(runID)` | `s` 按键 | MainPage (中 panel) |
+| `GetRunState(runID)` | 进入仪表盘 | StandardDashboardPage |
+| `Context()` | 全局 | tuiState |
+| `Shutdown(timeout)` | `Esc` 退出 | tuiState |
+
+#### 8.1.7 验证清单
+
+1. `go build ./cmd/ait/` 编译通过，无 import cycle
+2. 128×24 终端可见 3-panel + Header + Footer
+3. Tab/Shift-Tab 循环切换 panel，边框/选中态同步
+4. Enter → 各详情页正确渲染
+5. 详情页内 ↑↓ 滚动（tview List 原生处理）
+6. Esc → 返回主布局 / 退出程序
+7. 终端 <120 宽 → WarningPage overlay
+8. WarningPage Esc → HideOverlay 恢复栈顶
+9. 空列表 Enter 无 crash（`GetCurrentItem() >= 0` 守卫）
+10. `r`/`s`/`R` 按键异步调用 srv 方法
+11. Simulator 推入数据后 Refresh* 正确重建 List
 
 ---
 
@@ -1403,8 +1529,8 @@ func ReadRequestFacts(taskID string, runID server.RunID) ([]types.RequestFact, e
 - [ ] `internal/server/turbo/types.go`：`TurboResult / LevelResult`
 - [ ] `internal/server/run_service.go`：扩展 `StartRun` 支持 Turbo 模式（发布 `EventLevelDone`）
 - [ ] `internal/server/store/request_log.go`：按统一 `requests.jsonl` 记录每级请求事实
-- [ ] `internal/tui/pages/turbodash.go`：Turbo 仪表盘页（级别列表 + 当前级别指标）
-- [ ] `internal/tui/pages/taskdetail.go`：从 `result.json` 展示 Turbo 运行结果（爬坡表格 + ASCII 曲线）
+- [ ] `internal/tui/pages/page_turbo_dashboard.go`：Turbo 仪表盘页（级别列表 + 当前级别指标，实现 Page 接口）
+- [ ] `internal/tui/pages/page_task_detail.go`：扩展从 `result.json` 展示 Turbo 运行结果（爬坡表格 + ASCII 曲线）
 - [ ] `internal/server/report/turbo_renderer.go`：Turbo CSV/JSON 报告渲染
 
 ---
@@ -1424,8 +1550,8 @@ func ReadRequestFacts(taskID string, runID server.RunID) ([]types.RequestFact, e
 - [ ] `internal/server/run_service.go`：扩展 `StartRun` 支持 `mode = "integrity"`，发布 Case 与 Assertion 事件
 - [ ] `internal/server/store/request_log.go`：按统一 `requests.jsonl` 保存 Case 请求事实与断言上下文
 - [ ] `internal/server/store/run_repo.go`：按统一 `result.json` 保存完整性测试最终业务结论
-- [ ] `internal/tui/pages/integritydash.go`：完整性测试仪表盘（Suite / Case / 结论）
-- [ ] `internal/tui/pages/integritydetail.go`：Case 详情与断言详情页
+- [ ] `internal/tui/pages/page_integrity_dashboard.go`：完整性测试仪表盘（Suite / Case / 结论，实现 Page 接口）
+- [ ] `internal/tui/pages/page_integrity_detail.go`：Case 详情与断言详情页（实现 Page 接口）
 - [ ] `internal/server/report`：完整性测试 JSON 报告渲染
 - [ ] `internal/mcp/server.go`：通过 `server.Server` 暴露 `ait.list_integrity_suites`、`ait.preview_integrity_suite`、`ait.validate_rule_file`、`ait.get_integrity_case_detail`
 - [ ] 完整性测试单元测试：规则文件校验、断言求值、Suite 执行、结果落盘
@@ -1436,11 +1562,11 @@ func ReadRequestFacts(taskID string, runID server.RunID) ([]types.RequestFact, e
 
 **目标：** 细节打磨，为 Web UI 预留接入点
 
-- [ ] `internal/webui/`（骨架）：HTTP handler 接收请求 → 调用 `server.Server` → SSE/WS 推送 Event
+- [ ] `internal/web/`（已有骨架）：HTTP handler 接收请求 → 调用 `server.Server` → SSE 推送 Event
 - [ ] 多任务并发干扰提示完善
 - [ ] 运行记录对比视图（同一任务不同 run）
 - [ ] 任务详情页 `[c]` 复制最近运行摘要到剪贴板
-- [ ] `ntcharts` 折线图替换 ASCII 折线图（Turbo 曲线）
+- [ ] Turbo 曲线可视化增强
 - [ ] 终端尺寸变化自适应重绘
 - [ ] 完善单元测试（TUI model 测试、server 集成测试、turbo strategy 测试、integrity/assertion 测试）
 
@@ -1450,12 +1576,10 @@ func ReadRequestFacts(taskID string, runID server.RunID) ([]types.RequestFact, e
 
 ```diff
   # go.mod 新增
-+ charm.land/bubbletea/v2              # TUI 主框架
-+ github.com/charmbracelet/bubbles     # 预制 UI 组件
-+ github.com/charmbracelet/lipgloss    # 样式与布局
-+ github.com/NimbleMarkets/ntcharts    # Phase 3 图表（可选）
++ github.com/rivo/tview                # TUI 主框架（Phase 1）
++ github.com/gdamore/tcell/v2          # 终端底层（tview 依赖）
 
   # go.mod 移除
-- github.com/schollz/progressbar/v3    # 由 bubbles/progress 替代
-- github.com/olekukonko/tablewriter    # 由 bubbles/table + lipgloss 替代
+- github.com/schollz/progressbar/v3    # 由 TUI 替代
+- github.com/olekukonko/tablewriter    # 由 TUI 替代
 ```
