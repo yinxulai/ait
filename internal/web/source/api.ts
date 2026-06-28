@@ -1,6 +1,6 @@
 export type TaskMode = 'standard' | 'turbo' | 'integrity'
 export type RunStatus = 'queued' | 'running' | 'completed' | 'failed' | 'stopped'
-export type RequestStatus = 'ok' | 'failed' | 'running' | 'queued'
+export type RequestStatus = 'ok' | 'failed' | 'running' | 'queued' | 'succeeded' | 'skipped'
 export type PromptMode = 'text' | 'file' | 'generated' | 'raw'
 
 export type TurboConfig = {
@@ -13,12 +13,102 @@ export type TurboConfig = {
 }
 
 export type IntegrityCase = {
+  id: string
+  name?: string
+  description?: string
+  category?: string
+  capability?: string
+  required?: boolean
+  requests?: IntegrityRequest[]
+  assertions?: IntegrityAssertion[]
+  timeout_ms?: number
+  retry?: number
+}
+
+export type IntegrityRequest = {
+  body?: unknown
+  headers?: Record<string, string>
+  extract?: Record<string, string>
+}
+
+export type IntegrityAssertion = {
   id?: string
+  case_id?: string
+  name?: string
+  phase?: string
+  level?: string
+  request_index?: number
+  path: string
+  op: string
+  value?: unknown
+  message?: string
+  source?: string
+}
+
+export type IntegrityAssertionResult = {
+  assertion_id?: string
+  level: string
+  passed: boolean
+  request_index?: number
+  path?: string
+  op?: string
+  expected?: unknown
+  actual?: unknown
+  message?: string
+}
+
+export type IntegrityCaseResult = {
+  case_id: string
   name?: string
   capability?: string
-  request?: { prompt?: string }
-  assertions?: unknown[]
   required?: boolean
+  status: string
+  started_at: string
+  finished_at?: string
+  duration: string
+  total_assertions: number
+  passed_assertions: number
+  failed_assertions: number
+  warned_assertions: number
+  assertions?: IntegrityAssertionResult[]
+  error_message?: string
+}
+
+export type IntegrityResult = {
+  suite_id: string
+  status: string
+  started_at: string
+  finished_at?: string
+  duration: string
+  total_cases: number
+  passed_cases: number
+  failed_cases: number
+  warned_cases: number
+  skipped_cases: number
+  required_failed_cases: number
+  cases: IntegrityCaseResult[]
+  assertions?: IntegrityAssertionResult[]
+  protocol?: string
+  model?: string
+  endpoint_url?: string
+  timestamp?: string
+}
+
+export type IntegritySuiteStatus = {
+  phase?: string
+  message?: string
+  suite?: string
+  case_count?: number
+  error?: string
+}
+
+export type IntegrityModeState = {
+  suite?: IntegritySuite | string
+  suite_status?: IntegritySuiteStatus
+  cases?: IntegrityCaseResult[]
+  current_case_id?: string
+  assertion_results?: IntegrityAssertionResult[]
+  rules_status?: unknown
 }
 
 export type IntegrityConfig = {
@@ -108,8 +198,20 @@ export type RunState = {
   rpm: number
   tpm: number
   requests: RequestDetail[]
-  mode_state?: unknown
-  mode_result?: unknown
+  request_states?: RequestState[]
+  mode_state?: IntegrityModeState | Record<string, unknown>
+  mode_result?: IntegrityResult | Record<string, unknown>
+  error_msg?: string
+}
+
+export type RequestState = {
+  index: number
+  status: RequestStatus
+  level?: number
+  case_id?: string
+  queued_at?: string
+  started_at?: string
+  finished_at?: string
   error_msg?: string
 }
 
@@ -132,6 +234,7 @@ export type RequestDetail = {
   request_body?: string
   response_body?: string
   level?: number
+  case_id?: string
 }
 
 export type ProtocolMeta = {

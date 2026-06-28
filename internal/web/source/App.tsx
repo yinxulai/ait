@@ -1,5 +1,5 @@
 import { useEffect, useId, useMemo, useState } from 'react'
-import { Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, ClipboardList, Copy, Database, FileJson, Gauge, Hash, ListChecks, Network, Play, Plus, Route, Search, Settings2, ShieldCheck, TrendingUp, XCircle, Zap } from 'lucide-react'
+import { Activity, AlertTriangle, BarChart3, CheckCircle2, ChevronRight, Clock3, ClipboardList, Copy, Database, FileJson, Gauge, Hash, ListChecks, Menu, Network, Play, Plus, Route, Search, Settings2, ShieldCheck, TrendingUp, XCircle, Zap } from 'lucide-react'
 import { CategoryScale, Chart as ChartJS, Filler, Legend as ChartLegend, LinearScale, LineElement, PointElement, Tooltip as ChartTooltip } from 'chart.js'
 import { Line } from 'react-chartjs-2'
 
@@ -20,7 +20,7 @@ import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { Textarea } from '@/components/ui/textarea'
 import { cn } from '@/lib/utils'
-import { createTask as createTaskAPI, getRunRequests, getRunState, listIntegritySuites, listProtocols, listTaskRuns, listTasks, startTaskRun as startTaskRunAPI, type IntegritySuite, type PromptMode, type ProtocolMeta, type RequestDetail, type RunState, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
+import { createTask as createTaskAPI, getRunRequests, getRunState, listIntegritySuites, listProtocols, listTaskRuns, listTasks, startTaskRun as startTaskRunAPI, type IntegrityAssertionResult, type IntegrityCaseResult, type IntegrityModeState, type IntegrityResult, type IntegritySuite, type PromptMode, type ProtocolMeta, type RequestDetail, type RunState, type RunStatus, type RunSummary, type Task, type TaskConfig, type TaskInput, type TaskMode } from './api'
 
 const modeLabel: Record<TaskMode, string> = {
   standard: '标准压测',
@@ -69,12 +69,14 @@ function App() {
   const [query, setQuery] = useState('')
   const [taskList, setTaskList] = useState<Task[]>([])
   const [runsByTask, setRunsByTask] = useState<Record<string, RunSummary[]>>({})
+  const [statesByRun, setStatesByRun] = useState<Record<string, RunState>>({})
   const [requestsByRun, setRequestsByRun] = useState<Record<string, RequestDetail[]>>({})
   const [protocols, setProtocols] = useState<ProtocolMeta[]>([])
   const [selectedTaskId, setSelectedTaskId] = useState('')
   const [selectedRunId, setSelectedRunId] = useState('')
   const [selectedRequestId, setSelectedRequestId] = useState('')
   const [startingTaskId, setStartingTaskId] = useState('')
+  const [taskDrawerOpen, setTaskDrawerOpen] = useState(false)
   const [loadingMessage, setLoadingMessage] = useState('加载任务中...')
   const [errorMessage, setErrorMessage] = useState('')
 
@@ -125,6 +127,7 @@ function App() {
         const state = await getRunState(selectedRunId).catch(() => undefined)
         const requestList = state?.requests?.length ? state.requests : await getRunRequests(selectedRunId)
         if (cancelled) return
+        if (state) setStatesByRun((current) => ({ ...current, [selectedRunId]: state }))
         setRequestsByRun((current) => ({ ...current, [selectedRunId]: requestList }))
         setSelectedRequestId((current) => requestList.some((request) => requestKey(request) === current) ? current : requestKey(requestList[0]))
         setErrorMessage('')
@@ -145,6 +148,7 @@ function App() {
   const selectedTask = taskList.find((task) => task.id === selectedTaskId) ?? taskList[0]
   const taskRuns = selectedTask ? runsByTask[selectedTask.id] ?? [] : []
   const selectedRun = taskRuns.find((run) => run.run_id === selectedRunId) ?? taskRuns[0]
+  const selectedRunState = selectedRun ? statesByRun[selectedRun.run_id] : undefined
   const runRequests = selectedRun ? requestsByRun[selectedRun.run_id] ?? [] : []
   const selectedRequest = runRequests.find((request) => requestKey(request) === selectedRequestId) ?? runRequests[0]
   const totalRuns = Object.values(runsByTask).reduce((sum, item) => sum + item.length, 0)
@@ -153,6 +157,7 @@ function App() {
 
   function chooseTask(task: Task) {
     setSelectedTaskId(task.id)
+    setTaskDrawerOpen(false)
   }
 
   function chooseRun(run: RunSummary) {
@@ -192,82 +197,58 @@ function App() {
   }
 
   return (
-    <main className="min-h-screen bg-[radial-gradient(circle_at_top_left,var(--muted),transparent_34rem)] bg-background text-foreground">
-      <div className="mx-auto flex min-h-screen max-w-[1680px] flex-col gap-4 p-3 sm:p-5 lg:p-6">
-        <header className="rounded-3xl border bg-card/90 px-4 py-3 shadow-sm ring-1 ring-border/30 backdrop-blur sm:px-5">
-          <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
-            <div className="flex min-w-0 items-center gap-3">
-              <div className="flex size-10 shrink-0 items-center justify-center rounded-2xl bg-muted text-muted-foreground">
-                <Activity className="size-4" />
-              </div>
+    <main className="min-h-screen bg-muted/30 text-foreground lg:h-screen lg:overflow-hidden">
+      <div className="grid min-h-screen lg:h-full lg:min-h-0 lg:grid-cols-[320px_minmax(0,1fr)]">
+        <aside className="hidden min-h-0 border-r bg-sidebar/95 lg:block">
+          <TaskSidebarContent taskList={taskList} filteredTasks={filteredTasks} runsByTask={runsByTask} selectedTask={selectedTask} totalRuns={totalRuns} totalSamples={totalSamples} query={query} onQueryChange={setQuery} onChooseTask={chooseTask} onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
+        </aside>
+
+        <section className="min-h-0 min-w-0 bg-background/80 lg:overflow-y-auto">
+          <header className="sticky top-0 z-20 border-b bg-background/90 px-4 py-3 backdrop-blur sm:px-6">
+            <div className="flex flex-col gap-3 xl:flex-row xl:items-center xl:justify-between">
               <div className="min-w-0">
-                <h1 className="truncate text-lg font-semibold tracking-tight sm:text-xl">AIT 执行观测台</h1>
-                <p className="truncate text-xs text-muted-foreground sm:text-sm">任务 → 执行记录 → 单次详情</p>
-              </div>
-            </div>
-            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground sm:justify-end">
-              <TopStat icon={<ListChecks className="size-3.5" />} label="任务" value={taskList.length.toString()} />
-              <TopStat icon={<Clock3 className="size-3.5" />} label="执行" value={totalRuns.toString()} />
-              <TopStat icon={<Hash className="size-3.5" />} label="样本" value={totalSamples.toString()} />
-            </div>
-          </div>
-        </header>
-
-        {errorMessage && <div className="rounded-2xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{errorMessage}</div>}
-        {!selectedTask && <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40"><CardContent className="flex min-h-80 items-center justify-center p-6 text-sm text-muted-foreground">{loadingMessage || '暂无任务，请先创建任务。'}</CardContent></Card>}
-
-        {selectedTask && <section className="grid min-h-[calc(100vh-112px)] gap-4 lg:gap-5 xl:grid-cols-[320px_minmax(0,1fr)] 2xl:grid-cols-[340px_minmax(0,1fr)]">
-          <Card className="overflow-hidden rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40 xl:sticky xl:top-6 xl:h-[calc(100vh-170px)]">
-            <CardHeader className="space-y-4 p-4 pb-3 sm:p-5">
-              <div>
-                <CardTitle className="flex items-center gap-2 text-base"><ListChecks className="size-4" />任务列表</CardTitle>
-                <CardDescription>选择任务后先看执行记录。</CardDescription>
-              </div>
-              <CreateTaskSheet onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
-              <div className="relative">
-                <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-                <Input value={query} onChange={(event) => setQuery(event.target.value)} className="h-10 rounded-2xl pl-9" placeholder="搜索任务 / 模型 / 协议" />
-              </div>
-            </CardHeader>
-            <CardContent className="p-0">
-              <ScrollArea className="h-auto max-h-[460px] xl:h-[calc(100vh-360px)] xl:max-h-none">
-                <div className="space-y-2.5 p-4 pt-0 sm:p-5 sm:pt-0">
-                  {filteredTasks.map((task) => {
-                    const runs = runsByTask[task.id] ?? []
-                    const latestRun = task.latest_run ?? runs[0]
-                    return (
-                      <button key={task.id} type="button" onClick={() => chooseTask(task)} className={cn('group w-full rounded-2xl border bg-background/70 px-3.5 py-3 text-left transition hover:border-primary/30 hover:bg-accent/60 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', selectedTask.id === task.id && 'border-primary bg-accent ring-1 ring-primary/10')}>
-                        <div className="flex items-start justify-between gap-3">
-                          <div className="min-w-0 flex-1">
-                            <div className="flex min-w-0 items-center gap-2">
-                              <ModeIcon mode={taskMode(task)} className="size-3.5 shrink-0 text-muted-foreground" />
-                              <div className="truncate font-medium leading-6">{task.name}</div>
-                            </div>
-                            <div className="mt-1 truncate text-xs text-muted-foreground">{modeLabel[taskMode(task)]} · {taskModel(task)}</div>
-                          </div>
-                          <ChevronRight className="mt-1 size-4 shrink-0 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:text-foreground" />
-                        </div>
-                        <div className="mt-3 flex items-center justify-between gap-3 border-t border-border/60 pt-2.5 text-xs text-muted-foreground">
-                          <span>{runs.length} 次执行</span>
-                          <span className="inline-flex items-center gap-2">
-                            {latestRun && <span className={cn('tabular-nums', latestRun.status === 'failed' ? 'text-red-600' : 'text-emerald-600')}>{formatPercent(latestRun.success_rate)}</span>}
-                            <span>{formatDate(task.updated_at)}</span>
-                          </span>
-                        </div>
-                      </button>
-                    )
-                  })}
+                <div className="flex items-center gap-2 text-xs font-medium uppercase tracking-wider text-muted-foreground">
+                  <BarChart3 className="size-3.5" />Operations Dashboard
                 </div>
-              </ScrollArea>
-            </CardContent>
-          </Card>
+                <h2 className="mt-1 truncate text-xl font-semibold tracking-tight sm:text-2xl">{selectedTask?.name ?? 'AIT 执行观测台'}</h2>
+              </div>
+              <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+                <Sheet open={taskDrawerOpen} onOpenChange={setTaskDrawerOpen}>
+                  <SheetTrigger asChild>
+                    <Button variant="outline" size="sm" className="rounded-xl lg:hidden">
+                      <Menu className="size-3.5" />任务
+                    </Button>
+                  </SheetTrigger>
+                  <SheetContent side="right" className="w-[min(88vw,360px)]! max-w-none! gap-0 p-0">
+                    <SheetHeader className="sr-only">
+                      <SheetTitle>任务列表</SheetTitle>
+                      <SheetDescription>选择任务、搜索任务或创建新任务。</SheetDescription>
+                    </SheetHeader>
+                    <TaskSidebarContent taskList={taskList} filteredTasks={filteredTasks} runsByTask={runsByTask} selectedTask={selectedTask} totalRuns={totalRuns} totalSamples={totalSamples} query={query} onQueryChange={setQuery} onChooseTask={chooseTask} onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
+                  </SheetContent>
+                </Sheet>
+                <CreateTaskSheet onCreate={createTask} protocolOptions={protocolOptionsForCreate} protocols={protocols} variant="primary" />
+                {selectedTask && <>
+                <Badge variant="outline" className="gap-1.5"><ModeIcon mode={taskMode(selectedTask)} className="size-3.5" />{modeLabel[taskMode(selectedTask)]}</Badge>
+                <Badge variant="outline" className="gap-1.5"><Network className="size-3.5" />{taskProtocol(selectedTask)}</Badge>
+                <Button size="sm" className="rounded-xl" onClick={() => startTaskRun(selectedTask)} disabled={startingTaskId === selectedTask.id}>
+                  <Play className="size-3.5" />{startingTaskId === selectedTask.id ? '启动中...' : '开始运行'}
+                </Button>
+                </>}
+              </div>
+            </div>
+          </header>
 
-          <div className="flex min-w-0 flex-col gap-4 lg:gap-5">
-            <TaskOverview task={selectedTask} onCreate={createTask} onStartRun={startTaskRun} starting={startingTaskId === selectedTask.id} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
-            <TaskRunHistory runs={taskRuns} selectedRun={selectedRun} onChooseRun={chooseRun} samplesByRun={requestsByRun} />
-            <RunDetail run={selectedRun} requests={runRequests} selectedRequest={selectedRequest} onSelectRequest={setSelectedRequestId} />
+          <div className="mx-auto max-w-375 space-y-4 p-4 sm:p-6">
+            {errorMessage && <div className="rounded-xl border border-destructive/30 bg-destructive/10 px-4 py-3 text-sm text-destructive">{errorMessage}</div>}
+            {!selectedTask && <Card className="rounded-2xl bg-card shadow-sm"><CardContent className="flex min-h-80 items-center justify-center p-6 text-sm text-muted-foreground">{loadingMessage || '暂无任务，请先创建任务。'}</CardContent></Card>}
+            {selectedTask && <>
+              <TaskOverview task={selectedTask} onCreate={createTask} onStartRun={startTaskRun} starting={startingTaskId === selectedTask.id} protocolOptions={protocolOptionsForCreate} protocols={protocols} />
+              <TaskRunHistory runs={taskRuns} selectedRun={selectedRun} onChooseRun={chooseRun} samplesByRun={requestsByRun} />
+              <RunDetail run={selectedRun} state={selectedRunState} requests={runRequests} selectedRequest={selectedRequest} onSelectRequest={setSelectedRequestId} />
+            </>}
           </div>
-        </section>}
+        </section>
       </div>
     </main>
   )
@@ -312,9 +293,89 @@ const createSteps = [
 type CreateTaskSheetProps = {
   onCreate: (draft: TaskDraft) => Promise<void> | void
   sourceTask?: Task
-  variant?: 'create' | 'copy'
+  variant?: 'create' | 'copy' | 'primary'
   protocolOptions: string[]
   protocols: ProtocolMeta[]
+}
+
+type TaskSidebarContentProps = {
+  taskList: Task[]
+  filteredTasks: Task[]
+  runsByTask: Record<string, RunSummary[]>
+  selectedTask?: Task
+  totalRuns: number
+  totalSamples: number
+  query: string
+  onQueryChange: (value: string) => void
+  onChooseTask: (task: Task) => void
+  onCreate: (draft: TaskDraft) => Promise<void> | void
+  protocolOptions: string[]
+  protocols: ProtocolMeta[]
+}
+
+function TaskSidebarContent({ taskList, filteredTasks, runsByTask, selectedTask, totalRuns, totalSamples, query, onQueryChange, onChooseTask, onCreate, protocolOptions, protocols }: TaskSidebarContentProps) {
+  return (
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="border-b px-5 py-4">
+        <div className="flex items-center gap-3">
+          <div className="flex size-10 shrink-0 items-center justify-center rounded-xl bg-sidebar-primary text-sidebar-primary-foreground">
+            <Activity className="size-4" />
+          </div>
+          <div className="min-w-0">
+            <h1 className="truncate text-base font-semibold tracking-tight">AIT Dashboard</h1>
+            <p className="truncate text-xs text-muted-foreground">任务执行与完整性校验</p>
+          </div>
+        </div>
+      </div>
+
+      <div className="grid grid-cols-3 gap-2 border-b px-4 py-3 text-xs lg:grid-cols-1 xl:grid-cols-3">
+        <TopStat icon={<ListChecks className="size-3.5" />} label="任务" value={taskList.length.toString()} />
+        <TopStat icon={<Clock3 className="size-3.5" />} label="执行" value={totalRuns.toString()} />
+        <TopStat icon={<Hash className="size-3.5" />} label="样本" value={totalSamples.toString()} />
+      </div>
+
+      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
+        <CreateTaskSheet onCreate={onCreate} protocolOptions={protocolOptions} protocols={protocols} />
+        <div className="relative">
+          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+          <Input value={query} onChange={(event) => onQueryChange(event.target.value)} className="h-10 rounded-xl bg-background pl-9" placeholder="搜索任务 / 模型 / 协议" />
+        </div>
+        <div className="flex items-center justify-between text-xs text-muted-foreground">
+          <span>任务队列</span>
+          <span>{filteredTasks.length} / {taskList.length}</span>
+        </div>
+        <ScrollArea className="min-h-0 flex-1">
+          <div className="space-y-2 pr-4">
+            {filteredTasks.map((task) => {
+              const runs = runsByTask[task.id] ?? []
+              const latestRun = task.latest_run ?? runs[0]
+              return (
+                <button key={task.id} type="button" onClick={() => onChooseTask(task)} className={cn('group w-full rounded-xl border border-transparent bg-background/70 px-3 py-3 text-left transition hover:border-sidebar-border hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', selectedTask?.id === task.id && 'border-sidebar-primary bg-sidebar-accent shadow-sm')}>
+                  <div className="flex items-start justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <ModeIcon mode={taskMode(task)} className="size-3.5 shrink-0 text-muted-foreground" />
+                        <div className="truncate text-sm font-medium leading-5">{task.name}</div>
+                      </div>
+                      <div className="mt-1 truncate text-xs text-muted-foreground">{modeLabel[taskMode(task)]} · {taskModel(task)}</div>
+                    </div>
+                    <ChevronRight className="mt-0.5 size-4 shrink-0 text-muted-foreground/60 transition group-hover:translate-x-0.5 group-hover:text-foreground" />
+                  </div>
+                  <div className="mt-3 flex items-center justify-between gap-3 text-xs text-muted-foreground">
+                    <span>{runs.length} 次执行</span>
+                    <span className="inline-flex items-center gap-2">
+                      {latestRun && <span className={cn('tabular-nums', latestRun.status === 'failed' ? 'text-red-600' : 'text-emerald-600')}>{formatPercent(latestRun.success_rate)}</span>}
+                      <span>{formatDate(task.updated_at)}</span>
+                    </span>
+                  </div>
+                </button>
+              )
+            })}
+          </div>
+        </ScrollArea>
+      </div>
+    </div>
+  )
 }
 
 function CreateTaskSheet({ onCreate, sourceTask, variant = 'create', protocolOptions, protocols }: CreateTaskSheetProps) {
@@ -392,6 +453,10 @@ function CreateTaskSheet({ onCreate, sourceTask, variant = 'create', protocolOpt
         {variant === 'copy' ? (
           <Button variant="outline" size="sm" className="rounded-full">
             <Copy className="size-3.5" />复制为新任务
+          </Button>
+        ) : variant === 'primary' ? (
+          <Button size="sm" className="rounded-xl">
+            <Plus className="size-3.5" />创建任务
           </Button>
         ) : (
           <Button className="h-12 w-full justify-start rounded-2xl px-3.5 text-sm shadow-sm">
@@ -611,39 +676,43 @@ function TaskRunHistory({ runs, selectedRun, onChooseRun, samplesByRun }: { runs
       </CardHeader>
       <CardContent className="space-y-4 p-4 pt-0 sm:p-5 sm:pt-0">
         <ExecutionTrend runs={runs} samplesByRun={samplesByRun} />
-        <div className="overflow-x-auto rounded-2xl border bg-background/70">
-          <Table className="min-w-[760px]">
-            <TableHeader>
-              <TableRow>
-                <TableHead>开始时间</TableHead>
-                <TableHead>状态</TableHead>
-                <TableHead>成功率</TableHead>
-                <TableHead>TTFT</TableHead>
-                <TableHead>TPS</TableHead>
-                <TableHead>RPM</TableHead>
-                <TableHead>TPM</TableHead>
-                <TableHead>缓存</TableHead>
-              </TableRow>
-            </TableHeader>
-            <TableBody>
-              {runs.map((run) => (
-                <TableRow key={run.run_id} onClick={() => onChooseRun(run)} className={cn('cursor-pointer transition-colors', selectedRun?.run_id === run.run_id && 'bg-accent')}>
-                  <TableCell>
-                    <div className="font-medium">{formatDate(run.started_at)}</div>
-                    <div className="mt-1 text-xs text-muted-foreground">{run.run_id}</div>
-                  </TableCell>
-                  <TableCell><StatusBadge status={run.status} /></TableCell>
-                  <TableCell><RunRate value={run.success_rate} /></TableCell>
-                  <TableCell>{run.avg_ttft || '-'}</TableCell>
-                  <TableCell className="tabular-nums">{formatNumber(run.avg_tps)}</TableCell>
-                  <TableCell className="tabular-nums">{formatNumber(run.rpm)}</TableCell>
-                  <TableCell className="tabular-nums">{formatNumber(run.tpm)}</TableCell>
-                  <TableCell className="tabular-nums">{formatPercent(run.cache_hit_rate)}</TableCell>
+        {runs.length === 0 ? (
+          <div className="rounded-2xl border border-dashed bg-background/70 px-4 py-10 text-center text-sm text-muted-foreground">这个任务还没有执行记录。点击上方“开始运行”后，这里会显示每次执行的结果。</div>
+        ) : (
+          <div className="overflow-x-auto rounded-2xl border bg-background/70">
+            <Table className="min-w-190">
+              <TableHeader>
+                <TableRow>
+                  <TableHead>开始时间</TableHead>
+                  <TableHead>状态</TableHead>
+                  <TableHead>成功率</TableHead>
+                  <TableHead>TTFT</TableHead>
+                  <TableHead>TPS</TableHead>
+                  <TableHead>RPM</TableHead>
+                  <TableHead>TPM</TableHead>
+                  <TableHead>缓存</TableHead>
                 </TableRow>
-              ))}
-            </TableBody>
-          </Table>
-        </div>
+              </TableHeader>
+              <TableBody>
+                {runs.map((run) => (
+                  <TableRow key={run.run_id} onClick={() => onChooseRun(run)} className={cn('cursor-pointer transition-colors', selectedRun?.run_id === run.run_id && 'bg-accent')}>
+                    <TableCell>
+                      <div className="font-medium">{formatDate(run.started_at)}</div>
+                      <div className="mt-1 text-xs text-muted-foreground">{run.run_id}</div>
+                    </TableCell>
+                    <TableCell><StatusBadge status={run.status} /></TableCell>
+                    <TableCell><RunRate value={run.success_rate} /></TableCell>
+                    <TableCell>{run.avg_ttft || '-'}</TableCell>
+                    <TableCell className="tabular-nums">{formatNumber(run.avg_tps)}</TableCell>
+                    <TableCell className="tabular-nums">{formatNumber(run.rpm)}</TableCell>
+                    <TableCell className="tabular-nums">{formatNumber(run.tpm)}</TableCell>
+                    <TableCell className="tabular-nums">{formatPercent(run.cache_hit_rate)}</TableCell>
+                  </TableRow>
+                ))}
+              </TableBody>
+            </Table>
+          </div>
+        )}
       </CardContent>
     </Card>
   )
@@ -748,7 +817,7 @@ function TaskConfigSheet({ task }: { task: Task }) {
           <Settings2 className="size-3.5" />请求配置
         </Button>
       </SheetTrigger>
-      <SheetContent className="!w-[min(96vw,1040px)] !max-w-none overflow-y-auto">
+      <SheetContent className="w-[min(96vw,1040px)]! max-w-none! overflow-y-auto">
         <SheetHeader className="border-b bg-muted/30 px-6 py-5">
           <SheetTitle className="flex items-center gap-2"><Settings2 className="size-4" />请求配置</SheetTitle>
           <SheetDescription>这些参数来自后端任务配置。</SheetDescription>
@@ -1081,11 +1150,12 @@ function RunRate({ value }: { value: number }) {
   )
 }
 
-function RunDetail({ run, requests, selectedRequest, onSelectRequest }: { run?: RunSummary; requests: RequestDetail[]; selectedRequest?: RequestDetail; onSelectRequest: (id: string) => void }) {
+function RunDetail({ run, state, requests, selectedRequest, onSelectRequest }: { run?: RunSummary; state?: RunState; requests: RequestDetail[]; selectedRequest?: RequestDetail; onSelectRequest: (id: string) => void }) {
   if (!run) {
     return <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40"><CardContent className="flex min-h-60 items-center justify-center p-6 text-sm text-muted-foreground"><Clock3 className="mr-2 size-4" />当前任务暂无执行记录。</CardContent></Card>
   }
 
+  const integrity = integritySnapshot(state)
   const successCount = requests.filter((request) => request.success).length
   const failedCount = requests.filter((request) => request.status === 'failed' || !request.success).length
   const doneCount = successCount + failedCount
@@ -1094,81 +1164,104 @@ function RunDetail({ run, requests, selectedRequest, onSelectRequest }: { run?: 
   return (
     <Card className="rounded-3xl bg-card/95 shadow-sm ring-1 ring-border/40">
       <CardHeader className="p-4 sm:p-5">
-        <div className="flex flex-col gap-3 lg:flex-row lg:items-start lg:justify-between">
-          <div className="min-w-0">
-            <CardTitle className="flex items-center gap-2 text-base"><FileJson className="size-4" />执行详情</CardTitle>
-            <CardDescription className="truncate">{run.run_id} · {formatDate(run.started_at)} · {run.protocol} · {run.model}</CardDescription>
+        <div className="flex flex-col gap-4 xl:flex-row xl:items-start xl:justify-between">
+          <div className="min-w-0 space-y-2">
+            <CardTitle className="flex items-center gap-2 text-base"><FileJson className="size-4" />选中执行</CardTitle>
+            <CardDescription className="break-all leading-5">{run.run_id}</CardDescription>
+            <div className="flex flex-wrap gap-2 text-xs text-muted-foreground">
+              <span>{formatDate(run.started_at)}</span>
+              <span>·</span>
+              <span>{run.protocol}</span>
+              <span>·</span>
+              <span>{run.model}</span>
+            </div>
           </div>
-          <StatusBadge status={run.status} />
+          <div className="flex flex-wrap items-center gap-2 xl:justify-end">
+            <StatusBadge status={run.status} />
+            <Badge variant="outline">{requests.length} 个请求样本</Badge>
+            {integrity && <Badge variant="outline"><ShieldCheck className="size-3" />{integrity.suiteId || 'integrity'}</Badge>}
+          </div>
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-4 pt-0 sm:p-5 sm:pt-0">
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">
-          <KpiCard icon={<CheckCircle2 className="size-4" />} label="成功率" value={formatPercent(run.success_rate)} sub={`${successCount} 成功 / ${failedCount} 失败`} />
-          <KpiCard icon={<Gauge className="size-4" />} label="平均 TTFT" value={run.avg_ttft || '-'} sub={`缓存 ${formatPercent(run.cache_hit_rate)}`} />
-          <KpiCard icon={<TrendingUp className="size-4" />} label="平均 TPS" value={formatNumber(run.avg_tps)} sub={`RPM ${formatNumber(run.rpm)} · TPM ${formatNumber(run.tpm)}`} />
-          <KpiCard icon={<Database className="size-4" />} label="稳定并发" value={String(run.max_stable_concurrency || '-')} sub={run.error_summary || '暂无错误摘要'} />
-        </div>
+        <div className="grid gap-4 2xl:grid-cols-[minmax(0,1fr)_440px]">
+          <div className="space-y-4">
+            <section className="rounded-2xl border bg-background/70 p-4">
+              <div className="mb-3 flex items-center justify-between gap-3 text-sm">
+                <span className="font-medium">执行完成度</span>
+                <span className="text-muted-foreground">{doneCount} / {requests.length}</span>
+              </div>
+              <Progress value={progress} />
+              <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+                <InlineMetric icon={<CheckCircle2 className="size-4" />} label={integrity ? '用例' : '成功率'} value={integrity ? `${integrity.passedCases}/${integrity.totalCases}` : formatPercent(run.success_rate)} tone={failedCount > 0 || (integrity?.failedCases ?? 0) > 0 ? 'danger' : 'success'} />
+                <InlineMetric icon={<Gauge className="size-4" />} label="TTFT" value={run.avg_ttft || '-'} />
+                <InlineMetric icon={<TrendingUp className="size-4" />} label="TPS" value={formatNumber(run.avg_tps)} />
+                <InlineMetric icon={<Database className="size-4" />} label={integrity ? '断言' : '缓存'} value={integrity ? `${integrity.passedAssertions}/${integrity.totalAssertions}` : formatPercent(run.cache_hit_rate)} />
+              </div>
+            </section>
 
-        <div className="rounded-2xl border bg-background/70 p-4">
-          <div className="mb-2 flex items-center justify-between text-sm">
-            <span className="font-medium">样本进度</span>
-            <span className="text-muted-foreground">{doneCount} / {requests.length}</span>
+            {integrity && <IntegrityRunPanel snapshot={integrity} />}
+
+            <section className="grid gap-3 lg:grid-cols-3">
+              <CompactMetricList title="运行摘要" icon={<Clock3 className="size-4" />} items={[
+                ['开始时间', formatDate(run.started_at)],
+                ['结束时间', formatDate(run.finished_at)],
+                ['状态', statusLabel[run.status]],
+                ['错误摘要', run.error_summary || '-'],
+              ]} />
+              <CompactMetricList title="吞吐与速度" icon={<TrendingUp className="size-4" />} items={[
+                ['平均 TPS', formatNumber(run.avg_tps)],
+                ['RPM', formatNumber(run.rpm)],
+                ['TPM', formatNumber(run.tpm)],
+                ['稳定并发', String(run.max_stable_concurrency || '-')],
+              ]} />
+              <CompactMetricList title="样本质量" icon={<Network className="size-4" />} items={[
+                ['总样本', String(requests.length)],
+                ['成功', String(successCount)],
+                ['失败', String(failedCount)],
+                ['缓存命中', formatPercent(run.cache_hit_rate)],
+              ]} />
+            </section>
           </div>
-          <Progress value={progress} />
-        </div>
 
-        <Tabs defaultValue="overview">
-          <TabsList className="grid w-full grid-cols-2 lg:w-[320px]">
-            <TabsTrigger value="overview">指标概览</TabsTrigger>
-            <TabsTrigger value="requests">请求样本</TabsTrigger>
-          </TabsList>
-          <TabsContent value="overview" className="mt-4 grid gap-3 lg:grid-cols-3">
-            <CompactMetricList title="运行摘要" icon={<Clock3 className="size-4" />} items={[
-              ['开始时间', formatDate(run.started_at)],
-              ['结束时间', formatDate(run.finished_at)],
-              ['状态', statusLabel[run.status]],
-              ['错误摘要', run.error_summary || '-'],
-            ]} />
-            <CompactMetricList title="吞吐" icon={<TrendingUp className="size-4" />} items={[
-              ['平均 TPS', formatNumber(run.avg_tps)],
-              ['RPM', formatNumber(run.rpm)],
-              ['TPM', formatNumber(run.tpm)],
-              ['稳定并发', String(run.max_stable_concurrency || '-')],
-            ]} />
-            <CompactMetricList title="请求样本" icon={<Network className="size-4" />} items={[
-              ['总样本', String(requests.length)],
-              ['成功', String(successCount)],
-              ['失败', String(failedCount)],
-              ['缓存命中', formatPercent(run.cache_hit_rate)],
-            ]} />
-          </TabsContent>
-          <TabsContent value="requests" className="mt-4 grid gap-4 xl:grid-cols-[280px_minmax(0,1fr)]">
-            <div className="space-y-2">
-              {requests.map((request) => {
-                const key = requestKey(request)
-                return (
-                  <button key={key} type="button" onClick={() => onSelectRequest(key)} className={cn('flex w-full items-center justify-between rounded-2xl border bg-background/70 p-3 text-left text-sm hover:bg-accent', selectedRequest && requestKey(selectedRequest) === key && 'border-primary bg-accent')}>
-                    <span className="font-medium">#{request.index} · {request.status}</span>
-                    <span className="flex items-center gap-2 text-muted-foreground">{request.status === 'failed' ? <XCircle className="size-4 text-red-500" /> : <CheckCircle2 className="size-4 text-emerald-500" />}{request.total_time}</span>
-                  </button>
-                )
-              })}
+          <section className="min-w-0 rounded-2xl border bg-background/70 p-4">
+            <div className="mb-3 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2 text-sm font-medium"><Network className="size-4" />请求样本检查</div>
+              <Badge variant="outline">{requests.length}</Badge>
             </div>
-            {selectedRequest && <RequestPanel request={selectedRequest} />}
-          </TabsContent>
-        </Tabs>
+            <div className="grid min-h-0 gap-4 xl:grid-cols-[300px_minmax(0,1fr)] 2xl:block">
+              <div className="space-y-2 pr-3 xl:max-h-105 xl:overflow-y-auto xl:scrollbar-gutter-stable 2xl:max-h-72">
+                {requests.length === 0 ? <div className="rounded-xl bg-muted/50 px-3 py-6 text-center text-sm text-muted-foreground">暂无请求样本。</div> : requests.map((request) => {
+                  const key = requestKey(request)
+                  const active = selectedRequest && requestKey(selectedRequest) === key
+                  return (
+                    <button key={key} type="button" onClick={() => onSelectRequest(key)} className={cn('flex w-full items-center justify-between gap-3 rounded-xl border bg-background/70 px-3 py-2.5 text-left text-sm hover:bg-accent', active && 'border-primary bg-accent')}>
+                      <span className="min-w-0">
+                        <span className="block truncate font-medium">#{request.index}{request.case_id ? ` · ${request.case_id}` : ''}</span>
+                        <span className="mt-0.5 block truncate text-xs text-muted-foreground">{request.total_time} · TTFT {request.ttft}</span>
+                      </span>
+                      {request.status === 'failed' || !request.success ? <XCircle className="size-4 shrink-0 text-red-500" /> : <CheckCircle2 className="size-4 shrink-0 text-emerald-500" />}
+                    </button>
+                  )
+                })}
+              </div>
+              {selectedRequest && <RequestPanel request={selectedRequest} compact />}
+            </div>
+          </section>
+        </div>
       </CardContent>
     </Card>
   )
 }
 
-function KpiCard({ icon, label, value, sub }: { icon: React.ReactNode; label: string; value: string; sub: string }) {
+function InlineMetric({ icon, label, value, tone = 'neutral' }: { icon: React.ReactNode; label: string; value: string; tone?: 'neutral' | 'success' | 'danger' }) {
   return (
-    <div className="rounded-2xl border bg-background/75 p-4 shadow-xs ring-1 ring-border/20">
-      <div className="flex items-center gap-2 text-xs text-muted-foreground">{icon}{label}</div>
-      <div className="mt-2 text-2xl font-semibold tracking-tight tabular-nums">{value}</div>
-      <div className="mt-1 truncate text-xs text-muted-foreground" title={sub}>{sub}</div>
+    <div className="flex min-w-0 items-center gap-3 rounded-xl bg-muted/45 px-3 py-3">
+      <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground', tone === 'success' && 'text-emerald-600', tone === 'danger' && 'text-red-600')}>{icon}</div>
+      <div className="min-w-0">
+        <div className="text-xs text-muted-foreground">{label}</div>
+        <div className="truncate text-lg font-semibold tabular-nums" title={value}>{value}</div>
+      </div>
     </div>
   )
 }
@@ -1189,15 +1282,16 @@ function CompactMetricList({ title, icon, items }: { title: string; icon: React.
   )
 }
 
-function RequestPanel({ request }: { request: RequestDetail }) {
+function RequestPanel({ request, compact = false }: { request: RequestDetail; compact?: boolean }) {
   return (
-    <div className="rounded-2xl border bg-background p-4">
+    <div className={cn('rounded-2xl border bg-background p-4', compact && 'mt-4 xl:mt-4')}>
       <div className="mb-4 flex items-center justify-between gap-3">
         <div className="font-medium">请求详情 #{request.index}</div>
         {request.error_message ? <Badge className="bg-red-600"><AlertTriangle className="size-3" />{request.error_message}</Badge> : <Badge className="bg-emerald-600">OK</Badge>}
       </div>
-      <div className="grid gap-4 xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]">
+      <div className={cn('grid gap-4', !compact && 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
         <CompactMetricList title="本次指标" icon={<Gauge className="size-4" />} items={[
+          ['Case ID', request.case_id || '-'],
           ['延迟', `${request.total_time} · TTFT ${request.ttft}`],
           ['TPS', formatNumber(request.tps)],
           ['Token', `in ${request.prompt_tokens} · out ${request.completion_tokens} · cached ${request.cached_tokens}`],
@@ -1211,6 +1305,111 @@ function RequestPanel({ request }: { request: RequestDetail }) {
       </div>
     </div>
   )
+}
+
+type IntegritySnapshot = {
+  suiteId: string
+  status: string
+  message: string
+  currentCaseId: string
+  totalCases: number
+  passedCases: number
+  failedCases: number
+  warnedCases: number
+  skippedCases: number
+  requiredFailedCases: number
+  totalAssertions: number
+  passedAssertions: number
+  failedAssertions: number
+  warnedAssertions: number
+  cases: IntegrityCaseResult[]
+  assertions: IntegrityAssertionResult[]
+}
+
+function IntegrityRunPanel({ snapshot }: { snapshot: IntegritySnapshot }) {
+  return (
+    <div className="rounded-2xl border bg-background/70 p-4">
+      <div className="mb-4 flex flex-col gap-2 sm:flex-row sm:items-start sm:justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm font-medium"><ShieldCheck className="size-4" />完整性校验结果</div>
+          <div className="mt-1 text-xs leading-5 text-muted-foreground">{snapshot.suiteId || '-'} · {snapshot.message || snapshot.status || '等待后端同步状态'}</div>
+        </div>
+        <Badge variant="outline">{snapshot.currentCaseId ? `当前 ${snapshot.currentCaseId}` : snapshot.status || 'suite'}</Badge>
+      </div>
+      <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
+        <NumberStat compact label="总用例" value={String(snapshot.totalCases)} />
+        <NumberStat compact label="通过用例" value={String(snapshot.passedCases)} />
+        <NumberStat compact label="失败用例" value={String(snapshot.failedCases)} />
+        <NumberStat compact label="必需失败" value={String(snapshot.requiredFailedCases)} />
+      </div>
+      <div className="mt-4 space-y-2 pr-3 xl:max-h-130 xl:overflow-y-auto xl:scrollbar-gutter-stable">
+        {snapshot.cases.length === 0 ? <div className="rounded-xl bg-muted/50 px-3 py-3 text-xs text-muted-foreground">完整性用例尚未产生结果。</div> : snapshot.cases.map((item) => (
+          <div key={item.case_id} className="rounded-xl border bg-background/80 px-3 py-3 text-sm">
+            <div className="flex items-start justify-between gap-3">
+              <div className="min-w-0">
+                <div className="truncate font-medium">{item.name || item.case_id}</div>
+                <div className="mt-1 text-xs text-muted-foreground">{item.capability || '未标注能力'} · {item.duration || '-'}</div>
+              </div>
+              <Badge variant="outline" className={cn(item.status === 'passed' && 'border-emerald-200 bg-emerald-50 text-emerald-700', item.status === 'failed' && 'border-red-200 bg-red-50 text-red-700')}>{item.status}</Badge>
+            </div>
+            <div className="mt-3 grid gap-2 text-xs sm:grid-cols-4">
+              <KeyValue label="断言" value={String(item.total_assertions)} />
+              <KeyValue label="通过" value={String(item.passed_assertions)} />
+              <KeyValue label="失败" value={String(item.failed_assertions)} />
+              <KeyValue label="警告" value={String(item.warned_assertions)} />
+            </div>
+            {item.error_message && <div className="mt-3 rounded-lg bg-destructive/10 px-3 py-2 text-xs text-destructive">{item.error_message}</div>}
+          </div>
+        ))}
+      </div>
+    </div>
+  )
+}
+
+function integritySnapshot(state?: RunState): IntegritySnapshot | undefined {
+  if (!state || state.mode !== 'integrity') return undefined
+  const modeState = state.mode_state as IntegrityModeState | undefined
+  const result = isIntegrityResult(state.mode_result) ? state.mode_result : undefined
+  const suiteStatus = modeState?.suite_status
+  const cases = result?.cases ?? modeState?.cases ?? []
+  const assertions = result?.assertions ?? modeState?.assertion_results ?? flattenAssertions(cases)
+  return {
+    suiteId: result?.suite_id ?? suiteIdFromState(modeState),
+    status: result?.status ?? suiteStatus?.phase ?? '',
+    message: suiteStatus?.message ?? '',
+    currentCaseId: modeState?.current_case_id ?? '',
+    totalCases: result?.total_cases ?? suiteStatus?.case_count ?? cases.length,
+    passedCases: result?.passed_cases ?? cases.filter((item) => item.status === 'passed').length,
+    failedCases: result?.failed_cases ?? cases.filter((item) => item.status === 'failed').length,
+    warnedCases: result?.warned_cases ?? cases.filter((item) => item.warned_assertions > 0).length,
+    skippedCases: result?.skipped_cases ?? cases.filter((item) => item.status === 'skipped').length,
+    requiredFailedCases: result?.required_failed_cases ?? cases.filter((item) => item.required && item.status === 'failed').length,
+    totalAssertions: sumCases(cases, 'total_assertions', assertions.length),
+    passedAssertions: sumCases(cases, 'passed_assertions', assertions.filter((item) => item.passed).length),
+    failedAssertions: sumCases(cases, 'failed_assertions', assertions.filter((item) => !item.passed && item.level !== 'warn').length),
+    warnedAssertions: sumCases(cases, 'warned_assertions', assertions.filter((item) => item.level === 'warn').length),
+    cases,
+    assertions,
+  }
+}
+
+function isIntegrityResult(value: unknown): value is IntegrityResult {
+  return Boolean(value && typeof value === 'object' && 'suite_id' in value && 'cases' in value)
+}
+
+function suiteIdFromState(modeState?: IntegrityModeState) {
+  if (!modeState) return ''
+  if (typeof modeState.suite === 'string') return modeState.suite
+  return modeState.suite?.id ?? modeState.suite_status?.suite ?? ''
+}
+
+function flattenAssertions(cases: IntegrityCaseResult[]) {
+  return cases.flatMap((item) => item.assertions ?? [])
+}
+
+function sumCases(cases: IntegrityCaseResult[], key: 'total_assertions' | 'passed_assertions' | 'failed_assertions' | 'warned_assertions', fallback: number) {
+  if (cases.length === 0) return fallback
+  return cases.reduce((sum, item) => sum + (item[key] || 0), 0)
 }
 
 function CodeBlock({ label, value, icon }: { label: string; value: string; icon?: React.ReactNode }) {

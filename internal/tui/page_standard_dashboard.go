@@ -12,13 +12,13 @@ import (
 
 // StandardDashboardPage 标准模式运行仪表盘（v1）。
 type StandardDashboardPage struct {
-	srv      server.Server
-	run      *types.TaskRunSummary
-	reqs     []types.RequestMetrics
-	total    int
-	root     *tview.Flex
-	rList    *tview.List
-	statsTv  *tview.TextView
+	srv     server.Server
+	run     *types.TaskRunSummary
+	reqs    []types.RequestMetrics
+	total   int
+	root    *tview.Flex
+	rTable  *tview.Table
+	statsTv *tview.TextView
 }
 
 // NewStandardDashboardPage 创建标准模式仪表盘。
@@ -59,19 +59,9 @@ func NewStandardDashboardPage(
 	}
 	p.statsTv.SetText(formatStats(reqs, totalReqs, isCompleted, elapsed))
 
-	// 请求列表
-	p.rList = tview.NewList().
-		ShowSecondaryText(true)
-	p.rList.SetBorder(true).SetTitle(" Requests ").SetTitleAlign(tview.AlignLeft)
-	p.rList.SetSelectedBackgroundColor(tcell.ColorDarkBlue)
-
-	for _, r := range reqs {
-		main, sec := formatReqLine(r)
-		p.rList.AddItem(main, sec, 0, nil)
-	}
-	if p.rList.GetItemCount() > 0 {
-		p.rList.SetCurrentItem(0)
-	}
+	// 请求表
+	p.rTable = newSelectableTable(" Requests ")
+	p.rebuildRequestTable()
 
 	// Footer
 	footer := tview.NewTextView().
@@ -83,7 +73,7 @@ func NewStandardDashboardPage(
 	content := tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(p.statsTv, 0, 4, false).
-		AddItem(p.rList, 0, 6, true)
+		AddItem(p.rTable, 0, 6, true)
 
 	p.root = tview.NewFlex().
 		SetDirection(tview.FlexRow).
@@ -104,20 +94,26 @@ func (p *StandardDashboardPage) SetRequests(reqs []types.RequestMetrics, totalRe
 		elapsed = p.run.FinishedAt.Sub(p.run.StartedAt)
 	}
 	p.statsTv.SetText(formatStats(reqs, totalReqs, isCompleted, elapsed))
-	p.rList.Clear()
-	for _, r := range reqs {
-		main, sec := formatReqLine(r)
-		p.rList.AddItem(main, sec, 0, nil)
+	oldIdx := selectedDataIndex(p.rTable)
+	p.rebuildRequestTable()
+	selectDataIndex(p.rTable, oldIdx)
+}
+
+func (p *StandardDashboardPage) rebuildRequestTable() {
+	rows := make([][]string, 0, len(p.reqs))
+	for _, r := range p.reqs {
+		rows = append(rows, formatReqRow(r))
 	}
+	setTableRows(p.rTable, requestColumns(), rows)
 }
 
 // ─── Page 接口实现 ─────────────────────────────────────────────────────────────
 
-func (p *StandardDashboardPage) Name() string              { return "standard_dashboard" }
-func (p *StandardDashboardPage) Primitive() tview.Primitive { return p.root }
-func (p *StandardDashboardPage) FocusTarget() tview.Primitive { return p.rList }
-func (p *StandardDashboardPage) OnActivate()                {}
-func (p *StandardDashboardPage) OnDeactivate()              {}
+func (p *StandardDashboardPage) Name() string                 { return "standard_dashboard" }
+func (p *StandardDashboardPage) Primitive() tview.Primitive   { return p.root }
+func (p *StandardDashboardPage) FocusTarget() tview.Primitive { return p.rTable }
+func (p *StandardDashboardPage) OnActivate()                  {}
+func (p *StandardDashboardPage) OnDeactivate()                {}
 
 func (p *StandardDashboardPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.EventKey {
 	switch event.Key() {
@@ -130,5 +126,5 @@ func (p *StandardDashboardPage) HandleKey(event *tcell.EventKey, router *PageRou
 		go func() { _ = p.srv.StopRun(server.RunID(p.run.RunID)) }()
 		return nil
 	}
-	return event // ↑↓ 等由 tview List 原生处理
+	return event // ↑↓ 等由 tview Table 原生处理
 }

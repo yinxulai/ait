@@ -146,6 +146,59 @@ func TestAPIHandlerListsTasksAndRunRequests(t *testing.T) {
 	}
 }
 
+func TestAPIHandlerReturnsIntegrityRunState(t *testing.T) {
+	finishedAt := time.Now()
+	svc := newStubServer()
+	svc.runState = &aitserver.RunState{
+		RunID:       "run-integrity",
+		TaskID:      "task-integrity",
+		Status:      aitserver.RunStatusCompleted,
+		Mode:        aitserver.ModeIntegrity,
+		TotalReqs:   1,
+		DoneReqs:    1,
+		SuccessReqs: 1,
+		ModeState: map[string]any{
+			aitserver.ModeStateKeySuiteStatus: map[string]any{"phase": "ready", "suite": "openai-completions-smoke", "case_count": 1},
+			aitserver.ModeStateKeyCurrentCaseID: "basic-response-shape",
+			aitserver.ModeStateKeyCases: []types.IntegrityCaseResult{{
+				CaseID:           "basic-response-shape",
+				Status:           "passed",
+				TotalAssertions:  1,
+				PassedAssertions: 1,
+			}},
+		},
+		ModeResult: &types.IntegrityResult{
+			SuiteID:      "openai-completions-smoke",
+			Status:       "passed",
+			TotalCases:   1,
+			PassedCases:  1,
+			FinishedAt:   &finishedAt,
+			Cases:        []types.IntegrityCaseResult{{CaseID: "basic-response-shape", Status: "passed", TotalAssertions: 1, PassedAssertions: 1}},
+			Assertions:   []types.AssertionResult{{AssertionID: "has-id", Level: "required", Passed: true, Path: "$.id", Op: "exists"}},
+		},
+		RequestStates: map[int]aitserver.RequestState{0: {Index: 0, Status: aitserver.RequestStatusSucceeded, CaseID: "basic-response-shape"}},
+		Requests: []*types.RequestMetrics{{
+			Index:   0,
+			Success: true,
+		}},
+	}
+	handler := NewHandler(testAssets(), svc)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/runs/run-integrity", nil)
+	rec := httptest.NewRecorder()
+	handler.ServeHTTP(rec, req)
+
+	if rec.Code != http.StatusOK {
+		t.Fatalf("status = %d, body = %s", rec.Code, rec.Body.String())
+	}
+	body := rec.Body.String()
+	for _, want := range []string{`"mode":"integrity"`, `"mode_state"`, `"mode_result"`, `"request_states"`, `"case_id":"basic-response-shape"`, `"suite_id":"openai-completions-smoke"`} {
+		if !strings.Contains(body, want) {
+			t.Fatalf("run state response missing %s: %s", want, body)
+		}
+	}
+}
+
 func TestAPIHandlerReturnsMetadata(t *testing.T) {
 	handler := NewHandler(testAssets(), newStubServer())
 

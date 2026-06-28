@@ -11,25 +11,26 @@ import (
 
 // MainPage 是主布局页面（3-panel：任务列表 / 运行历史 / 统计+请求）。
 type MainPage struct {
-	app         *tview.Application
-	srv         server.Server
-	version     string
-	header      *tview.TextView
-	footer      *tview.TextView
-	taskList    *tview.List
-	historyList *tview.List
-	statsPanel  *tview.Flex
-	statsText   *tview.TextView
-	requestList *tview.List
-	activePanel panelIndex
-	root        *tview.Flex
+	app          *tview.Application
+	srv          server.Server
+	version      string
+	header       *tview.TextView
+	footer       *tview.TextView
+	taskTable    *tview.Table
+	historyTable *tview.Table
+	statsPanel   *tview.Flex
+	statsText    *tview.TextView
+	requestTable *tview.Table
+	activePanel  panelIndex
+	root         *tview.Flex
 
 	// 数据（用于 Enter 导航查找 + Refresh 重建）
-	tasks       []types.TaskOverview
-	runs        []types.TaskRunSummary
-	requests    []types.RequestMetrics
-	runRequests map[int][]types.RequestMetrics // key = runs 切片索引
-	totalReqs   int
+	tasks          []types.TaskOverview
+	runs           []types.TaskRunSummary
+	requests       []types.RequestMetrics
+	runRequests    map[int][]types.RequestMetrics // key = runs 切片索引
+	totalReqs      int
+	selectedTaskID string
 }
 
 // NewMainPage 创建主布局页面。
@@ -52,23 +53,22 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 		SetDynamicColors(true).
 		SetTextAlign(tview.AlignCenter)
 
-	// Task List (左 panel)
-	m.taskList = tview.NewList().
-		ShowSecondaryText(true)
-	m.taskList.SetBorder(true).
+	// Task Table (左 panel)
+	m.taskTable = newSelectableTable(" Tasks ")
+	m.taskTable.SetBorder(true).
 		SetTitle(" Tasks ").
 		SetTitleAlign(tview.AlignLeft)
-	m.taskList.SetChangedFunc(func(_ int, _, _ string, _ rune) {
+	m.taskTable.SetSelectionChangedFunc(func(_, _ int) {
 		m.updateFooter()
+		m.refreshHistoryForSelectedTask()
 	})
 
-	// History List (中 panel)
-	m.historyList = tview.NewList().
-		ShowSecondaryText(true)
-	m.historyList.SetBorder(true).
+	// History Table (中 panel)
+	m.historyTable = newSelectableTable(" Run History ")
+	m.historyTable.SetBorder(true).
 		SetTitle(" Run History ").
 		SetTitleAlign(tview.AlignLeft)
-	m.historyList.SetChangedFunc(func(_ int, _, _ string, _ rune) {
+	m.historyTable.SetSelectionChangedFunc(func(_, _ int) {
 		m.updateFooter()
 	})
 
@@ -80,13 +80,12 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 		SetTitle(" Statistics ").
 		SetTitleAlign(tview.AlignLeft)
 
-	// Request List (右 panel 下)
-	m.requestList = tview.NewList().
-		ShowSecondaryText(true)
-	m.requestList.SetBorder(true).
+	// Request Table (右 panel 下)
+	m.requestTable = newSelectableTable(" Requests ")
+	m.requestTable.SetBorder(true).
 		SetTitle(" Requests ").
 		SetTitleAlign(tview.AlignLeft)
-	m.requestList.SetChangedFunc(func(_ int, _, _ string, _ rune) {
+	m.requestTable.SetSelectionChangedFunc(func(_, _ int) {
 		m.updateFooter()
 	})
 
@@ -94,12 +93,12 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 	m.statsPanel = tview.NewFlex().
 		SetDirection(tview.FlexRow).
 		AddItem(m.statsText, 0, 4, false).
-		AddItem(m.requestList, 0, 6, true)
+		AddItem(m.requestTable, 0, 6, true)
 
 	// 三栏布局
 	content := tview.NewFlex().
-		AddItem(m.taskList, 0, 2, false).
-		AddItem(m.historyList, 0, 2, false).
+		AddItem(m.taskTable, 0, 2, false).
+		AddItem(m.historyTable, 0, 2, false).
 		AddItem(m.statsPanel, 0, 4, false)
 
 	// 根布局：Header + Content + Footer
@@ -118,19 +117,19 @@ func NewMainPage(app *tview.Application, srv server.Server, version string) *Mai
 
 // ─── Page 接口实现 ─────────────────────────────────────────────────────────────
 
-func (m *MainPage) Name() string                   { return "main" }
-func (m *MainPage) Primitive() tview.Primitive      { return m.root }
-func (m *MainPage) OnActivate()                     {}
-func (m *MainPage) OnDeactivate()                   {}
+func (m *MainPage) Name() string               { return "main" }
+func (m *MainPage) Primitive() tview.Primitive { return m.root }
+func (m *MainPage) OnActivate()                {}
+func (m *MainPage) OnDeactivate()              {}
 
 func (m *MainPage) FocusTarget() tview.Primitive {
 	switch m.activePanel {
 	case panelTasks:
-		return m.taskList
+		return m.taskTable
 	case panelHistory:
-		return m.historyList
+		return m.historyTable
 	default:
-		return m.requestList
+		return m.requestTable
 	}
 }
 
@@ -160,7 +159,7 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 	switch event.Rune() {
 	case 'r':
 		if m.activePanel == panelTasks {
-			idx := m.taskList.GetCurrentItem()
+			idx := selectedDataIndex(m.taskTable)
 			if idx >= 0 && idx < len(m.tasks) {
 				go func() { _, _ = m.srv.StartRun(m.tasks[idx].ID) }()
 			}
@@ -168,7 +167,7 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 		return nil
 	case 's':
 		if m.activePanel == panelHistory {
-			idx := m.historyList.GetCurrentItem()
+			idx := selectedDataIndex(m.historyTable)
 			if idx >= 0 && idx < len(m.runs) && m.runs[idx].Status == "running" {
 				go func() { _ = m.srv.StopRun(server.RunID(m.runs[idx].RunID)) }()
 			}
@@ -183,7 +182,7 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 			}()
 		case panelHistory:
 			go func() {
-				idx := m.taskList.GetCurrentItem()
+				idx := selectedDataIndex(m.taskTable)
 				if idx >= 0 && idx < len(m.tasks) {
 					runs, _ := m.srv.ListTaskRunHistory(m.tasks[idx].ID, 50)
 					m.app.QueueUpdateDraw(func() { m.RefreshRuns(runs) })
@@ -193,7 +192,27 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 		return nil
 	}
 
-	return event // ↑↓ 等透传给 tview List
+	return event // ↑↓ 等透传给 tview Table
+}
+
+func (m *MainPage) refreshHistoryForSelectedTask() {
+	idx := selectedDataIndex(m.taskTable)
+	if idx < 0 || idx >= len(m.tasks) {
+		return
+	}
+	taskID := m.tasks[idx].ID
+	if taskID == "" || taskID == m.selectedTaskID {
+		return
+	}
+	m.selectedTaskID = taskID
+	go func() {
+		runs, _ := m.srv.ListTaskRunHistory(taskID, 50)
+		m.app.QueueUpdateDraw(func() {
+			if m.selectedTaskID == taskID {
+				m.RefreshRuns(runs)
+			}
+		})
+	}()
 }
 
 // ─── Enter 导航 ────────────────────────────────────────────────────────────────
@@ -202,12 +221,12 @@ func (m *MainPage) HandleKey(event *tcell.EventKey, router *PageRouter) *tcell.E
 func (m *MainPage) EnterAction() Page {
 	switch m.activePanel {
 	case panelTasks:
-		idx := m.taskList.GetCurrentItem()
+		idx := selectedDataIndex(m.taskTable)
 		if idx >= 0 && idx < len(m.tasks) {
 			return NewTaskDetailPage(&m.tasks[idx])
 		}
 	case panelHistory:
-		idx := m.historyList.GetCurrentItem()
+		idx := selectedDataIndex(m.historyTable)
 		if idx >= 0 && idx < len(m.runs) {
 			reqs, ok := m.runRequests[idx]
 			if !ok {
@@ -216,7 +235,7 @@ func (m *MainPage) EnterAction() Page {
 			return NewStandardDashboardPage(m.srv, &m.runs[idx], reqs, m.totalReqs)
 		}
 	case panelStats:
-		idx := m.requestList.GetCurrentItem()
+		idx := selectedDataIndex(m.requestTable)
 		if idx >= 0 && idx < len(m.requests) {
 			return NewRequestDetailPage(&m.requests[idx])
 		}
@@ -244,13 +263,13 @@ func (m *MainPage) updatePanelStyles() {
 	activeBg := tcell.ColorDarkBlue
 	inactiveBg := tcell.ColorBlack
 
-	for i, list := range []*tview.List{m.taskList, m.historyList, m.requestList} {
+	for i, table := range []*tview.Table{m.taskTable, m.historyTable, m.requestTable} {
 		if panelIndex(i) == m.activePanel {
-			list.SetBorderColor(activeColor)
-			list.SetSelectedBackgroundColor(activeBg)
+			table.SetBorderColor(activeColor)
+			table.SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(activeBg))
 		} else {
-			list.SetBorderColor(inactiveColor)
-			list.SetSelectedBackgroundColor(inactiveBg)
+			table.SetBorderColor(inactiveColor)
+			table.SetSelectedStyle(tcell.StyleDefault.Foreground(tcell.ColorWhite).Background(inactiveBg))
 		}
 	}
 }
@@ -293,37 +312,32 @@ func (m *MainPage) PopulateData(
 	m.requests = reqs
 	m.runRequests = runReqs
 	m.totalReqs = totalReqs
+	m.selectedTaskID = ""
 
 	m.RebuildTaskList()
 	m.RebuildHistoryList()
 	m.RebuildStatsAndRequests()
 }
 
-// RebuildTaskList 清空并重建任务列表。
+// RebuildTaskList 清空并重建任务表。
 func (m *MainPage) RebuildTaskList() {
-	m.taskList.Clear()
+	rows := make([][]string, 0, len(m.tasks))
 	for _, t := range m.tasks {
-		main, sec := formatTaskLine(t)
-		m.taskList.AddItem(main, sec, 0, nil)
+		rows = append(rows, formatTaskRow(t))
 	}
-	if m.taskList.GetItemCount() > 0 {
-		m.taskList.SetCurrentItem(0)
-	}
+	setTableRows(m.taskTable, taskColumns(), rows)
 }
 
-// RebuildHistoryList 清空并重建历史列表。
+// RebuildHistoryList 清空并重建历史表。
 func (m *MainPage) RebuildHistoryList() {
-	m.historyList.Clear()
+	rows := make([][]string, 0, len(m.runs))
 	for _, r := range m.runs {
-		main, sec := formatRunLine(r)
-		m.historyList.AddItem(main, sec, 0, nil)
+		rows = append(rows, formatRunRow(r))
 	}
-	if m.historyList.GetItemCount() > 0 {
-		m.historyList.SetCurrentItem(0)
-	}
+	setTableRows(m.historyTable, runColumns(), rows)
 }
 
-// RebuildStatsAndRequests 重建统计文本和请求列表。
+// RebuildStatsAndRequests 重建统计文本和请求表。
 func (m *MainPage) RebuildStatsAndRequests() {
 	isCompleted := true
 	for _, r := range m.runs {
@@ -344,41 +358,56 @@ func (m *MainPage) RebuildStatsAndRequests() {
 
 	m.statsText.SetText(formatStats(m.requests, m.totalReqs, isCompleted, 0))
 
-	m.requestList.Clear()
+	rows := make([][]string, 0, len(m.requests))
 	for _, r := range m.requests {
-		main, sec := formatReqLine(r)
-		m.requestList.AddItem(main, sec, 0, nil)
+		rows = append(rows, formatReqRow(r))
 	}
-	if m.requestList.GetItemCount() > 0 {
-		m.requestList.SetCurrentItem(0)
-	}
+	setTableRows(m.requestTable, requestColumns(), rows)
 }
 
-// RefreshTasks 清空并重建任务列表（由 startUpdateLoop 调用）。
+// RefreshTasks 清空并重建任务表（由 startUpdateLoop 调用）。
 func (m *MainPage) RefreshTasks(tasks []types.TaskOverview) {
-	oldIdx := m.taskList.GetCurrentItem()
+	oldIdx := selectedDataIndex(m.taskTable)
+	oldTaskID := ""
+	if oldIdx >= 0 && oldIdx < len(m.tasks) {
+		oldTaskID = m.tasks[oldIdx].ID
+	}
 	m.tasks = tasks
 	m.RebuildTaskList()
-	if oldIdx < m.taskList.GetItemCount() {
-		m.taskList.SetCurrentItem(oldIdx)
-	}
+	selectDataIndex(m.taskTable, indexTaskByID(tasks, oldTaskID, oldIdx))
+	m.selectedTaskID = ""
+	m.refreshHistoryForSelectedTask()
 	m.updatePanelStyles()
 }
 
-// RefreshRuns 清空并重建历史列表（由 startUpdateLoop 调用）。
+// RefreshRuns 清空并重建历史表（由 startUpdateLoop 调用）。
 func (m *MainPage) RefreshRuns(runs []types.TaskRunSummary) {
-	oldIdx := m.historyList.GetCurrentItem()
+	oldIdx := selectedDataIndex(m.historyTable)
 	m.runs = runs
 	m.RebuildHistoryList()
-	if oldIdx < m.historyList.GetItemCount() {
-		m.historyList.SetCurrentItem(oldIdx)
-	}
+	selectDataIndex(m.historyTable, oldIdx)
 	m.updatePanelStyles()
 }
 
-// RefreshRequests 重建统计和请求列表（由 startUpdateLoop 调用）。
+// RefreshRequests 重建统计和请求表（由 startUpdateLoop 调用）。
 func (m *MainPage) RefreshRequests(reqs []types.RequestMetrics) {
+	oldIdx := selectedDataIndex(m.requestTable)
 	m.requests = reqs
 	m.RebuildStatsAndRequests()
+	selectDataIndex(m.requestTable, oldIdx)
 	m.updatePanelStyles()
+}
+
+func indexTaskByID(tasks []types.TaskOverview, taskID string, fallback int) int {
+	if taskID != "" {
+		for idx, task := range tasks {
+			if task.ID == taskID {
+				return idx
+			}
+		}
+	}
+	if fallback >= 0 && fallback < len(tasks) {
+		return fallback
+	}
+	return 0
 }

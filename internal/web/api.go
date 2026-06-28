@@ -250,7 +250,7 @@ func (h *apiHandler) handleRunRequests(w http.ResponseWriter, r *http.Request, r
 		return
 	}
 
-	requests := requestDTOs(state.Requests)
+	requests := requestDTOs(state.Requests, state.RequestStates)
 	if len(parts) == 3 {
 		offset := parseIntQuery(r, "offset", 0)
 		limit := parseIntQuery(r, "limit", len(requests))
@@ -649,7 +649,7 @@ func runStateDTO(state *aitserver.RunState, requests []map[string]any) map[strin
 		return nil
 	}
 	if requests == nil {
-		requests = requestDTOs(state.Requests)
+		requests = requestDTOs(state.Requests, state.RequestStates)
 	}
 	return map[string]any{
 		"run_id":         string(state.RunID),
@@ -696,26 +696,31 @@ func requestStateDTOs(states map[int]aitserver.RequestState) []map[string]any {
 	return out
 }
 
-func requestDTOs(requests []*types.RequestMetrics) []map[string]any {
+func requestDTOs(requests []*types.RequestMetrics, states map[int]aitserver.RequestState) []map[string]any {
 	out := make([]map[string]any, 0, len(requests))
 	for _, request := range requests {
 		if request == nil {
 			continue
 		}
-		out = append(out, requestDTO(*request))
+		out = append(out, requestDTO(*request, states))
 	}
 	return out
 }
 
-func requestDTO(request types.RequestMetrics) map[string]any {
+func requestDTO(request types.RequestMetrics, states map[int]aitserver.RequestState) map[string]any {
 	status := "ok"
 	if !request.Success {
 		status = "failed"
+	}
+	var caseID string
+	if state, ok := states[request.Index]; ok {
+		caseID = state.CaseID
 	}
 	return map[string]any{
 		"index":             request.Index,
 		"status":            status,
 		"success":           request.Success,
+		"case_id":           caseID,
 		"total_time":        durationString(request.TotalTime),
 		"ttft":              durationString(request.TTFT),
 		"tps":               request.TPS,

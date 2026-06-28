@@ -41,6 +41,9 @@ func (s *tuiState) stop() { close(s.stopCh) }
 
 // NewSimulator 返回三个只读 channel，用于 v1 模拟数据推送。
 func NewSimulator() (
+	[]types.TaskOverview,
+	[]types.TaskRunSummary,
+	[]types.RequestMetrics,
 	<-chan []types.TaskOverview,
 	<-chan []types.TaskRunSummary,
 	<-chan []types.RequestMetrics,
@@ -58,7 +61,7 @@ func NewSimulator() (
 	runsCh <- runs
 	reqsCh <- reqs
 
-	return tasksCh, runsCh, reqsCh
+	return tasks, runs, reqs, tasksCh, runsCh, reqsCh
 }
 
 // ─── 数据管道 ──────────────────────────────────────────────────────────────────
@@ -106,24 +109,16 @@ func (s *tuiState) beforeDrawCheck(screen tcell.Screen) bool {
 
 	if tooSmall && !overlayActive {
 		s.warningPage.UpdateText(w, h)
-		go func() {
-			s.app.QueueUpdateDraw(func() {
-				s.router.ShowOverlay(s.warningPage)
-				s.app.SetFocus(s.warningPage.FocusTarget())
-			})
-		}()
+		s.router.ShowOverlay(s.warningPage)
+		s.app.SetFocus(s.warningPage.FocusTarget())
 	} else if !tooSmall && overlayActive {
-		go func() {
-			s.app.QueueUpdateDraw(func() {
-				s.router.HideOverlay()
-				cur := s.router.ActivePage()
-				if cur != nil {
-					s.app.SetFocus(cur.FocusTarget())
-				}
-			})
-		}()
+		s.router.HideOverlay()
+		cur := s.router.ActivePage()
+		if cur != nil {
+			s.app.SetFocus(cur.FocusTarget())
+		}
 	}
-	return true
+	return false
 }
 
 // ─── Run 入口 ─────────────────────────────────────────────────────────────────
@@ -138,12 +133,11 @@ func Run(srv server.Server) error {
 	mp := NewMainPage(app, srv, version)
 
 	// 2. 创建 Simulator（channel 管道）
-	tasksCh, runsCh, reqsCh := NewSimulator()
+	tasks, runs, reqs, tasksCh, runsCh, reqsCh := NewSimulator()
 	// v2: 用 srv.SubscribeRunEvents(runID) 订阅活跃 run 的事件流
 
 	// 2.5 注入 runRequests + totalReqs（静态数据，不通过 channel）
-	mp.SetRunRequests(generateRunRequests())
-	mp.SetTotalReqs(10000)
+	mp.PopulateData(tasks, runs, reqs, generateRunRequests(), 10000)
 
 	// 3. 首次数据注入（Simulator 构造时已推入初始数据到 channel）
 	state := &tuiState{

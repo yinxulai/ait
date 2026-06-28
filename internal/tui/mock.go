@@ -12,52 +12,82 @@ import (
 
 // ─── 格式化函数 ────────────────────────────────────────────────────────────────
 
-func formatTaskLine(t types.TaskOverview) (main, sec string) {
-	main = t.Name
-	if t.LatestRun != nil {
-		sec = fmt.Sprintf("%s  | SR %.1f%%  | TPS %.0f",
-			t.Input.RunMode(), t.LatestRun.SuccessRate*100, t.LatestRun.AvgTPS)
-	} else {
-		sec = t.Input.RunMode() + "  | -"
+func formatTaskRow(t types.TaskOverview) []string {
+	endpoint := strings.TrimSpace(t.Input.BaseUrl)
+	if endpoint == "" {
+		endpoint = strings.TrimSpace(t.Input.ResolvedEndpointURL())
 	}
-	return
+	if endpoint == "" {
+		endpoint = "-"
+	}
+	load := fmt.Sprintf("%s · c%d × %d", t.Input.Model, t.Input.Concurrency, t.Input.Count)
+	return []string{t.Name, t.Input.RunMode(), endpoint, load}
 }
 
-func formatRunLine(r types.TaskRunSummary) (main, sec string) {
+func formatRunRow(r types.TaskRunSummary) []string {
 	shortID := r.RunID
 	if len(shortID) > 8 {
 		shortID = shortID[:8]
 	}
-	main = shortID
-	dur := r.FinishedAt.Sub(r.StartedAt).Truncate(time.Second)
-	sec = fmt.Sprintf("%s | %s | %s | SR %.1f%% | TPS %.0f",
-		r.Mode,
-		r.StartedAt.Format("01-02 15:04"),
-		dur,
-		r.SuccessRate*100,
-		r.AvgTPS,
-	)
-	return
+	dur := time.Since(r.StartedAt)
+	if !r.FinishedAt.IsZero() {
+		dur = r.FinishedAt.Sub(r.StartedAt)
+	}
+	return []string{
+		shortID,
+		r.Status,
+		fmt.Sprintf("%s · %s", r.StartedAt.Format("01-02 15:04"), dur.Truncate(time.Second)),
+		fmt.Sprintf("%.1f%%", r.SuccessRate*100),
+		formatRunThroughput(r),
+	}
 }
 
-func formatReqLine(r types.RequestMetrics) (main, sec string) {
-	status := "✅"
+func formatRunThroughput(r types.TaskRunSummary) string {
+	parts := []string{fmt.Sprintf("TPS %.0f", r.AvgTPS)}
+	if r.RPM > 0 {
+		parts = append(parts, fmt.Sprintf("RPM %.0f", r.RPM))
+	}
+	if r.TPM > 0 {
+		parts = append(parts, fmt.Sprintf("TPM %.0f", r.TPM))
+	}
+	return strings.Join(parts, " · ")
+}
+
+func formatReqRow(r types.RequestMetrics) []string {
+	status := "OK"
 	if !r.Success {
-		status = "❌"
+		status = "ERR"
 	}
 	total := r.TotalTime.Truncate(time.Millisecond)
 	ttft := r.TTFT.Truncate(time.Millisecond)
+	ttftText := ttft.String()
+	errorText := "-"
 	if !r.Success {
-		main = fmt.Sprintf("#%03d %s  %s  TTFT %s  TPS %.0f",
-			r.Index, status, total, "-", r.TPS)
-		sec = fmt.Sprintf("ERR: %s", r.ErrorMessage)
-	} else {
-		main = fmt.Sprintf("#%03d %s  %s  TTFT %s  TPS %.0f",
-			r.Index, status, total, ttft, r.TPS)
-		sec = fmt.Sprintf("PT %d  CT %d  CH %.0f%%",
-			r.PromptTokens, r.CompletionTokens, r.CacheHitRate)
+		ttftText = "-"
+		errorText = r.ErrorMessage
 	}
-	return
+	statusText := fmt.Sprintf("#%03d · %s", r.Index, status)
+	if r.Level > 0 {
+		statusText = fmt.Sprintf("%s · L%d", statusText, r.Level)
+	}
+	network := r.TargetIP
+	if network == "" {
+		network = "-"
+	}
+	if r.DNSTime > 0 || r.ConnectTime > 0 || r.TLSTime > 0 {
+		network = fmt.Sprintf("%s · dns %s · conn %s · tls %s",
+			network,
+			r.DNSTime.Truncate(time.Millisecond),
+			r.ConnectTime.Truncate(time.Millisecond),
+			r.TLSTime.Truncate(time.Millisecond))
+	}
+	return []string{
+		statusText,
+		fmt.Sprintf("total %s · ttft %s", total, ttftText),
+		fmt.Sprintf("TPS %.0f · tok %d/%d · cache %.0f%%", r.TPS, r.PromptTokens, r.CompletionTokens, r.CacheHitRate),
+		network,
+		errorText,
+	}
 }
 
 func renderProgressBar(done, total int, width int) string {
@@ -125,7 +155,7 @@ func formatStats(reqs []types.RequestMetrics, totalReqs int, isCompleted bool, e
 	if isCompleted && elapsed > 0 {
 		timeLabel = fmt.Sprintf(" 耗时: %s", elapsed.Truncate(time.Second))
 	} else if !isCompleted && elapsed > 0 && done > 0 && totalReqs > done {
-		estimated := time.Duration(float64(elapsed)/float64(done)*float64(totalReqs-done)).Truncate(time.Second)
+		estimated := time.Duration(float64(elapsed) / float64(done) * float64(totalReqs-done)).Truncate(time.Second)
 		timeLabel = fmt.Sprintf(" 预计剩余: %s", estimated)
 	}
 
@@ -161,17 +191,17 @@ func generateTaskOverviews() []types.TaskOverview {
 				UpdatedAt: now.Add(-1 * time.Hour),
 			},
 			LatestRun: &types.TaskRunSummary{
-				RunID:       "run-a1b2c3d4",
-				TaskID:      "task-001",
-				Mode:        "standard",
-				Status:      "completed",
-				Protocol:    "openai-completions",
-				Model:       "gpt-4",
-				StartedAt:   now.Add(-2 * time.Hour),
-				FinishedAt:  now.Add(-1*time.Hour - 45*time.Minute),
-				SuccessRate: 0.985,
-				AvgTTFT:     120 * time.Millisecond,
-				AvgTPS:      245,
+				RunID:        "run-a1b2c3d4",
+				TaskID:       "task-001",
+				Mode:         "standard",
+				Status:       "completed",
+				Protocol:     "openai-completions",
+				Model:        "gpt-4",
+				StartedAt:    now.Add(-2 * time.Hour),
+				FinishedAt:   now.Add(-1*time.Hour - 45*time.Minute),
+				SuccessRate:  0.985,
+				AvgTTFT:      120 * time.Millisecond,
+				AvgTPS:       245,
 				CacheHitRate: 0.452,
 			},
 		},
@@ -223,58 +253,58 @@ func generateRunSummaries() []types.TaskRunSummary {
 	now := time.Now()
 	return []types.TaskRunSummary{
 		{
-			RunID:       "run-a1b2c3d4",
-			TaskID:      "task-001",
-			Mode:        "standard",
-			Status:      "completed",
-			Protocol:    "openai-completions",
-			Model:       "gpt-4",
-			StartedAt:   now.Add(-2 * time.Hour),
-			FinishedAt:  now.Add(-1*time.Hour - 45*time.Minute),
-			SuccessRate: 0.985,
-			AvgTTFT:     120 * time.Millisecond,
-			AvgTPS:      245,
+			RunID:        "run-a1b2c3d4",
+			TaskID:       "task-001",
+			Mode:         "standard",
+			Status:       "completed",
+			Protocol:     "openai-completions",
+			Model:        "gpt-4",
+			StartedAt:    now.Add(-2 * time.Hour),
+			FinishedAt:   now.Add(-1*time.Hour - 45*time.Minute),
+			SuccessRate:  0.985,
+			AvgTTFT:      120 * time.Millisecond,
+			AvgTPS:       245,
 			CacheHitRate: 0.452,
 		},
 		{
-			RunID:       "run-e5f6g7h8",
-			TaskID:      "task-002",
-			Mode:        "turbo",
-			Status:      "completed",
-			Protocol:    "openai-completions",
-			Model:       "gpt-3.5-turbo",
-			StartedAt:   now.Add(-3 * time.Hour),
-			FinishedAt:  now.Add(-2*time.Hour - 30*time.Minute),
-			SuccessRate: 0.978,
-			AvgTTFT:     200 * time.Millisecond,
-			AvgTPS:      512,
+			RunID:        "run-e5f6g7h8",
+			TaskID:       "task-002",
+			Mode:         "turbo",
+			Status:       "completed",
+			Protocol:     "openai-completions",
+			Model:        "gpt-3.5-turbo",
+			StartedAt:    now.Add(-3 * time.Hour),
+			FinishedAt:   now.Add(-2*time.Hour - 30*time.Minute),
+			SuccessRate:  0.978,
+			AvgTTFT:      200 * time.Millisecond,
+			AvgTPS:       512,
 			CacheHitRate: 0.321,
 		},
 		{
-			RunID:       "run-z9y8x7w6",
-			TaskID:      "task-001",
-			Mode:        "standard",
-			Status:      "running",
-			Protocol:    "openai-completions",
-			Model:       "gpt-4",
-			StartedAt:   now.Add(-5 * time.Minute),
-			SuccessRate: 0.99,
-			AvgTTFT:     115 * time.Millisecond,
-			AvgTPS:      260,
+			RunID:        "run-z9y8x7w6",
+			TaskID:       "task-001",
+			Mode:         "standard",
+			Status:       "running",
+			Protocol:     "openai-completions",
+			Model:        "gpt-4",
+			StartedAt:    now.Add(-5 * time.Minute),
+			SuccessRate:  0.99,
+			AvgTTFT:      115 * time.Millisecond,
+			AvgTPS:       260,
 			CacheHitRate: 0.48,
 		},
 		{
-			RunID:       "run-v5u4t3s2",
-			TaskID:      "task-001",
-			Mode:        "standard",
-			Status:      "completed",
-			Protocol:    "openai-completions",
-			Model:       "gpt-4",
-			StartedAt:   now.Add(-5 * time.Hour),
-			FinishedAt:  now.Add(-4*time.Hour - 50*time.Minute),
-			SuccessRate: 0.972,
-			AvgTTFT:     135 * time.Millisecond,
-			AvgTPS:      230,
+			RunID:        "run-v5u4t3s2",
+			TaskID:       "task-001",
+			Mode:         "standard",
+			Status:       "completed",
+			Protocol:     "openai-completions",
+			Model:        "gpt-4",
+			StartedAt:    now.Add(-5 * time.Hour),
+			FinishedAt:   now.Add(-4*time.Hour - 50*time.Minute),
+			SuccessRate:  0.972,
+			AvgTTFT:      135 * time.Millisecond,
+			AvgTPS:       230,
 			CacheHitRate: 0.44,
 		},
 	}
@@ -285,19 +315,19 @@ func generateRequestMetrics(n int) []types.RequestMetrics {
 	for i := 0; i < n; i++ {
 		success := rand.Intn(100) > 2 // 98% 成功率
 		reqs[i] = types.RequestMetrics{
-			Index:           i + 1,
-			Success:         success,
-			TotalTime:       time.Duration(150+rand.Intn(200)) * time.Millisecond,
-			TTFT:            time.Duration(30+rand.Intn(100)) * time.Millisecond,
-			TPS:             200 + rand.Float64()*500,
-			PromptTokens:    1024 + rand.Intn(2048),
+			Index:            i + 1,
+			Success:          success,
+			TotalTime:        time.Duration(150+rand.Intn(200)) * time.Millisecond,
+			TTFT:             time.Duration(30+rand.Intn(100)) * time.Millisecond,
+			TPS:              200 + rand.Float64()*500,
+			PromptTokens:     1024 + rand.Intn(2048),
 			CompletionTokens: 128 + rand.Intn(512),
-			CachedTokens:    rand.Intn(512),
-			CacheHitRate:    20 + rand.Float64()*60,
-			DNSTime:         time.Duration(1+rand.Intn(5)) * time.Millisecond,
-			ConnectTime:     time.Duration(2+rand.Intn(10)) * time.Millisecond,
-			TLSTime:         time.Duration(5+rand.Intn(20)) * time.Millisecond,
-			TargetIP:        "192.168.1.1",
+			CachedTokens:     rand.Intn(512),
+			CacheHitRate:     20 + rand.Float64()*60,
+			DNSTime:          time.Duration(1+rand.Intn(5)) * time.Millisecond,
+			ConnectTime:      time.Duration(2+rand.Intn(10)) * time.Millisecond,
+			TLSTime:          time.Duration(5+rand.Intn(20)) * time.Millisecond,
+			TargetIP:         "192.168.1.1",
 		}
 		if !success {
 			reqs[i].ErrorMessage = "timeout after 30s"
@@ -312,9 +342,9 @@ func generateRequestMetrics(n int) []types.RequestMetrics {
 func generateRunRequests() map[int][]types.RequestMetrics {
 	// 为 history panel 中每条 run 生成一组请求数据
 	return map[int][]types.RequestMetrics{
-		0: generateRequestMetrics(50),   // run-a1b2c3d4
-		1: generateRequestMetrics(80),   // run-e5f6g7h8
-		2: generateRequestMetrics(30),   // run-z9y8x7w6 (running)
-		3: generateRequestMetrics(60),   // run-v5u4t3s2
+		0: generateRequestMetrics(50), // run-a1b2c3d4
+		1: generateRequestMetrics(80), // run-e5f6g7h8
+		2: generateRequestMetrics(30), // run-z9y8x7w6 (running)
+		3: generateRequestMetrics(60), // run-v5u4t3s2
 	}
 }
