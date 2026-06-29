@@ -130,7 +130,7 @@ export function RunDetail({ run, requests, selectedRequest, onSelectRequest }: R
         </div>
       </CardHeader>
       <CardContent className="space-y-5 p-4 pt-0 sm:p-5 sm:pt-0">
-        <section className="space-y-4 rounded-xl bg-muted/25 p-4">
+        <section className="space-y-4 rounded-xl bg-muted/35 p-4">
           <div className="mb-3 flex items-center justify-between gap-3 text-sm">
             <span className="font-medium">执行完成度</span>
             <span className="text-muted-foreground">{doneCount} / {requests.length}</span>
@@ -138,26 +138,26 @@ export function RunDetail({ run, requests, selectedRequest, onSelectRequest }: R
           <Progress value={progress} />
           <div className="mt-4 grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
             <InlineMetric icon={<CheckCircle2 className="size-4" />} label="成功率" value={formatPercent(run.success_rate)} tone={failedCount > 0 ? 'danger' : 'success'} />
-            <InlineMetric icon={<Gauge className="size-4" />} label="TTFT" value={run.avg_ttft || '-'} tone="latency" />
-            <InlineMetric icon={<TrendingUp className="size-4" />} label="TPS" value={formatNumber(run.avg_tps)} tone="throughput" />
-            <InlineMetric icon={<Database className="size-4" />} label="缓存" value={formatPercent(run.cache_hit_rate)} tone="cache" />
+            <InlineMetric icon={<Gauge className="size-4" />} label="TTFT" value={run.avg_ttft || '-'} />
+            <InlineMetric icon={<TrendingUp className="size-4" />} label="TPS" value={formatNumber(run.avg_tps)} />
+            <InlineMetric icon={<Database className="size-4" />} label="缓存" value={formatPercent(run.cache_hit_rate)} />
           </div>
         </section>
 
         <section className="grid gap-3 lg:grid-cols-3">
-          <CompactMetricList title="运行摘要" icon={<Clock3 className="size-4" />} tone="run" items={[
+          <CompactMetricList title="运行摘要" icon={<Clock3 className="size-4" />} variant="solid" items={[
             ['开始时间', formatDate(run.started_at)],
             ['结束时间', formatDate(run.finished_at)],
             ['状态', statusLabel[run.status]],
             ['错误摘要', run.error_summary || '-'],
           ]} />
-          <CompactMetricList title="吞吐与速度" icon={<TrendingUp className="size-4" />} tone="throughput" items={[
+          <CompactMetricList title="吞吐与速度" icon={<TrendingUp className="size-4" />} variant="soft" items={[
             ['平均 TPS', formatNumber(run.avg_tps)],
             ['RPM', formatNumber(run.rpm)],
             ['TPM', formatNumber(run.tpm)],
             ['稳定并发', String(run.max_stable_concurrency || '-')],
           ]} />
-          <CompactMetricList title="样本质量" icon={<Network className="size-4" />} tone="quality" items={[
+          <CompactMetricList title="样本质量" icon={<Network className="size-4" />} variant="outline" items={[
             ['总样本', String(requests.length)],
             ['成功', String(successCount)],
             ['失败', String(failedCount)],
@@ -254,25 +254,16 @@ function sampleLabel(request: RequestDetail) {
   return `#${request.index}${request.case_id ? ` · ${request.case_id}` : ''} · ${request.total_time} · TTFT ${request.ttft}`
 }
 
-type MetricTone = 'neutral' | 'success' | 'danger' | 'latency' | 'throughput' | 'cache' | 'run' | 'quality' | 'sample' | 'concurrency'
+function CompactMetricList({ title, icon, items, variant }: { title: string; icon: ReactNode; items: Array<[string, string]>; variant: 'solid' | 'soft' | 'outline' }) {
+  const panelStyle = {
+    solid: 'bg-background',
+    soft: 'bg-muted/25',
+    outline: 'bg-muted/45',
+  }[variant]
 
-const metricToneStyle: Record<MetricTone, string> = {
-  neutral: 'border-border/70 bg-muted/25 text-muted-foreground',
-  success: 'border-emerald-200/70 bg-emerald-50/70 text-emerald-700 dark:border-emerald-900/60 dark:bg-emerald-950/25 dark:text-emerald-300',
-  danger: 'border-red-200/70 bg-red-50/70 text-red-700 dark:border-red-900/60 dark:bg-red-950/25 dark:text-red-300',
-  latency: 'border-sky-200/70 bg-sky-50/70 text-sky-700 dark:border-sky-900/60 dark:bg-sky-950/25 dark:text-sky-300',
-  throughput: 'border-indigo-200/70 bg-indigo-50/70 text-indigo-700 dark:border-indigo-900/60 dark:bg-indigo-950/25 dark:text-indigo-300',
-  cache: 'border-amber-200/70 bg-amber-50/70 text-amber-700 dark:border-amber-900/60 dark:bg-amber-950/25 dark:text-amber-300',
-  run: 'border-zinc-200/80 bg-zinc-50/80 text-zinc-700 dark:border-zinc-800 dark:bg-zinc-900/50 dark:text-zinc-300',
-  quality: 'border-teal-200/70 bg-teal-50/70 text-teal-700 dark:border-teal-900/60 dark:bg-teal-950/25 dark:text-teal-300',
-  sample: 'border-cyan-200/70 bg-cyan-50/70 text-cyan-700 dark:border-cyan-900/60 dark:bg-cyan-950/25 dark:text-cyan-300',
-  concurrency: 'border-orange-200/70 bg-orange-50/70 text-orange-700 dark:border-orange-900/60 dark:bg-orange-950/25 dark:text-orange-300',
-}
-
-function CompactMetricList({ title, icon, items, tone = 'neutral' }: { title: string; icon: ReactNode; items: Array<[string, string]>; tone?: MetricTone }) {
   return (
-    <div className={cn('rounded-xl border p-4', metricToneStyle[tone])}>
-      <div className="mb-3 flex items-center gap-2 text-sm font-medium text-foreground">{icon}{title}</div>
+    <div className={cn('rounded-xl p-4', panelStyle)}>
+      <div className="mb-3 flex items-center gap-2 text-sm font-medium">{icon}{title}</div>
       <div className="divide-y divide-border/60 text-sm">
         {items.map(([label, value]) => (
           <div key={label} className="flex min-w-0 items-center justify-between gap-4 py-2 first:pt-0 last:pb-0">
@@ -310,10 +301,10 @@ function RequestPanel({ request, compact = false }: { request: RequestDetail; co
         {request.status === 'failed' || !request.success ? <Badge variant="outline" className="rounded-full border-red-200 bg-red-50 px-3 py-1 text-red-700">失败</Badge> : null}
       </div>
       <div className={cn('grid gap-4', compact ? 'xl:grid-cols-[minmax(0,1fr)]' : 'xl:grid-cols-[minmax(0,1fr)_minmax(0,1fr)]')}>
-        <div className="rounded-xl bg-muted/25 p-3">
+        <div className="rounded-xl bg-muted/35 p-3">
           <div className="mb-3 flex items-center gap-2 text-sm font-medium"><Gauge className="size-4" />本次指标</div>
           <div className="grid gap-2 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 2xl:grid-cols-6">
-            {metricItems.map(([label, value]) => <RequestMetricTile key={label} label={label} value={value} />)}
+            {metricItems.map(([label, value], index) => <RequestMetricTile key={label} label={label} value={value} variant={index % 3} />)}
           </div>
         </div>
         <div className="space-y-4">
@@ -325,9 +316,11 @@ function RequestPanel({ request, compact = false }: { request: RequestDetail; co
   )
 }
 
-function RequestMetricTile({ label, value }: { label: string; value: string }) {
+function RequestMetricTile({ label, value, variant }: { label: string; value: string; variant: number }) {
+  const tileStyle = ['bg-background', 'bg-muted/20', 'bg-muted/45'][variant]
+
   return (
-    <div className="min-w-0 rounded-lg bg-background/80 px-3 py-2.5">
+    <div className={cn('min-w-0 rounded-lg px-3 py-2.5', tileStyle)}>
       <div className="text-[11px] leading-4 text-muted-foreground">{label}</div>
       <div className="mt-1 truncate text-sm font-semibold tabular-nums" title={value}>{value}</div>
     </div>
@@ -367,10 +360,10 @@ function RunRate({ value }: { value: number }) {
   )
 }
 
-function InlineMetric({ icon, label, value, tone = 'neutral' }: { icon: ReactNode; label: string; value: string; tone?: MetricTone }) {
+function InlineMetric({ icon, label, value, tone = 'neutral' }: { icon: ReactNode; label: string; value: string; tone?: 'neutral' | 'success' | 'danger' }) {
   return (
-    <div className={cn('flex min-w-0 items-center gap-3 rounded-xl border px-3 py-3', metricToneStyle[tone])}>
-      <div className="flex size-9 shrink-0 items-center justify-center rounded-lg bg-background/80">{icon}</div>
+    <div className="flex min-w-0 items-center gap-3 rounded-xl bg-background px-3 py-3">
+      <div className={cn('flex size-9 shrink-0 items-center justify-center rounded-lg bg-background text-muted-foreground', tone === 'success' && 'text-emerald-600', tone === 'danger' && 'text-red-600')}>{icon}</div>
       <div className="min-w-0">
         <div className="text-xs text-muted-foreground">{label}</div>
         <div className="truncate text-lg font-semibold tabular-nums" title={value}>{value}</div>
@@ -389,20 +382,26 @@ function RunHistorySummary({ runs, samplesByRun }: { runs: RunSummary[]; samples
 
   return (
     <div className="grid gap-3 sm:grid-cols-2 xl:grid-cols-4">
-      <HistoryStat label="历史执行" value={String(runs.length)} helper={`${completedRuns.length} 次完成 / ${failedRuns.length} 次失败`} tone="run" />
-      <HistoryStat label="平均成功率" value={formatPercent(averageSuccessRate)} helper="按历史执行均值计算" tone="success" />
-      <HistoryStat label="最新样本数" value={String(latestSamples)} helper={latestRun ? latestRun.run_id : '暂无执行'} tone="sample" />
-      <HistoryStat label="最佳稳定并发" value={bestStableConcurrency > 0 ? String(bestStableConcurrency) : '-'} helper="来自历史执行摘要" tone="concurrency" />
+      <HistoryStat label="历史执行" value={String(runs.length)} helper={`${completedRuns.length} 次完成 / ${failedRuns.length} 次失败`} variant="solid" />
+      <HistoryStat label="平均成功率" value={formatPercent(averageSuccessRate)} helper="按历史执行均值计算" variant="soft" />
+      <HistoryStat label="最新样本数" value={String(latestSamples)} helper={latestRun ? latestRun.run_id : '暂无执行'} variant="outline" />
+      <HistoryStat label="最佳稳定并发" value={bestStableConcurrency > 0 ? String(bestStableConcurrency) : '-'} helper="来自历史执行摘要" variant="soft" />
     </div>
   )
 }
 
-function HistoryStat({ label, value, helper, tone = 'neutral' }: { label: string; value: string; helper: string; tone?: MetricTone }) {
+function HistoryStat({ label, value, helper, variant }: { label: string; value: string; helper: string; variant: 'solid' | 'soft' | 'outline' }) {
+  const panelStyle = {
+    solid: 'bg-background',
+    soft: 'bg-muted/25',
+    outline: 'bg-muted/45',
+  }[variant]
+
   return (
-    <div className={cn('rounded-xl border p-3', metricToneStyle[tone])}>
-      <div className="text-xs opacity-85">{label}</div>
-      <div className="mt-1 truncate text-2xl font-semibold tabular-nums text-foreground" title={value}>{value}</div>
-      <div className="mt-1 truncate text-xs opacity-75" title={helper}>{helper}</div>
+    <div className={cn('rounded-xl p-3', panelStyle)}>
+      <div className="text-xs text-muted-foreground">{label}</div>
+      <div className="mt-1 truncate text-2xl font-semibold tabular-nums" title={value}>{value}</div>
+      <div className="mt-1 truncate text-xs text-muted-foreground" title={helper}>{helper}</div>
     </div>
   )
 }
