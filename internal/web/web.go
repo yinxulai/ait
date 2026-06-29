@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"io/fs"
 	"net/http"
+	"os"
 	"strings"
 	"time"
 
@@ -13,6 +14,13 @@ import (
 )
 
 const defaultAddr = "127.0.0.1:18180"
+
+func listenAddr() string {
+	if addr := os.Getenv("AIT_WEB_ADDR"); addr != "" {
+		return addr
+	}
+	return defaultAddr
+}
 
 // Run starts the embedded/static Web UI HTTP server on the default local address
 // and blocks until ctx is cancelled or the HTTP server exits.
@@ -28,7 +36,7 @@ func Run(ctx context.Context) error {
 	}
 
 	srv := &http.Server{
-		Addr:              defaultAddr,
+		Addr:              listenAddr(),
 		Handler:           NewHandler(assets, svc),
 		ReadHeaderTimeout: 5 * time.Second,
 	}
@@ -40,7 +48,7 @@ func Run(ctx context.Context) error {
 		_ = srv.Shutdown(shutdownCtx)
 	}()
 
-	fmt.Printf("AIT Web UI: http://%s\n", defaultAddr)
+	fmt.Printf("AIT Web UI: http://%s\n", srv.Addr)
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		return err
 	}

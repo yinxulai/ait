@@ -57,7 +57,7 @@ build-web: web-build
 .PHONY: dev-web
 dev-web:
 	@echo "正在启动 Web UI 开发模式..."
-	cd $(WEB_DIR) && npm ci && npm run dev -- --host 127.0.0.1 --port 18180
+	AIT_WEB_ADDR=127.0.0.1:5173 $(GOCMD) run ./cmd/$(BINARY)/ --web
 
 ## test-web: 验证 Web UI、Go 测试与嵌入构建
 .PHONY: test-web
