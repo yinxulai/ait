@@ -105,7 +105,7 @@ export function TaskSidebarContent({ items, totalTaskCount, query, onQueryChange
           <span>{items.length} / {totalTaskCount}</span>
         </div>
         <div className="min-h-0 flex-1 overflow-hidden">
-          <div className="h-full space-y-2 overflow-y-auto overflow-x-hidden px-4 [scrollbar-gutter:stable]">
+          <div className="scrollbar-gutter-stable h-full space-y-2 overflow-y-auto overflow-x-hidden px-4">
             {items.map((task) => (
               <button key={task.id} type="button" onClick={() => onChooseTask(task.id)} className={cn('group w-full rounded-xl border border-transparent bg-background/70 px-3 py-3 text-left transition hover:border-sidebar-border hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', task.active && 'border-sidebar-primary bg-sidebar-accent shadow-sm')}>
                 <div className="flex items-start justify-between gap-3">
