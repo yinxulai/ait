@@ -3,7 +3,6 @@ import type { ReactNode } from 'react'
 
 import { Button } from '@/components/ui/button'
 import { Input } from '@/components/ui/input'
-import { ScrollArea } from '@/components/ui/scroll-area'
 import { Sheet, SheetContent, SheetDescription, SheetHeader, SheetTitle, SheetTrigger } from '@/components/ui/sheet'
 import { cn } from '@/lib/utils'
 import type { TaskMode } from '@/api'
@@ -94,17 +93,19 @@ export function TaskSidebarContent({ items, totalTaskCount, query, onQueryChange
         </div>
       </div>
 
-      <div className="flex min-h-0 flex-1 flex-col gap-3 p-4">
-        <div className="relative">
-          <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
-          <Input value={query} onChange={(event) => onQueryChange(event.target.value)} className="h-10 rounded-xl bg-background pl-9" placeholder="搜索任务 / 模型 / 协议" />
+      <div className="flex min-h-0 flex-1 flex-col gap-3 py-4">
+        <div className="px-4">
+          <div className="relative">
+            <Search className="absolute left-3 top-1/2 size-4 -translate-y-1/2 text-muted-foreground" />
+            <Input value={query} onChange={(event) => onQueryChange(event.target.value)} className="h-10 rounded-xl bg-background pl-9" placeholder="搜索任务 / 模型 / 协议" />
+          </div>
         </div>
-        <div className="flex items-center justify-between text-xs text-muted-foreground">
+        <div className="flex items-center justify-between px-4 text-xs text-muted-foreground">
           <span>任务队列</span>
           <span>{items.length} / {totalTaskCount}</span>
         </div>
-        <ScrollArea className="min-h-0 flex-1">
-          <div className="space-y-2 pr-4">
+        <div className="min-h-0 flex-1 overflow-hidden">
+          <div className="h-full space-y-2 overflow-y-auto overflow-x-hidden px-4 [scrollbar-gutter:stable]">
             {items.map((task) => (
               <button key={task.id} type="button" onClick={() => onChooseTask(task.id)} className={cn('group w-full rounded-xl border border-transparent bg-background/70 px-3 py-3 text-left transition hover:border-sidebar-border hover:bg-sidebar-accent focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring', task.active && 'border-sidebar-primary bg-sidebar-accent shadow-sm')}>
                 <div className="flex items-start justify-between gap-3">
@@ -127,7 +128,7 @@ export function TaskSidebarContent({ items, totalTaskCount, query, onQueryChange
               </button>
             ))}
           </div>
-        </ScrollArea>
+        </div>
       </div>
     </div>
   )
@@ -135,7 +136,7 @@ export function TaskSidebarContent({ items, totalTaskCount, query, onQueryChange
 
 function HeaderMetric({ icon, label, value }: { icon: ReactNode; label: string; value: string }) {
   return (
-    <div className="flex min-w-[4.25rem] items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs hover:bg-muted/70 sm:min-w-22 sm:justify-start sm:gap-2 sm:px-3">
+    <div className="flex min-w-17 items-center justify-center gap-1.5 rounded-xl px-2.5 py-2 text-xs hover:bg-muted/70 sm:min-w-22 sm:justify-start sm:gap-2 sm:px-3">
       <span className="text-muted-foreground">{icon}</span>
       <span className="font-semibold tabular-nums text-foreground">{value}</span>
       <span className="hidden text-muted-foreground sm:inline">{label}</span>

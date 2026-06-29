@@ -204,6 +204,12 @@ export type RunState = {
   error_msg?: string
 }
 
+export type RunEventMessage = {
+  run_id: string
+  kind: string
+  payload?: RunState | Record<string, unknown>
+}
+
 export type RequestState = {
   index: number
   status: RequestStatus
@@ -300,6 +306,39 @@ export async function getRunState(runId: string) {
 export async function getRunRequests(runId: string) {
   const body = await requestJSON<{ requests: RequestDetail[] }>(`/api/runs/${encodeURIComponent(runId)}/requests`)
   return body.requests
+}
+
+export function subscribeRunEvents(runId: string, onState: (state: RunState) => void, onClose?: () => void, onError?: (error: Event) => void) {
+  const source = new EventSource(`/api/runs/${encodeURIComponent(runId)}/events`)
+
+  source.addEventListener('snapshot', (event) => {
+    onState(JSON.parse(event.data) as RunState)
+  })
+
+  source.addEventListener('close', () => {
+    source.close()
+    onClose?.()
+  })
+
+  const handleRunEvent = (event: MessageEvent<string>) => {
+    const message = JSON.parse(event.data) as RunEventMessage
+    const payload = message.payload
+    if (isRunState(payload)) onState(payload)
+  }
+
+  for (const eventName of ['run_queued', 'run_started', 'run_stopped', 'request_queued', 'request_started', 'request_skipped', 'request_done', 'progress_tick', 'level_done', 'integrity_rules_status', 'integrity_suite_loading', 'integrity_suite_loaded', 'integrity_case_started', 'integrity_case_done', 'assertion_result', 'run_complete', 'run_failed']) {
+    source.addEventListener(eventName, handleRunEvent)
+  }
+
+  source.onerror = (event) => {
+    onError?.(event)
+  }
+
+  return () => source.close()
+}
+
+function isRunState(value: unknown): value is RunState {
+  return Boolean(value && typeof value === 'object' && 'run_id' in value && 'status' in value && 'requests' in value)
 }
 
 export async function listProtocols() {
